@@ -471,11 +471,7 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
           <span class="text-dim">opening</span>
           <select v-model="book" :class="inputClass" class="w-fit">
             <option value="">start position</option>
-            <option
-              v-for="b in books.list.filter((x) => books.pulled.has(x.id))"
-              :key="b.id"
-              :value="b.id"
-            >
+            <option v-for="b in books.usable" :key="b.id" :value="b.id">
               {{ b.id }}
             </option>
           </select>

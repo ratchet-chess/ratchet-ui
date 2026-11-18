@@ -237,11 +237,7 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
             :disabled="phase === 'playing' || phase === 'starting'"
           >
             <option value="">start position</option>
-            <option
-              v-for="b in books.list.filter((x) => books.pulled.has(x.id))"
-              :key="b.id"
-              :value="b.id"
-            >
+            <option v-for="b in books.usable" :key="b.id" :value="b.id">
               {{ b.id }}
             </option>
           </select>

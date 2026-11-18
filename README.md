@@ -22,7 +22,9 @@ bun run build                    # the static site, in dist/
 ```
 
 `books.json` lists the opening books the app can pull. The browser pulls a book from its repo at the pinned commit,
-checks the archive's sha256, and keeps the book in its private file system.
+checks the archive's sha256, and keeps the book in its private file system. A user can also add a book from a file of
+their own: a `.pgn` or `.epd` file, or a zip archive that holds one. The browser copies it into the same file system and
+keeps it only once every opening in it reads. The file's name names the book, so it must not match another book's.
 
 Tourneys plays matches and tournaments between served engines in the browser. The formats are:
 
