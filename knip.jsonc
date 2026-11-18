@@ -8,4 +8,8 @@
     "scripts/**/*.ts",
   ],
   "project": ["src/**/*.{ts,vue,css}", "scripts/**/*.ts"],
+
+  // A type that another exported type names must stay exported, because the projects emit
+  // declarations; knip would call it unused when only its own file uses it.
+  "ignoreExportsUsedInFile": true,
 }

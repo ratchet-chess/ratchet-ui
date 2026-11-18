@@ -16,6 +16,9 @@ The rows for **release**, **own engine**, **WASI build** and **condition** quote
 | **package**      | one WASI build's distribution files from Ratchet's `tools/package.ts`: the WASI build, its browser Worker and `SHA256SUMS`               |                                     |
 | **manifest**     | `engines.json`: the maintained list of engines, each a WASI build from a GitHub release, pinned by sha256                                |                                     |
 | **manager view** | the sections that read a ratchet-bench manager: Jobs, Hosts and Ratings                                                                  |                                     |
+| **match**        | two engines' games: a fixed number of pairs, or an SPRT                                                                                  |                                     |
+| **tournament**   | the games of more than two engines in a format: round robin, gauntlet, Swiss or knockout                                                 |                                     |
+| **pair**         | two games on one opening, colors swapped; a match's statistics count pairs                                                               |                                     |
 
 ## Rules
 

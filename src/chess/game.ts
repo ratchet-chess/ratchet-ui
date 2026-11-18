@@ -11,7 +11,7 @@ export interface Outcome {
   /** in words, such as "checkmate" or "threefold repetition" */
   reason: string;
   /** PGN's Termination value */
-  termination: 'normal' | 'time forfeit' | 'rules infraction';
+  termination: 'normal' | 'time forfeit' | 'rules infraction' | 'adjudication';
 }
 
 const win = (color: Color): Outcome['result'] => (color === 'white' ? '1-0' : '0-1');
@@ -83,6 +83,13 @@ export class Game {
     this.comments.push('');
     this.settle();
     return true;
+  }
+
+  /** ends the game on the engines' scores: a draw, or a win for `winner` */
+  adjudicate(winner: Color | 'draw', reason: string): void {
+    if (this.outcome) return;
+    const result = winner === 'draw' ? '1/2-1/2' : win(winner);
+    this.outcome = { result, reason, termination: 'adjudication' };
   }
 
   /** sets the last move's PGN comment */

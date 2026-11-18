@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import { reactive, ref } from 'vue';
 import listed from '../../books.json';
 import { parseBooks, type BookEntry } from '../books/list.ts';
-import { indexBook, openingAt, type Opening } from '../books/opening.ts';
+import { indexBook, openingAt as openingAt_, type Opening } from '../books/opening.ts';
 import { unzipFirst } from '../books/zip.ts';
 
 /** a pulled book, as this browser keeps it */
@@ -100,8 +100,11 @@ export const useBooks = defineStore('books', () => {
     await load();
   }
 
-  /** a random opening from a pulled book; its index is built on first use */
-  async function randomOpening(id: string): Promise<Opening> {
+  /**
+   * An opening of a pulled book, chosen by `u` in [0, 1): the same `u` gives the same opening, so
+   * a pair's two games share one. The book's index is built on first use.
+   */
+  async function openingAt(id: string, u: number): Promise<Opening> {
     const book = list.find((b) => b.id === id);
     if (!book) throw new Error(`no book ${id}`);
     const file = await (await (await folder()).getFileHandle(id)).getFile();
@@ -112,8 +115,18 @@ export const useBooks = defineStore('books', () => {
     }
     const starts = await index;
     if (starts.length === 0) throw new Error(`${id} holds no openings`);
-    return openingAt(file, book.format, starts, Math.floor(Math.random() * starts.length));
+    return openingAt_(
+      file,
+      book.format,
+      starts,
+      Math.min(starts.length - 1, Math.floor(u * starts.length)),
+    );
   }
 
-  return { list, pulled, progress, error, load, pull, remove, randomOpening };
+  /** a random opening from a pulled book */
+  function randomOpening(id: string): Promise<Opening> {
+    return openingAt(id, Math.random());
+  }
+
+  return { list, pulled, progress, error, load, pull, remove, openingAt, randomOpening };
 });
