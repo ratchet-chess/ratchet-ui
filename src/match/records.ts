@@ -79,6 +79,8 @@ export function configOf(text: string): TournamentConfig {
     adjudication: adjudicationOf(r.adjudication),
     concurrency: int(r, 'concurrency'),
     seed: int(r, 'seed'),
+    // a config saved before one game per opening was offered played pairs
+    paired: r.paired === undefined ? true : r.paired === true,
   };
 }
 

@@ -31,6 +31,12 @@ Tourneys plays matches and tournaments between served engines in the browser. Th
 - a match of fixed pairs, or an SPRT;
 - a round robin, a gauntlet, a Swiss or a knockout.
 
+A match, a round robin or a gauntlet may play each opening once, colors alternating, instead of as a pair; a match's
+statistics then count games (trinomial) instead of pairs (pentanomial). A time control is a built-in one or one typed
+in: `10+0.1` (seconds; `2m+1` for minutes), `40/15` (moves in minutes), `200k nodes`, `1s/move` or `depth 12`. Typed
+controls and templates, setups saved under a name, stay in this browser's settings. Clone starts a new setup from a
+tournament's.
+
 Each tournament is a folder in the browser's private file system:
 
 - `config.json`, its setup;

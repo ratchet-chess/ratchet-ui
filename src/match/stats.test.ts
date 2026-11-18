@@ -1,5 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { bounds, bucket, elo, llr, nelo, sprtGames, type Ptnml } from './stats.ts';
+import {
+  bounds,
+  bucket,
+  elo,
+  gameBucket,
+  llr,
+  nelo,
+  sprtGames,
+  type Ptnml,
+  type Trinomial,
+} from './stats.ts';
 
 // Each row is what Ratchet's tools/llr.ts and tools/pool.ts print for the same counts.
 const ORACLE: { counts: Ptnml; llr: number; nelo: [number, number]; elo: [number, number] }[] = [
@@ -71,5 +81,35 @@ describe('the statistics match Ratchet’s', () => {
       bucket(1, 0.5),
       bucket(1, 1),
     ]).toEqual([0, 1, 2, 2, 3, 4]);
+  });
+});
+
+/** within fastchess's own tolerance: its tests give 2 decimals at 1% */
+const off = (x: number, expected: number) => Math.abs(x - expected) / Math.abs(expected);
+
+describe('the trinomial statistics match fastchess’s tests', () => {
+  // fastchess's Stats(wins, losses, draws), here as losses, draws, wins
+  it('nElo and Elo as EloWDL gives them', () => {
+    const one: Trinomial = [89, 123, 76];
+    expect(off(nelo(one).value, -20.76)).toBeLessThan(0.01);
+    expect(off(nelo(one).ci, 40.13)).toBeLessThan(0.01);
+    const two: Trinomial = [96, 111, 136];
+    expect(off(nelo(two).value, 49.77)).toBeLessThan(0.01);
+    expect(off(nelo(two).ci, 36.77)).toBeLessThan(0.01);
+    expect(off(elo(two).value, 40.7)).toBeLessThan(0.01);
+    expect(off(elo(two).ci, 30.43)).toBeLessThan(0.01);
+    const three: Trinomial = [356, 0, 34];
+    expect(off(nelo(three).value, -508.44)).toBeLessThan(0.01);
+    expect(off(nelo(three).ci, 34.48)).toBeLessThan(0.01);
+  });
+
+  it('the normalized LLR as SPRT::getLLR(win, draw, loss) gives it', () => {
+    expect(off(llr([36027, 68692, 36433], 0, 2), 0.92)).toBeLessThan(0.01);
+    expect(off(llr([10650, 20431, 10871], -1.75, 0.25), 2.3)).toBeLessThan(0.01);
+    expect(off(llr([0, 0, 4250], 0, 10), 120.56)).toBeLessThan(0.01);
+  });
+
+  it('a game falls in the bucket of its points', () => {
+    expect([gameBucket(0), gameBucket(0.5), gameBucket(1)]).toEqual([0, 1, 2]);
   });
 });

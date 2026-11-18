@@ -22,7 +22,8 @@ const pm = (ci: number) => (Number.isFinite(ci) ? ci.toFixed(1) : 'inf');
 
 /**
  * A match's statistics as text to paste, in OpenBench's stat block: Elo and nElo with their 95%
- * intervals, the LLR and its bounds, the games and the pentanomial.
+ * intervals, the LLR and its bounds, the games, and the pentanomial; one game an opening has no
+ * pentanomial, and its games line already holds its wins, draws and losses.
  */
 export function matchText(heading: string, setup: string, m: MatchStats): string {
   const [w, d, l] = m.wdl;
@@ -38,7 +39,8 @@ export function matchText(heading: string, setup: string, m: MatchStats): string
       `LLR   | ${m.llr.toFixed(2)} (${m.bounds.lower.toFixed(2)}, ${m.bounds.upper.toFixed(2)})${verdict}`,
     );
   }
-  lines.push(`Games | N: ${w + d + l} W: ${w} D: ${d} L: ${l}`, `Penta | [${m.ptnml.join(', ')}]`);
+  lines.push(`Games | N: ${w + d + l} W: ${w} D: ${d} L: ${l}`);
+  if (m.model === 'pentanomial') lines.push(`Penta | [${m.ptnml.join(', ')}]`);
   return lines.join('\n');
 }
 

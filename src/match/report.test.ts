@@ -57,3 +57,27 @@ describe('standingsText', () => {
     );
   });
 });
+
+describe('matchText of one game per opening', () => {
+  it('writes no pentanomial: the games line holds the wins, draws and losses', () => {
+    const one = (n: number, result: Result): GameRecord => ({
+      pair: n,
+      game: 0,
+      white: n % 2,
+      black: 1 - (n % 2),
+      result,
+      reason: '',
+      plies: 80,
+    });
+    const m = summarize(
+      { kind: 'match', pairs: 10, sprt: null },
+      2,
+      [one(0, '1-0'), one(1, '0-1'), one(2, '1/2-1/2')],
+      [],
+      false,
+    ).match;
+    if (!m) throw new Error('no match statistics');
+    const text = matchText('a vs b', '1s/move · start position', m).split('\n');
+    expect(text.slice(4)).toEqual(['Games | N: 3 W: 2 D: 1 L: 0']);
+  });
+});

@@ -57,3 +57,21 @@ describe('matchSeries', () => {
     expect(matchSeries(games(1).slice(0, 1), sprt)).toEqual([]);
   });
 });
+
+describe('matchSeries of one game per opening', () => {
+  const sprt = { elo0: 0, elo1: 5, alpha: 0.05, beta: 0.05 };
+  const format: Format = { kind: 'match', pairs: 1000, sprt };
+
+  it("ends at the match's own trinomial statistics, a point a game", () => {
+    const g = games(300).filter((x) => x.game === 0);
+    const series = matchSeries(g, sprt, 200, false);
+    const last = series.at(-1);
+    const match = summarize(format, 2, g, [], false).match;
+    expect(match?.model).toBe('trinomial');
+    expect(last?.pairs).toBe(300);
+    expect(last?.llr).toBeCloseTo(match?.llr ?? NaN, 12);
+    expect(last?.nelo.value).toBeCloseTo(match?.nelo.value ?? NaN, 12);
+    expect(last?.elo.ci).toBeCloseTo(match?.elo.ci ?? NaN, 12);
+    expect(matchSeries(g.slice(0, 3), null, 200, false).map((p) => p.pairs)).toEqual([1, 2, 3]);
+  });
+});

@@ -15,6 +15,7 @@ describe('records', () => {
       book: '8moves_v3.pgn',
       adjudication: STANDARD_ADJUDICATION,
       concurrency: 4,
+      paired: true,
       seed: 7,
     };
     expect(configOf(JSON.stringify(c))).toEqual(c);
@@ -31,6 +32,7 @@ describe('records', () => {
       book: '',
       adjudication: null,
       concurrency: 2,
+      paired: true,
       seed: 1,
     };
     expect(configOf(JSON.stringify(c))).toEqual(c);

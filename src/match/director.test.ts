@@ -213,3 +213,23 @@ describe('knockout', () => {
     expect(director.next([p0, p1], games)).toBe('wait');
   });
 });
+
+describe('a fixed schedule of one game per opening', () => {
+  it('alternates a match’s colors, and a Swiss still pairs as with pairs', () => {
+    const match = directorOf({ kind: 'match', pairs: 3, sprt: null }, 2, false);
+    const issued: PairRecord[] = [];
+    for (let next = match.next(issued, []); next !== 'done'; next = match.next(issued, [])) {
+      if (next === 'wait') throw new Error('a fixed schedule waited');
+      issued.push({ pair: issued.length, ...next, opening: '' });
+    }
+    expect(issued.map((p) => [p.a, p.b])).toEqual([
+      [0, 1],
+      [1, 0],
+      [0, 1],
+    ]);
+    const first: PairRecord = { pair: 0, a: 0, b: 1, round: 0, opening: '' };
+    const swiss = directorOf({ kind: 'swiss', rounds: 2 }, 2, false);
+    // one game of the round's pair is not the pair finished
+    expect(swiss.next([first], gamesOf(first, '1-0', '1-0').slice(0, 1))).toBe('wait');
+  });
+});

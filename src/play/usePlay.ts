@@ -50,7 +50,7 @@ export function usePlay() {
     black: { kind: 'person' },
   });
   const control = ref<TimeControl>(
-    TIME_CONTROLS[2] ?? { kind: 'clock', label: '2+1', baseMs: 120_000, incMs: 1_000 },
+    TIME_CONTROLS[2] ?? { kind: 'clock', label: '2m+1', baseMs: 120_000, incMs: 1_000 },
   );
   const game = shallowRef(new Game());
   const phase = ref<Phase>('setup');

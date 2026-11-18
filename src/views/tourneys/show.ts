@@ -1,5 +1,5 @@
 /** How Tourneys writes a tournament for a reader: shared by the list, the setup and a tournament's page. */
-import { plannedGames, type Format } from '../../match/format.ts';
+import { gamesPerPair, plannedGames, type Format } from '../../match/format.ts';
 import type { Item } from '../../stores/tournaments.ts';
 
 /** an entrant's name; an engine entered twice gets #1, #2 in field order */
@@ -13,11 +13,12 @@ export const label = (i: Item, n: number): string => {
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
 /** the format in full, as a tournament's page heads it */
-export function formatText(f: Format): string {
+export function formatText(f: Format, paired = true): string {
   if (f.kind === 'match') {
+    const games = f.pairs * gamesPerPair(f, paired);
     return f.sprt
-      ? `SPRT nElo [${f.sprt.elo0}, ${f.sprt.elo1}], up to ${f.pairs * 2} games`
-      : `match of ${f.pairs * 2} games`;
+      ? `SPRT nElo [${f.sprt.elo0}, ${f.sprt.elo1}], up to ${games} games`
+      : `match of ${games} games`;
   }
   if (f.kind === 'roundrobin') return `round robin, ${plural(f.cycles, 'cycle')}`;
   if (f.kind === 'swiss') return `Swiss, ${plural(f.rounds, 'round')}`;
@@ -34,7 +35,8 @@ export function formatShort(f: Format): string {
   return f.seeds > 1 ? `gauntlet, ${f.seeds} seeds` : 'gauntlet';
 }
 
-export const planned = (i: Item): number => plannedGames(i.config.format, i.config.entrants.length);
+export const planned = (i: Item): number =>
+  plannedGames(i.config.format, i.config.entrants.length, i.config.paired);
 
 /** games played over games planned; a knockout plays at least its planned games */
 export const progress = (i: Item): string =>
@@ -75,7 +77,20 @@ export const fmt = (v: number, d = 1): string =>
   Number.isFinite(v) ? `${v >= 0 ? '+' : ''}${v.toFixed(d)}` : v > 0 ? '+∞' : '−∞';
 
 export const th = 'border-b border-line px-2 py-1 font-medium whitespace-nowrap';
-export const inputClass =
-  'num rounded border border-line bg-panel2 px-1.5 py-0.5 text-[12.5px] text-text';
 export const buttonClass =
   'rounded border border-line bg-panel2 px-2.5 py-1 text-xs disabled:text-faint';
+
+/**
+ * a clone's name: its source's with the next free number, `X (2)`, `X (3)`; a clone of `X (2)`
+ * counts from `X` too
+ */
+export function cloneName(source: string, taken: readonly string[]): string {
+  const base = source.replace(/ \(\d+\)$/, '');
+  let n = 1;
+  for (const t of taken) {
+    if (t === base) n = Math.max(n, 1);
+    const m = t.startsWith(`${base} (`) ? /^ \((\d+)\)$/.exec(t.slice(base.length)) : null;
+    if (m) n = Math.max(n, Number(m[1]));
+  }
+  return `${base} (${n + 1})`;
+}

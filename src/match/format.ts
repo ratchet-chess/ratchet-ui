@@ -30,7 +30,10 @@ export type FixedFormat = Extract<Format, { kind: 'match' | 'roundrobin' | 'gaun
 /** the opponent of a Swiss bye: the engine sits out the round and scores one point */
 export const BYE = -1;
 
-/** One pair to issue, and who plays it: `a` has White in its first game and Black in its second. */
+/**
+ * One pair to issue, and who plays it: `a` has White in its first game and Black in its second.
+ * With one game per opening, the pair is that game alone.
+ */
 export interface Pairing {
   a: number;
   /** BYE when `a` sits out a Swiss round */
@@ -47,7 +50,7 @@ export interface TournamentConfig {
   format: Format;
   /** engine ids, in seeding order */
   entrants: string[];
-  /** a time control's label, from TIME_CONTROLS */
+  /** a time control as `parseControl` reads it, such as `10+0.1` or `200k nodes` */
   control: string;
   /** a pulled book's id; empty for the start position */
   book: string;
@@ -56,6 +59,12 @@ export interface TournamentConfig {
   concurrency: number;
   /** picks each pair's opening, so a replay of the setup picks the same ones */
   seed: number;
+  /**
+   * true: each opening is a pair, two games with colors swapped. false: one game per opening,
+   * colors alternating, offered for a match, a round robin and a gauntlet; a Swiss and a knockout
+   * always play pairs. A config saved without it played pairs.
+   */
+  paired: boolean;
 }
 
 /**
@@ -87,21 +96,38 @@ export function bergerRounds(n: number): [number, number][][] {
  * The games a format plays for a field of `entrants`: all of them, the most for an SPRT, and the
  * fewest for a knockout, whose tied matches play more.
  */
-export function plannedGames(format: Format, entrants: number): number {
+export function plannedGames(format: Format, entrants: number, paired = true): number {
   const n = entrants;
-  if (format.kind === 'match') return format.pairs * 2;
-  if (format.kind === 'roundrobin') return n * (n - 1) * format.cycles;
-  if (format.kind === 'swiss') return format.rounds * Math.floor(n / 2) * 2;
-  if (format.kind === 'knockout') return Math.max(0, n - 1) * format.pairs * 2;
+  const per = gamesPerPair(format, paired);
+  if (format.kind === 'match') return format.pairs * per;
+  if (format.kind === 'roundrobin') return ((n * (n - 1)) / 2) * format.cycles * per;
+  if (format.kind === 'swiss') return format.rounds * Math.floor(n / 2) * per;
+  if (format.kind === 'knockout') return Math.max(0, n - 1) * format.pairs * per;
   const s = Math.min(format.seeds, n - 1);
-  return 2 * s * (n - s) * format.cycles;
+  return s * (n - s) * format.cycles * per;
 }
 
-/** a format's whole schedule of pairs, for the formats that pair before any game is played */
-export function schedule(format: FixedFormat, entrants: number): Pairing[] {
+/** whether a format may play one game per opening: a Swiss and a knockout always play pairs */
+export const mayUnpair = (format: Format): boolean =>
+  format.kind === 'match' || format.kind === 'roundrobin' || format.kind === 'gauntlet';
+
+/** the games of one pair record: 2, or 1 for one game per opening, which a Swiss and a knockout never play */
+export const gamesPerPair = (format: Format, paired: boolean): 1 | 2 =>
+  paired || !mayUnpair(format) ? 2 : 1;
+
+/** a game's number in its tournament, from 1, as its PGN Round tag ends: by pair, then game */
+export const gameNumber = (pair: number, game: number, per: 1 | 2): number => pair * per + game + 1;
+
+/**
+ * A format's whole schedule of pairs, for the formats that pair before any game is played. With
+ * one game per opening, each pair is one game with `a` as White: a match then alternates the first
+ * engine's color.
+ */
+export function schedule(format: FixedFormat, entrants: number, paired = true): Pairing[] {
   const out: Pairing[] = [];
   if (format.kind === 'match') {
-    for (let i = 0; i < format.pairs; i++) out.push({ a: 0, b: 1, round: i });
+    for (let i = 0; i < format.pairs; i++)
+      out.push(paired || i % 2 === 0 ? { a: 0, b: 1, round: i } : { a: 1, b: 0, round: i });
     return out;
   }
   if (format.kind === 'roundrobin') {

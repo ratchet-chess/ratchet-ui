@@ -3,7 +3,7 @@ import { Game } from '../chess/game.ts';
 import type { Opening } from '../books/opening.ts';
 import { UciEngine } from '../engine/uci.ts';
 import { directorOf, type Director } from './director.ts';
-import { BYE, type TournamentConfig } from './format.ts';
+import { BYE, gameNumber, gamesPerPair, type TournamentConfig } from './format.ts';
 import { playOut, type Side } from './referee.ts';
 import { summarize, type GameRecord, type PairRecord, type Summary } from './summary.ts';
 
@@ -56,9 +56,28 @@ export function stateOf(
     pairs,
     games,
     live: [],
-    summary: summarize(config.format, config.entrants.length, games, pairs),
+    summary: summarize(config.format, config.entrants.length, games, pairs, config.paired),
     error: '',
   };
+}
+
+/** a pair's games, in order: both of a pair, or the one of an opening played once */
+const pairGames = (per: 1 | 2): (0 | 1)[] => (per === 2 ? [0, 1] : [0]);
+
+/** the games of issued pairs that have no result, in order, for a resumed run to play first */
+export function unfinished(
+  pairs: readonly PairRecord[],
+  games: readonly GameRecord[],
+  per: 1 | 2,
+): { pair: PairRecord; game: 0 | 1 }[] {
+  const finished = new Set(games.map((g) => `${g.pair}:${g.game}`));
+  return pairs
+    .filter((pair) => pair.b !== BYE)
+    .flatMap((pair) =>
+      pairGames(per)
+        .filter((game) => !finished.has(`${pair.pair}:${game}`))
+        .map((game) => ({ pair, game })),
+    );
 }
 
 /** A game waiting for a free slot; a resumed pair's opening is fetched again when it starts. */
@@ -83,8 +102,10 @@ export class Run {
   private readonly state: RunState;
   private readonly deps: RunDeps;
   private readonly director: Director;
-  /** the games waiting for a free slot, both of a pair at once */
+  /** the games waiting for a free slot, all of a pair's at once */
   private readonly waiting: Waiting[] = [];
+  /** the games of each pair: 2, or 1 when each opening is one game */
+  private readonly per: 1 | 2;
   private running = 0;
   private filling = false;
   /** false once the run is stopped at once; games in play then end without a result */
@@ -103,15 +124,10 @@ export class Run {
     this.control = control;
     this.state = state;
     this.deps = deps;
-    this.director = directorOf(config.format, entrants.length);
-    const finished = new Set(state.games.map((g) => `${g.pair}:${g.game}`));
-    for (const pair of state.pairs) {
-      if (pair.b === BYE) continue;
-      for (const game of [0, 1] as const) {
-        if (!finished.has(`${pair.pair}:${game}`))
-          this.waiting.push({ pair, game, opening: undefined, fetched: false });
-      }
-    }
+    this.per = gamesPerPair(config.format, config.paired);
+    this.director = directorOf(config.format, entrants.length, config.paired);
+    for (const { pair, game } of unfinished(state.pairs, state.games, this.per))
+      this.waiting.push({ pair, game, opening: undefined, fetched: false });
   }
 
   start(): void {
@@ -164,6 +180,7 @@ export class Run {
               this.entrants.length,
               this.state.games,
               this.state.pairs,
+              this.config.paired,
             );
             await this.deps.savePair(bye);
             if (this.stopped()) return;
@@ -181,10 +198,8 @@ export class Run {
           this.state.pairs.push(pair);
           await this.deps.savePair(pair);
           if (this.stopped()) return;
-          this.waiting.push(
-            { pair, game: 0, opening, fetched: true },
-            { pair, game: 1, opening, fetched: true },
-          );
+          for (const game of pairGames(this.per))
+            this.waiting.push({ pair, game, opening, fetched: true });
           next = this.waiting.shift();
           if (!next) break;
         }
@@ -306,6 +321,7 @@ export class Run {
         this.entrants.length,
         this.state.games,
         this.state.pairs,
+        this.config.paired,
       );
       await this.deps.saveGame(record, this.pgn(game, pair, n, white, black));
       if (this.stopped()) return;
@@ -321,7 +337,8 @@ export class Run {
       Event: this.config.name,
       Site: 'ratchet-ui',
       Date: date,
-      Round: `${pair.round + 1}.${pair.pair * 2 + n + 1}`,
+      // the tournament's page finds a game by this number, so it counts two a pair even with one game per opening
+      Round: `${pair.round + 1}.${gameNumber(pair.pair, n, this.per)}`,
       White: this.entrants[white]?.name ?? '?',
       Black: this.entrants[black]?.name ?? '?',
       TimeControl: pgnTimeControl(this.control),

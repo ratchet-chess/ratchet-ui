@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { reactive, ref } from 'vue';
-import { TIME_CONTROLS } from '../chess/clock.ts';
+import { resolveControl } from '../chess/clock.ts';
 import type { TournamentConfig } from '../match/format.ts';
 import { configOf, gamesOf, pairsOf } from '../match/records.ts';
 import { Run, stateOf, type Entrant, type RunState } from '../match/runner.ts';
@@ -122,7 +122,7 @@ export const useTournaments = defineStore('tournaments', () => {
   /** plays a tournament in this tab, from its saved records on */
   async function start(item: Item): Promise<void> {
     const { config } = item;
-    const control = TIME_CONTROLS.find((t) => t.label === config.control);
+    const control = resolveControl(config.control);
     if (!control) throw new Error(`the time control ${config.control} is not known`);
     const players = entrantsOf(config);
     if (!(await lock(config.id))) {

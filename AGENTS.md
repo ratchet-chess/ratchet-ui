@@ -18,8 +18,9 @@ The rows for **release**, **own engine**, **WASI build** and **condition** quote
 | **manager view** | the sections that read a ratchet-bench manager: Jobs, Hosts and Ratings                                                                                        |                                     |
 | **match**        | two engines' games against each other: on its own, a fixed number of pairs or an SPRT; in a tournament, one pair, or a knockout's pairs until one engine leads | meeting, bout, tie                  |
 | **tournament**   | the games of more than two engines in a format: round robin, gauntlet, Swiss or knockout                                                                       |                                     |
-| **pair**         | two games on one opening, colors swapped; a match's statistics count pairs                                                                                     |                                     |
+| **pair**         | two games on one opening, colors swapped; a match's statistics count pairs. A match, a round robin or a gauntlet may play one game an opening instead          |                                     |
 | **bye**          | a Swiss round an engine sits out; it scores one point                                                                                                          |                                     |
+| **template**     | a setup saved under a name in this browser; a New may start from one                                                                                           |                                     |
 
 ## Rules
 

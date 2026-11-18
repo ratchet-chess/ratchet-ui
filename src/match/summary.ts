@@ -1,7 +1,7 @@
-import { BYE, type Format } from './format.ts';
-import { bounds, bucket, elo, llr, nelo, type Ptnml } from './stats.ts';
+import { BYE, gamesPerPair, type Format } from './format.ts';
+import { bounds, bucket, elo, gameBucket, llr, nelo, type Ptnml, type Trinomial } from './stats.ts';
 
-/** One pair as issued: who meets, in which round, and on which opening. */
+/** One pair as issued: who meets, in which round, and on which opening; with one game per opening, one game. */
 export interface PairRecord {
   pair: number;
   /** White in the pair's first game */
@@ -17,7 +17,7 @@ export type Result = '1-0' | '0-1' | '1/2-1/2';
 /** One finished game of a pair. */
 export interface GameRecord {
   pair: number;
-  /** 0 for the pair's first game, with `a` as White; 1 for the second */
+  /** 0 for the pair's first game, with `a` as White, and for the one game of an opening played once; 1 for the second */
   game: 0 | 1;
   white: number;
   black: number;
@@ -45,7 +45,12 @@ export interface Standing {
 }
 
 export interface MatchStats {
+  /** pentanomial when each opening is a pair, trinomial when it is one game */
+  model: 'pentanomial' | 'trinomial';
+  /** the finished pairs' counts; all 0 under the trinomial model */
   ptnml: Ptnml;
+  /** the tested engine's losses, draws and wins in the finished pairs' games */
+  trinomial: Trinomial;
   /** the tested engine's wins, draws and losses */
   wdl: [number, number, number];
   nelo: { value: number; ci: number };
@@ -67,7 +72,7 @@ export interface Summary {
   points: number[][];
   /** games[i][j]: games between i and j */
   games: number[][];
-  /** pairs with both games finished */
+  /** pairs with all their games finished: two, or one with one game per opening */
   pairsDone: number;
   match: MatchStats | null;
 }
@@ -76,12 +81,16 @@ export interface Summary {
 export const pointsOf = (result: Result, white: boolean) =>
   result === '1/2-1/2' ? 0.5 : (result === '1-0') === white ? 1 : 0;
 
-/** the standings and statistics of a tournament's finished games; a Swiss bye in `pairs` scores a point */
+/**
+ * The standings and statistics of a tournament's finished games; a Swiss bye in `pairs` scores a
+ * point. `paired` is the config's: false plays one game per opening, so a match counts games.
+ */
 export function summarize(
   format: Format,
   entrants: number,
   games: readonly GameRecord[],
   pairs: readonly PairRecord[] = [],
+  paired = true,
 ): Summary {
   const grid = () =>
     Array.from({ length: entrants }, () => Array.from({ length: entrants }, () => 0));
@@ -132,26 +141,32 @@ export function summarize(
     row.byes++;
     row.points += 1;
   }
-  const done = [...byPair.values()].filter((gs) => gs.length === 2);
+  const per = gamesPerPair(format, paired);
+  const done = [...byPair.values()].filter((gs) => gs.length === per);
 
   let match: MatchStats | null = null;
   if (format.kind === 'match') {
+    const tested = (g: GameRecord) => pointsOf(g.result, g.white === 0);
     const ptnml: Ptnml = [0, 0, 0, 0, 0];
+    const trinomial: Trinomial = [0, 0, 0];
     for (const gs of done) {
+      for (const g of gs) trinomial[gameBucket(tested(g))]++;
       const [x, y] = gs;
       if (!x || !y) continue;
-      const tested = (g: GameRecord) => pointsOf(g.result, g.white === 0);
       ptnml[bucket(tested(x), tested(y))]++;
     }
+    const counts = per === 2 ? ptnml : trinomial;
     const t = rows[0];
     const sprt = format.sprt;
-    const value = sprt && done.length > 0 ? llr(ptnml, sprt.elo0, sprt.elo1) : null;
+    const value = sprt && done.length > 0 ? llr(counts, sprt.elo0, sprt.elo1) : null;
     const b = sprt ? bounds(sprt.alpha, sprt.beta) : null;
     match = {
+      model: per === 2 ? 'pentanomial' : 'trinomial',
       ptnml,
+      trinomial,
       wdl: [t?.wins ?? 0, t?.draws ?? 0, t?.losses ?? 0],
-      nelo: nelo(ptnml),
-      elo: elo(ptnml),
+      nelo: nelo(counts),
+      elo: elo(counts),
       llr: value,
       bounds: b,
       verdict:

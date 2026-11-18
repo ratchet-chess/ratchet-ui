@@ -141,3 +141,47 @@ describe('summarize', () => {
     expect(s.standings.map((r) => r.entrant)).toEqual([0, 2, 1]);
   });
 });
+
+describe('a match of one game per opening', () => {
+  /** one game a pair, the first engine's color alternating */
+  const single = (n: number, result: Result): GameRecord => ({
+    pair: n,
+    game: 0,
+    white: n % 2,
+    black: 1 - (n % 2),
+    result,
+    reason: '',
+    plies: 80,
+  });
+
+  it('counts each game as a finished pair, in a trinomial from the tested engine’s side', () => {
+    const sprt = { elo0: 0, elo1: 10, alpha: 0.05, beta: 0.05 };
+    const format = { kind: 'match', pairs: 10, sprt } as const;
+    // the tested engine wins as White and as Black, draws, then loses as Black
+    const games = [single(0, '1-0'), single(1, '0-1'), single(2, '1/2-1/2'), single(3, '1-0')];
+    const s = summarize(format, 2, games, [], false);
+    expect(s.pairsDone).toBe(4);
+    expect(s.match?.model).toBe('trinomial');
+    expect(s.match?.trinomial).toEqual([1, 1, 2]);
+    expect(s.match?.ptnml).toEqual([0, 0, 0, 0, 0]);
+    expect(s.match?.wdl).toEqual([2, 1, 1]);
+    // by hand: a mean of 0.625 over the games, and its spread
+    const mean = 2.5 / 4;
+    const sd = Math.sqrt((2 * (1 - mean) ** 2 + (0.5 - mean) ** 2 + mean ** 2) / 4);
+    expect(s.match?.nelo.value).toBeCloseTo(((mean - 0.5) / sd) * (800 / Math.log(10)), 10);
+    expect(s.match?.nelo.ci).toBeCloseTo((1.96 * 800) / Math.log(10) / 2, 10);
+    expect(s.match?.elo.value).toBeCloseTo(-400 * Math.log10(1 / mean - 1), 10);
+    expect(s.match?.llr).not.toBeNull();
+  });
+
+  it('plays pairs in a Swiss whatever the flag says', () => {
+    const s = summarize(
+      { kind: 'swiss', rounds: 1 },
+      2,
+      pair(0, 0, 1, '1-0', '0-1').slice(0, 1),
+      [],
+      false,
+    );
+    expect(s.pairsDone).toBe(0);
+  });
+});

@@ -21,6 +21,8 @@ const props = defineProps<{
   marks?: number[];
   /** how a value is written, in the axis and the tooltip */
   digits?: number;
+  /** what the x axis counts: pairs, or games when each opening is one game */
+  unit: 'pairs' | 'games';
 }>();
 
 const W = 1000;
@@ -189,16 +191,15 @@ const hoverLeft = computed(() => (hover.value ? (100 * x(hover.value.pairs)) / W
               >
             </div>
             <div class="text-dim">
-              after {{ hover.pairs.toLocaleString('en-US') }} pairs<template v-if="hover.note">
-                · {{ hover.note }}</template
-              >
+              after {{ hover.pairs.toLocaleString('en-US') }} {{ unit
+              }}<template v-if="hover.note"> · {{ hover.note }}</template>
             </div>
           </div>
         </template>
       </div>
     </div>
     <div class="num mt-0.5 flex justify-between pl-11.5 text-[10.5px] text-faint">
-      <span>0</span><span>{{ maxPairs.toLocaleString('en-US') }} pairs</span>
+      <span>0</span><span>{{ maxPairs.toLocaleString('en-US') }} {{ unit }}</span>
     </div>
   </figure>
 </template>

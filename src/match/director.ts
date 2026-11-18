@@ -18,11 +18,14 @@ export interface Director {
   next(pairs: readonly PairRecord[], games: readonly GameRecord[]): Next;
 }
 
-/** the director of a format, for a field of `entrants` engines */
-export function directorOf(format: Format, entrants: number): Director {
+/**
+ * The director of a format, for a field of `entrants` engines. `paired` is the config's; a Swiss
+ * and a knockout play pairs whatever it says.
+ */
+export function directorOf(format: Format, entrants: number, paired = true): Director {
   if (format.kind === 'swiss') return swiss(format.rounds, entrants);
   if (format.kind === 'knockout') return knockout(format.pairs, entrants);
-  const pairings = schedule(format, entrants);
+  const pairings = schedule(format, entrants, paired);
   return { next: (pairs) => pairings[pairs.length] ?? 'done' };
 }
 

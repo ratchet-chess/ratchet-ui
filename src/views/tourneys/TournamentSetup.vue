@@ -1,36 +1,40 @@
 <script setup lang="ts">
-/** The setup of a new match or tournament. */
+/**
+ * The setup of a new match or tournament: the form in sections beside a summary with Start. It
+ * starts from the user's starting template, or from a tournament it clones (`?from=<id>`).
+ */
 import { computed, onMounted, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
-import Panel from '../../components/Panel.vue';
-import { TIME_CONTROLS } from '../../chess/clock.ts';
+import { useRoute, useRouter } from 'vue-router';
+import HelpTip from '../../components/HelpTip.vue';
+import { resolveControl } from '../../chess/clock.ts';
 import { STANDARD_ADJUDICATION, type Adjudication } from '../../match/adjudicate.ts';
-import { plannedGames, type Format, type TournamentConfig } from '../../match/format.ts';
+import { mayUnpair, plannedGames, type Format, type TournamentConfig } from '../../match/format.ts';
 import { sprtGames } from '../../match/stats.ts';
 import { useBooks } from '../../stores/books.ts';
 import { useEngines } from '../../stores/engines.ts';
+import { useSettings, type Setup } from '../../stores/settings.ts';
 import { useTournaments } from '../../stores/tournaments.ts';
-import { buttonClass, inputClass } from './show.ts';
+import ControlPicker from './ControlPicker.vue';
+import EngineCombo from './EngineCombo.vue';
+import EnginePicker from './EnginePicker.vue';
+import { buttonClass, cloneName } from './show.ts';
 
 const tournaments = useTournaments();
 const engines = useEngines();
 const books = useBooks();
+const settings = useSettings();
+const route = useRoute();
 const router = useRouter();
 
-onMounted(async () => {
-  await books.load();
-  reset();
-});
-
-const hardwareThreads = navigator.hardwareConcurrency;
+// ── the form's values ──────────────────────────────────────────────────────
+const hardwareThreads = navigator.hardwareConcurrency || 2;
 const kind = ref<Format['kind']>('match');
 const name = ref('');
 const tested = ref('');
 const base = ref('');
-/** a round robin's or a gauntlet's field, in seeding order; an engine may appear twice */
+/** a tournament's field, in seeding order; an engine may appear twice */
 const field = ref<string[]>([]);
-const adding = ref('');
-/** a fixed match's pairs, or an SPRT's cap */
+/** a fixed match's openings, or an SPRT's cap */
 const pairs = ref(500);
 const pairsEdited = ref(false);
 const useSprt = ref(true);
@@ -43,8 +47,10 @@ const matchPairs = ref(1);
 const control = ref('10+0.1');
 const book = ref('');
 const adjudicationChoice = ref<'standard' | 'draw' | 'none'>('standard');
+const paired = ref(true);
 const concurrency = ref(1);
 const concurrencyEdited = ref(false);
+const engineIds = computed(() => engines.list.map((e) => e.id));
 
 /** the bounds a match's SPRT offers; the first is the default */
 const SPRT_PRESETS = [
@@ -52,88 +58,54 @@ const SPRT_PRESETS = [
   { label: '[0, 10]', elo0: 0, elo1: 10 },
   { label: '[-10, 0]', elo0: -10, elo1: 0 },
 ] as const;
-const sprtPreset = computed({
-  get: () =>
-    SPRT_PRESETS.find((p) => p.elo0 === elo0.value && p.elo1 === elo1.value)?.label ?? 'custom',
-  set: (label: string) => {
-    const p = SPRT_PRESETS.find((x) => x.label === label);
-    if (p) [elo0.value, elo1.value] = [p.elo0, p.elo1];
-  },
-});
+const sprtPreset = computed(
+  () => SPRT_PRESETS.find((p) => p.elo0 === elo0.value && p.elo1 === elo1.value)?.label ?? 'custom',
+);
+const customBounds = ref(false);
 const sprtEstimate = computed(() =>
   elo1.value > elo0.value ? sprtGames(elo0.value, elo1.value) : null,
 );
+const unpairable = computed(() => mayUnpair(format.value));
+/** games an opening gives */
+const perOpening = computed(() => (paired.value || !unpairable.value ? 2 : 1));
 /**
- * the pairs a match plays until the user sets them: with an SPRT, as many pairs as the games it
- * takes at a bound, twice the pairs it expects there, since runs between the bounds last longer,
- * rounded up to a thousand; so the SPRT, not the cap, ends nearly every run
+ * a match's openings until the user sets them: with an SPRT, twice the openings it expects at a
+ * bound, rounded up to a thousand, so the SPRT rather than the cap ends nearly every run
  */
 const defaultPairs = () =>
-  useSprt.value && sprtEstimate.value !== null ? Math.ceil(sprtEstimate.value / 1000) * 1000 : 500;
-watch([useSprt, sprtEstimate], () => {
+  useSprt.value && sprtEstimate.value !== null
+    ? Math.ceil((2 * sprtEstimate.value) / perOpening.value / 1000) * 1000
+    : 500;
+watch([useSprt, sprtEstimate, perOpening], () => {
   if (!pairsEdited.value) pairs.value = defaultPairs();
 });
 
-/** the setup as a new tournament starts: each New begins here, not from the last one's values */
-function reset(): void {
-  kind.value = 'match';
-  name.value = '';
-  tested.value = engines.list.at(-1)?.id ?? '';
-  base.value = engines.list.at(-2)?.id ?? tested.value;
-  field.value = [];
-  adding.value = '';
-  useSprt.value = true;
-  [elo0.value, elo1.value] = [SPRT_PRESETS[0].elo0, SPRT_PRESETS[0].elo1];
-  pairsEdited.value = false;
-  pairs.value = defaultPairs();
-  cycles.value = 1;
-  seeds.value = 1;
-  rounds.value = 5;
-  matchPairs.value = 1;
-  control.value = '10+0.1';
-  book.value = books.pulled.has('8moves_v3.pgn') ? '8moves_v3.pgn' : '';
-  adjudicationChoice.value = 'standard';
-  concurrencyEdited.value = false;
-  concurrency.value = defaultConcurrency();
-}
-watch(
-  () => engines.list.length,
-  () => {
-    const newest = engines.list.at(-1)?.id ?? '';
-    tested.value ||= newest;
-    base.value ||= engines.list.at(-2)?.id ?? newest;
-  },
-  { immediate: true },
-);
-
-/** fastchess-gui's rule: a game per hardware thread under a node budget, half the threads less one on a clock */
+/** fastchess-gui's rule: a game per hardware thread with no clock, half the threads less one on a clock */
 function defaultConcurrency(): number {
-  const threads = navigator.hardwareConcurrency || 2;
-  const tc = TIME_CONTROLS.find((t) => t.label === control.value);
-  return tc?.kind === 'nodes' ? threads : Math.max(1, Math.floor(threads / 2) - 1);
+  const tc = resolveControl(control.value);
+  return tc && (tc.kind === 'nodes' || tc.kind === 'depth')
+    ? hardwareThreads
+    : Math.max(1, Math.floor(hardwareThreads / 2) - 1);
 }
-watch(
-  control,
-  () => {
-    if (!concurrencyEdited.value) concurrency.value = defaultConcurrency();
-  },
-  { immediate: true },
-);
+watch(control, () => {
+  if (!concurrencyEdited.value) concurrency.value = defaultConcurrency();
+});
 
+// ── what the form makes ────────────────────────────────────────────────────
 const entrants = computed(() =>
   kind.value === 'match' ? [tested.value, base.value] : field.value,
 );
 const KIND_NAMES: Record<Format['kind'], string> = {
-  match: 'Match',
-  roundrobin: 'Round robin',
-  gauntlet: 'Gauntlet',
+  match: 'match',
+  roundrobin: 'round robin',
+  gauntlet: 'gauntlet',
   swiss: 'Swiss',
-  knockout: 'Knockout',
+  knockout: 'knockout',
 };
 const defaultName = computed(() =>
   kind.value === 'match'
     ? `${tested.value} vs ${base.value}`
-    : `${KIND_NAMES[kind.value]} of ${field.value.length}`,
+    : `${KIND_NAMES[kind.value].replace(/^./, (c) => c.toUpperCase())} of ${field.value.length}`,
 );
 const format = computed<Format>(() => {
   switch (kind.value) {
@@ -155,17 +127,23 @@ const format = computed<Format>(() => {
       return { kind: 'knockout', pairs: matchPairs.value };
   }
 });
-const totalGames = computed(() => plannedGames(format.value, entrants.value.length));
+const totalGames = computed(() => plannedGames(format.value, entrants.value.length, paired.value));
 /** the rounds a Swiss needs for one engine to be alone on top */
 const settling = computed(() => Math.max(1, Math.ceil(Math.log2(Math.max(2, field.value.length)))));
-/** how the planned games bound the games played */
-const bound = (f: Format) =>
-  f.kind === 'match' && f.sprt ? ' at most' : f.kind === 'knockout' ? ' at least' : '';
+const seedCount = computed(() =>
+  kind.value === 'gauntlet'
+    ? seeds.value
+    : kind.value === 'swiss' || kind.value === 'knockout'
+      ? 1
+      : 0,
+);
+const controlOk = computed(() => resolveControl(control.value) !== null);
 const canStart = computed(
   () =>
     entrants.value.length >= 2 &&
     entrants.value.every((e) => e) &&
     totalGames.value > 0 &&
+    controlOk.value &&
     !(kind.value === 'match' && useSprt.value && elo1.value <= elo0.value),
 );
 
@@ -175,221 +153,495 @@ function adjudication(): Adjudication | null {
   return STANDARD_ADJUDICATION;
 }
 
+/** the form as a template keeps it */
+const setup = computed<Setup>(() => ({
+  format: format.value,
+  entrants: [...entrants.value],
+  control: control.value,
+  book: book.value,
+  adjudication: adjudication(),
+  concurrency: Math.max(1, concurrency.value),
+  // a Swiss and a knockout always play pairs, whatever the switch said under another format
+  paired: paired.value || !unpairable.value,
+}));
+
+// ── loading a setup: the defaults, a template, or a tournament to clone ───
+function reset(): void {
+  kind.value = 'match';
+  name.value = '';
+  tested.value = engines.list.at(-1)?.id ?? '';
+  base.value = engines.list.at(-2)?.id ?? tested.value;
+  field.value = [];
+  useSprt.value = true;
+  [elo0.value, elo1.value] = [SPRT_PRESETS[0].elo0, SPRT_PRESETS[0].elo1];
+  customBounds.value = false;
+  paired.value = true;
+  pairsEdited.value = false;
+  pairs.value = defaultPairs();
+  cycles.value = 1;
+  seeds.value = 1;
+  rounds.value = 5;
+  matchPairs.value = 1;
+  control.value = '10+0.1';
+  book.value = books.pulled.has('8moves_v3.pgn') ? '8moves_v3.pgn' : '';
+  adjudicationChoice.value = 'standard';
+  concurrencyEdited.value = false;
+  concurrency.value = defaultConcurrency();
+}
+
+/** fills the form from a saved setup; an engine no longer served stays, and Start says so */
+function load(s: Setup): void {
+  reset();
+  const f = s.format;
+  kind.value = f.kind;
+  if (f.kind === 'match') {
+    [tested.value, base.value] = [s.entrants[0] ?? '', s.entrants[1] ?? ''];
+    useSprt.value = f.sprt !== null;
+    if (f.sprt) [elo0.value, elo1.value] = [f.sprt.elo0, f.sprt.elo1];
+    customBounds.value = sprtPreset.value === 'custom';
+    pairs.value = f.pairs;
+    pairsEdited.value = true;
+  } else field.value = [...s.entrants];
+  if (f.kind === 'roundrobin' || f.kind === 'gauntlet') cycles.value = f.cycles;
+  if (f.kind === 'gauntlet') seeds.value = f.seeds;
+  if (f.kind === 'swiss') rounds.value = f.rounds;
+  if (f.kind === 'knockout') matchPairs.value = f.pairs;
+  control.value = s.control;
+  book.value = s.book;
+  adjudicationChoice.value = !s.adjudication ? 'none' : s.adjudication.resign ? 'standard' : 'draw';
+  paired.value = s.paired;
+  concurrency.value = s.concurrency;
+  concurrencyEdited.value = true;
+}
+
+const template = ref('');
+onMounted(async () => {
+  await Promise.all([books.load(), engines.load(), tournaments.load()]);
+  const from = route.query['from'];
+  const cloned =
+    typeof from === 'string' ? tournaments.items.find((i) => i.config.id === from) : undefined;
+  const start = settings.templates.find((t) => t.name === settings.startTemplate);
+  if (cloned) {
+    load(cloned.config);
+    name.value = cloneName(
+      cloned.config.name,
+      tournaments.items.map((i) => i.config.name),
+    );
+  } else if (start) {
+    load(start.setup);
+    template.value = start.name;
+  } else reset();
+});
+watch(
+  () => engines.list.length,
+  () => {
+    const newest = engines.list.at(-1)?.id ?? '';
+    tested.value ||= newest;
+    base.value ||= engines.list.at(-2)?.id ?? newest;
+  },
+  { immediate: true },
+);
+
+function useTemplate(n: string): void {
+  template.value = n;
+  const t = settings.templates.find((x) => x.name === n);
+  if (t) load(t.setup);
+  else reset();
+}
+function saveTemplate(): void {
+  const n = prompt('Save this setup as a template named', template.value || defaultName.value);
+  if (!n?.trim()) return;
+  settings.saveTemplate(n.trim(), setup.value);
+  template.value = n.trim();
+}
+function deleteTemplate(): void {
+  if (!template.value || !confirm(`Delete the template “${template.value}”?`)) return;
+  settings.removeTemplate(template.value);
+  template.value = '';
+}
+
 async function startNew(): Promise<void> {
   const config: TournamentConfig = {
+    ...setup.value,
     id: crypto.randomUUID(),
     name: name.value.trim() || defaultName.value,
     created: new Date().toISOString(),
-    format: format.value,
-    entrants: [...entrants.value],
-    control: control.value,
-    book: book.value,
-    adjudication: adjudication(),
-    concurrency: Math.max(1, concurrency.value),
     seed: Math.floor(Math.random() * 2 ** 31),
   };
   await tournaments.create(config);
   await router.push(`/tournaments/${config.id}`);
 }
+
+// ── the summary ────────────────────────────────────────────────────────────
+const formatSummary = computed(() => {
+  const f = format.value;
+  if (f.kind === 'match') return f.sprt ? `SPRT nElo [${f.sprt.elo0}, ${f.sprt.elo1}]` : `match`;
+  if (f.kind === 'swiss') return `Swiss, ${f.rounds} rounds`;
+  if (f.kind === 'knockout') return `knockout, ${f.pairs} pair${f.pairs > 1 ? 's' : ''} a match`;
+  if (f.kind === 'gauntlet') return `gauntlet, ${f.seeds} seed${f.seeds > 1 ? 's' : ''}`;
+  return `round robin${f.cycles > 1 ? ` ×${f.cycles}` : ''}`;
+});
+const gamesBound = computed(() =>
+  kind.value === 'match' && useSprt.value ? 'at most' : kind.value === 'knockout' ? 'at least' : '',
+);
+const blocked = computed(() => {
+  if (entrants.value.length < 2) return 'Two engines or more are needed.';
+  const gone = entrants.value.filter((e) => e && !engineIds.value.includes(e));
+  if (gone.length > 0) return `Not served here: ${gone.join(', ')}.`;
+  if (!controlOk.value) return 'The time control does not read.';
+  if (kind.value === 'match' && useSprt.value && elo1.value <= elo0.value)
+    return 'The upper bound must be above the lower.';
+  return '';
+});
+
+// ── looks ──────────────────────────────────────────────────────────────────
+const number =
+  'num h-[30px] w-24 rounded-md border border-line bg-panel2 px-2 text-right text-[12.5px] text-text [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none';
+const select =
+  'h-[30px] w-60 max-w-full rounded-md border border-line bg-panel2 px-2 text-[13px] text-text';
+const segWrap =
+  'inline-flex w-fit flex-wrap overflow-hidden rounded-md border border-line bg-panel2';
+const segButton = (on: boolean) =>
+  `border-r border-line px-2.5 py-[5px] text-[13px] last:border-r-0 ${on ? 'bg-[#22303d] text-text shadow-[inset_0_-2px_0_var(--color-accent)]' : 'text-dim hover:text-text'}`;
+const section = 'border-b border-row px-3.5 py-3 last:border-b-0';
+const sectionTitle = 'mb-2.5 text-[10.5px] font-semibold tracking-widest text-dim uppercase';
+const row = 'mb-3 grid grid-cols-[7.5rem_minmax(0,1fr)] items-start gap-3 last:mb-0';
+const label = 'flex items-center justify-between gap-2 pt-1.5 text-[13px] text-dim';
+const terse = 'text-xs text-dim';
 </script>
 
 <template>
-  <RouterLink to="/tournaments" class="mb-2 inline-block text-[12.5px] text-accent wide:hidden"
-    >‹ Tourneys</RouterLink
-  >
-  <Panel title="New">
-    <div
-      class="grid grid-cols-[max-content_1fr] items-center gap-x-3 gap-y-2 px-3 py-3 text-[13px]"
+  <div class="@container">
+    <RouterLink to="/tournaments" class="mb-2 inline-block text-[12.5px] text-accent wide:hidden"
+      >‹ Tourneys</RouterLink
     >
-      <span class="text-dim">format</span>
-      <select v-model="kind" :class="inputClass" class="w-fit">
-        <option value="match">match</option>
-        <option value="roundrobin">round robin</option>
-        <option value="gauntlet">gauntlet</option>
-        <option value="swiss">Swiss</option>
-        <option value="knockout">knockout</option>
-      </select>
-
-      <template v-if="kind === 'match'">
-        <span class="text-dim">tested</span>
-        <select v-model="tested" :class="inputClass" class="w-fit">
-          <option v-for="e in engines.list" :key="e.id" :value="e.id">{{ e.id }}</option>
-        </select>
-        <span class="text-dim">base</span>
-        <select v-model="base" :class="inputClass" class="w-fit">
-          <option v-for="e in engines.list" :key="e.id" :value="e.id">{{ e.id }}</option>
-        </select>
-        <span class="text-dim">pairs</span>
-        <span
-          ><input
-            v-model.number="pairs"
-            type="number"
-            min="1"
-            :class="inputClass"
-            @input="pairsEdited = true"
-            class="w-24"
-          /> <span class="text-dim"
-            >{{ pairs * 2 }} games{{ useSprt ? ' at most' : '' }}</span
-          ></span
-        >
-        <span class="text-dim">SPRT</span>
-        <span class="flex flex-wrap items-center gap-2">
-          <input v-model="useSprt" type="checkbox" />
-          <template v-if="useSprt">
-            <select v-model="sprtPreset" :class="inputClass">
-              <option v-for="p in SPRT_PRESETS" :key="p.label" :value="p.label">
-                {{ p.label }}
-              </option>
-              <option value="custom" disabled>custom</option>
-            </select>
-            nElo [<input
-              v-model.number="elo0"
-              type="number"
-              step="0.5"
-              :class="inputClass"
-              class="w-16"
-            />,
-            <input
-              v-model.number="elo1"
-              type="number"
-              step="0.5"
-              :class="inputClass"
-              class="w-16"
-            />]
-            <span class="text-dim">α = β = 0.05</span>
-          </template>
-        </span>
-        <template v-if="useSprt">
-          <span />
-          <span class="text-xs text-dim">{{
-            sprtEstimate === null
-              ? 'the upper bound must be above the lower'
-              : `about ${sprtEstimate.toLocaleString()} games when the true nElo is on a bound; more between the bounds, fewer far outside them${sprtEstimate > pairs * 2 ? `. Its ${(pairs * 2).toLocaleString()} games may end it before a verdict` : ''}`
-          }}</span>
-        </template>
-      </template>
-
-      <template v-else>
-        <span class="self-start pt-1 text-dim">field</span>
-        <div>
-          <div
-            v-for="(id, n) in field"
-            :key="n"
-            class="num flex items-center gap-2 py-0.5 text-[12.5px]"
+    <div class="grid items-start gap-4 @5xl:grid-cols-[minmax(0,1fr)_17rem]">
+      <section class="min-w-0 rounded-lg border border-line bg-panel">
+        <!-- ── templates ─────────────────────────────────────────────────── -->
+        <div class="flex flex-wrap items-center gap-2 border-b border-line px-3.5 py-2">
+          <span class="text-[10.5px] font-semibold tracking-widest text-dim uppercase">New</span>
+          <span class="flex-1" />
+          <select
+            :value="template"
+            class="h-7 max-w-56 rounded-md border border-line bg-panel2 px-2 text-[12.5px]"
+            title="Start from a saved setup"
+            @change="useTemplate(($event.target as HTMLSelectElement).value)"
           >
-            <span class="w-5 text-faint">{{ n + 1 }}</span>
-            <span :class="kind === 'gauntlet' && n < seeds ? 'text-accent' : ''">{{ id }}</span>
-            <button class="text-faint hover:text-text" title="Remove" @click="field.splice(n, 1)">
+            <option value="">no template</option>
+            <option v-for="t in settings.templates" :key="t.name" :value="t.name">
+              {{ t.name }}{{ t.name === settings.startTemplate ? ' ★' : '' }}
+            </option>
+          </select>
+          <button :class="buttonClass" @click="saveTemplate">Save as template…</button>
+          <template v-if="template">
+            <button
+              :class="buttonClass"
+              :title="
+                settings.startTemplate === template
+                  ? 'Each New starts from this template; click to stop'
+                  : 'Start each New from this template'
+              "
+              @click="settings.startTemplate = settings.startTemplate === template ? '' : template"
+            >
+              {{ settings.startTemplate === template ? '★' : '☆' }}
+            </button>
+            <button :class="buttonClass" title="Delete this template" @click="deleteTemplate">
               ✕
             </button>
+          </template>
+        </div>
+
+        <!-- ── who plays ─────────────────────────────────────────────────── -->
+        <div :class="section">
+          <div :class="sectionTitle">Who plays</div>
+          <div :class="row">
+            <span :class="label">format</span>
+            <span :class="segWrap">
+              <button
+                v-for="(n, k) in KIND_NAMES"
+                :key="k"
+                :class="segButton(kind === k)"
+                @click="kind = k"
+              >
+                {{ n }}
+              </button>
+            </span>
           </div>
-          <div class="mt-1 flex gap-1.5">
-            <select v-model="adding" :class="inputClass">
-              <option value="" disabled>engine…</option>
-              <option v-for="e in engines.list" :key="e.id" :value="e.id">{{ e.id }}</option>
-            </select>
-            <button :class="buttonClass" :disabled="!adding" @click="field.push(adding)">
-              Add
-            </button>
+
+          <div v-if="kind === 'match'" :class="row">
+            <span :class="label"
+              >engines
+              <HelpTip>The <b>first</b> is tested: every statistic is from its side.</HelpTip></span
+            >
+            <span class="flex flex-wrap items-center gap-2">
+              <EngineCombo v-model="tested" :engines="engineIds" />
+              <button :class="buttonClass" title="Swap" @click="[tested, base] = [base, tested]">
+                ⇄
+              </button>
+              <EngineCombo v-model="base" :engines="engineIds" />
+            </span>
+          </div>
+          <div v-else :class="row">
+            <span :class="label"
+              >field
+              <HelpTip v-if="seedCount > 0">
+                The field's order is its <b>seeding</b>: drag or use ↑ ↓.
+                <template v-if="kind === 'gauntlet'">
+                  The first {{ seeds }} each play every other engine; the others do not meet.
+                </template>
+                <template v-else> The first is the top seed.</template>
+              </HelpTip></span
+            >
+            <EnginePicker v-model="field" :engines="engineIds" :seeds="seedCount" />
+          </div>
+
+          <template v-if="kind === 'match'">
+            <div :class="row">
+              <span :class="label"
+                >SPRT
+                <HelpTip>
+                  Stops once the result is clear: <b>H1</b> when the tested engine gains at least
+                  the upper bound, <b>H0</b> at most the lower, in normalized Elo, α = β = 0.05. The
+                  count is the expected games with the true difference on a bound; between them it
+                  runs longer.
+                </HelpTip></span
+              >
+              <span class="flex flex-wrap items-center gap-2">
+                <input v-model="useSprt" type="checkbox" class="accent-accent" />
+                <template v-if="useSprt">
+                  <span :class="segWrap" class="num">
+                    <button
+                      v-for="p in SPRT_PRESETS"
+                      :key="p.label"
+                      :class="segButton(!customBounds && sprtPreset === p.label)"
+                      class="num text-[12.5px]"
+                      @click="
+                        customBounds = false;
+                        [elo0, elo1] = [p.elo0, p.elo1];
+                      "
+                    >
+                      {{ p.label }}
+                    </button>
+                    <button
+                      :class="segButton(customBounds || sprtPreset === 'custom')"
+                      @click="customBounds = true"
+                    >
+                      custom
+                    </button>
+                  </span>
+                  <span v-if="customBounds || sprtPreset === 'custom'" class="num text-[12.5px]">
+                    [<input
+                      v-model.number="elo0"
+                      type="number"
+                      step="0.5"
+                      :class="number"
+                      class="w-16"
+                    />,
+                    <input
+                      v-model.number="elo1"
+                      type="number"
+                      step="0.5"
+                      :class="number"
+                      class="w-16"
+                    />]
+                  </span>
+                  <span v-if="sprtEstimate !== null" class="num" :class="terse"
+                    >~{{ sprtEstimate.toLocaleString('en-US') }} games</span
+                  >
+                </template>
+              </span>
+            </div>
+            <div :class="row">
+              <span :class="label"
+                >{{ useSprt ? 'at most' : paired ? 'pairs' : 'games' }}
+                <HelpTip v-if="useSprt"
+                  >A cap on the SPRT. Under the estimated games, most runs stop here with no
+                  verdict.</HelpTip
+                ></span
+              >
+              <span class="flex flex-wrap items-center gap-2">
+                <input
+                  v-model.number="pairs"
+                  type="number"
+                  min="1"
+                  :class="number"
+                  @input="pairsEdited = true"
+                />
+                <span v-if="paired" class="num" :class="terse"
+                  >{{ (pairs * 2).toLocaleString('en-US') }} games</span
+                >
+                <span
+                  v-if="useSprt && sprtEstimate !== null && pairs * perOpening < sprtEstimate"
+                  class="text-xs text-warn"
+                  >below the estimate</span
+                >
+              </span>
+            </div>
+          </template>
+          <div v-if="kind === 'swiss'" :class="row">
+            <span :class="label"
+              >rounds
+              <HelpTip
+                >Each round pairs engines of about equal points; an odd field gives one a
+                <b>bye</b>, worth a point. With {{ field.length }} engines, {{ settling }} rounds
+                can leave one alone on top.</HelpTip
+              ></span
+            >
+            <span class="flex items-center gap-2">
+              <input v-model.number="rounds" type="number" min="1" :class="number" />
+              <span :class="terse">{{ settling }} to settle</span>
+            </span>
+          </div>
+          <div v-if="kind === 'knockout'" :class="row">
+            <span :class="label"
+              >per match
+              <HelpTip
+                >A tied match plays one more pair at a time, up to ten in all; then the higher seed
+                goes through.</HelpTip
+              ></span
+            >
+            <span class="flex items-center gap-2">
+              <input v-model.number="matchPairs" type="number" min="1" :class="number" />
+              <span :class="terse">pairs</span>
+            </span>
+          </div>
+          <div v-if="kind === 'gauntlet'" :class="row">
+            <span :class="label">seeds</span>
+            <input v-model.number="seeds" type="number" min="1" :class="number" />
+          </div>
+          <div v-if="kind === 'roundrobin' || kind === 'gauntlet'" :class="row">
+            <span :class="label">cycles</span>
+            <input v-model.number="cycles" type="number" min="1" :class="number" />
           </div>
         </div>
-        <template v-if="kind === 'gauntlet'">
-          <span class="text-dim">seeds</span>
-          <span
-            ><input
-              v-model.number="seeds"
-              type="number"
-              min="1"
-              :class="inputClass"
-              class="w-16"
-            /> <span class="text-dim">the first in the field play all the others</span></span
-          >
-        </template>
-        <template v-if="kind === 'swiss'">
-          <span class="text-dim">rounds</span>
-          <span
-            ><input
-              v-model.number="rounds"
-              type="number"
-              min="1"
-              :class="inputClass"
-              class="w-16"
-            /> <span class="text-dim"
-              >a pair each; {{ settling }} can leave one engine alone on top</span
-            ></span
-          >
-        </template>
-        <template v-if="kind === 'knockout'">
-          <span class="text-dim">pairs</span>
-          <span
-            ><input
-              v-model.number="matchPairs"
-              type="number"
-              min="1"
-              :class="inputClass"
-              class="w-16"
-            /> <span class="text-dim"
-              >a match; while tied, one more at a time up to 10, then the higher seed goes
-              through</span
-            ></span
-          >
-        </template>
-        <span v-if="kind === 'roundrobin' || kind === 'gauntlet'" class="text-dim">cycles</span>
-        <span v-if="kind === 'roundrobin' || kind === 'gauntlet'"
-          ><input
-            v-model.number="cycles"
-            type="number"
-            min="1"
-            :class="inputClass"
-            class="w-16"
-          /> <span class="text-dim">each a pair per match</span></span
-        >
-      </template>
 
-      <span class="text-dim">time</span>
-      <select v-model="control" :class="inputClass" class="w-fit">
-        <option v-for="t in TIME_CONTROLS" :key="t.label" :value="t.label">
-          {{ t.label }}
-        </option>
-      </select>
-      <span class="text-dim">opening</span>
-      <select v-model="book" :class="inputClass" class="w-fit">
-        <option value="">start position</option>
-        <option v-for="b in books.usable" :key="b.id" :value="b.id">
-          {{ b.id }}
-        </option>
-      </select>
-      <span class="text-dim">adjudication</span>
-      <select v-model="adjudicationChoice" :class="inputClass" class="w-fit">
-        <option value="standard">draw and resign</option>
-        <option value="draw">draw only</option>
-        <option value="none">none</option>
-      </select>
-      <span class="text-dim">at once</span>
-      <span>
-        <input
-          v-model.number="concurrency"
-          type="number"
-          min="1"
-          :class="inputClass"
-          class="w-16"
-          @input="concurrencyEdited = true"
-        />
-        <span class="text-dim">
-          games; this browser has {{ hardwareThreads }} hardware threads</span
+        <!-- ── how each game is played ───────────────────────────────────── -->
+        <div :class="section">
+          <div :class="sectionTitle">How each game is played</div>
+          <div :class="row">
+            <span :class="label"
+              >time
+              <HelpTip>
+                <b>10+0.1</b>: 10 s, then 0.1 s added a move; <b>2m+1</b> in minutes. <b>40/15</b>:
+                40 moves in 15 min, repeating. <b>1s/move</b>: a fixed time a move.
+                <b>200k nodes</b>, <b>depth 12</b>: a fixed search a move, with no clock, the same
+                on any machine. Yours have a dashed edge.
+              </HelpTip></span
+            >
+            <ControlPicker v-model="control" />
+          </div>
+          <div :class="row">
+            <span :class="label">opening</span>
+            <select v-model="book" :class="select" class="num text-[12.5px]">
+              <option value="">start position</option>
+              <option v-for="b in books.usable" :key="b.id" :value="b.id">{{ b.id }}</option>
+            </select>
+          </div>
+          <div v-if="unpairable" :class="row">
+            <span :class="label"
+              >colors
+              <HelpTip>
+                <b>On</b>: each opening twice, each engine White once: a <b>pair</b>. It cancels an
+                opening's bias, and a match's statistics count pairs (pentanomial).<br />
+                <b>Off</b>: one game an opening, colors alternating; a match's statistics count
+                games (trinomial). Wants a balanced book.
+              </HelpTip></span
+            >
+            <label class="flex cursor-pointer items-center gap-2 pt-1 text-[13px]">
+              <input v-model="paired" type="checkbox" class="accent-accent" />
+              <span :class="paired ? 'text-text' : 'text-dim'">{{
+                paired ? 'each opening twice, swapped' : 'each opening once'
+              }}</span>
+            </label>
+          </div>
+          <div :class="row">
+            <span :class="label"
+              >adjudication
+              <HelpTip>
+                <b>draw</b>: from move 40, after 8 moves of each side within 10 cp. <b>resign</b>:
+                after 3 moves of one side at −600 cp or worse.
+              </HelpTip></span
+            >
+            <span :class="segWrap">
+              <button
+                v-for="[v, l] in [
+                  ['standard', 'draw and resign'],
+                  ['draw', 'draw only'],
+                  ['none', 'none'],
+                ] as const"
+                :key="v"
+                :class="segButton(adjudicationChoice === v)"
+                @click="adjudicationChoice = v"
+              >
+                {{ l }}
+              </button>
+            </span>
+          </div>
+        </div>
+
+        <!-- ── this run ──────────────────────────────────────────────────── -->
+        <div :class="section">
+          <div :class="sectionTitle">This run</div>
+          <div :class="row">
+            <span :class="label">at once</span>
+            <span class="flex items-center gap-2">
+              <input
+                v-model.number="concurrency"
+                type="number"
+                min="1"
+                :class="number"
+                @input="concurrencyEdited = true"
+              />
+              <span class="num" :class="terse">of {{ hardwareThreads }} threads</span>
+            </span>
+          </div>
+          <div :class="row">
+            <span :class="label">name</span>
+            <input
+              v-model="name"
+              :placeholder="defaultName"
+              class="h-[30px] w-full max-w-md rounded-md border border-line bg-panel2 px-2 text-[13px] placeholder:text-faint placeholder:italic"
+            />
+          </div>
+        </div>
+      </section>
+
+      <!-- ── the summary and Start ─────────────────────────────────────── -->
+      <aside class="rounded-lg border border-line bg-panel p-3.5 @5xl:sticky @5xl:top-3">
+        <div class="mb-2.5 text-[15px] font-semibold break-words">
+          {{ name.trim() || defaultName }}
+        </div>
+        <div :class="terse">games{{ gamesBound ? `, ${gamesBound}` : '' }}</div>
+        <div class="num mb-2.5 text-[22px] font-semibold">
+          {{ totalGames.toLocaleString('en-US') }}
+        </div>
+        <dl class="mb-3.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[12.5px]">
+          <dt class="text-dim">format</dt>
+          <dd>{{ formatSummary }}</dd>
+          <dt class="text-dim">engines</dt>
+          <dd class="num break-words">
+            {{ kind === 'match' ? `${tested} vs ${base}` : `${field.length} entered` }}
+          </dd>
+          <dt class="text-dim">time</dt>
+          <dd class="num">{{ control }}</dd>
+          <dt class="text-dim">opening</dt>
+          <dd class="num break-words">{{ book || 'start position' }}</dd>
+          <template v-if="unpairable">
+            <dt class="text-dim">colors</dt>
+            <dd>{{ paired ? 'pairs, swapped' : 'one game each' }}</dd>
+          </template>
+          <dt class="text-dim">at once</dt>
+          <dd class="num">{{ concurrency }}</dd>
+        </dl>
+        <button
+          class="w-full rounded-md bg-accent py-2.5 text-[13px] font-semibold text-[#08131d] disabled:bg-line disabled:text-faint"
+          :disabled="!canStart || blocked !== ''"
+          @click="startNew"
         >
-      </span>
-      <span class="text-dim">name</span>
-      <input
-        v-model="name"
-        :placeholder="defaultName"
-        :class="inputClass"
-        class="w-full max-w-md"
-      />
+          Start
+        </button>
+        <div v-if="blocked" class="mt-2 text-xs text-warn">{{ blocked }}</div>
+      </aside>
     </div>
-    <div class="flex items-center gap-3 border-t border-row px-3 py-2">
-      <button :class="buttonClass" :disabled="!canStart" @click="startNew">Start</button>
-      <span class="num text-xs text-dim">{{ totalGames }} games{{ bound(format) }}</span>
-    </div>
-  </Panel>
+  </div>
 </template>

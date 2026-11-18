@@ -6,7 +6,7 @@ import type { Game } from '../chess/game.ts';
 import type { Info } from '../engine/info.ts';
 import type { UciEngine } from '../engine/uci.ts';
 
-/** how long an engine may take to answer a node budget before it loses, as no clock ends that search */
+/** the least an engine may take to answer a node budget or a depth before it loses, as no clock ends that search */
 const NODES_WAIT_MS = 30_000;
 /** how long past its clock an engine may stay silent before the referee stops waiting; the flag is judged at the move */
 const SILENT_GRACE_MS = 5_000;
@@ -20,7 +20,9 @@ function positionCommand(game: Game): string {
 }
 
 /** the UCI `go` limits for the side to move */
-function goLimits(tc: TimeControl, clock: Clock | null, turn: Color): string {
+export function goLimits(tc: TimeControl, clock: Clock | null, turn: Color): string {
+  if (tc.kind === 'movetime') return `movetime ${tc.ms}`;
+  if (tc.kind === 'depth') return `depth ${tc.depth}`;
   if (tc.kind === 'nodes' || !clock) return `nodes ${tc.kind === 'nodes' ? tc.nodes : 200_000}`;
   const w = Math.max(1, Math.round(clock.remaining('white')));
   const b = Math.max(1, Math.round(clock.remaining('black')));
@@ -29,7 +31,7 @@ function goLimits(tc: TimeControl, clock: Clock | null, turn: Color): string {
   return `wtime ${w} btime ${b} winc ${tc.incMs} binc ${tc.incMs}`;
 }
 
-/** a clock for a control, or null for a node budget */
+/** a clock for a control, or null for one with no clock: a node budget, a fixed time a move or a depth */
 export function clockFor(tc: TimeControl): Clock | null {
   if (tc.kind === 'clock') return new Clock({ baseMs: tc.baseMs, incMs: tc.incMs });
   if (tc.kind === 'moves') return new Clock({ baseMs: tc.periodMs, moves: tc.moves });
@@ -42,6 +44,33 @@ function scoreText(info: Info | null): string {
   const cp = info?.cp ?? 0;
   return `${cp >= 0 ? '+' : ''}${(cp / 100).toFixed(2)}`;
 }
+
+/**
+ * the slowest search a node budget allows for, in nodes a millisecond: about a fortieth of
+ * ratchet-0.3.14's speed in Chrome (835 kn/s, Play, 2026-11-18), for slow engines and busy hosts
+ */
+const SLOWEST_NODES_PER_MS = 20;
+/** the depth up to which the plain wait holds; past it the wait doubles every two plies */
+const QUICK_DEPTH = 10;
+
+/**
+ * how long an engine may stay silent on a move before the referee stops waiting: past its clock,
+ * or for a search with no clock, long enough for the slowest honest search the setting asks for
+ */
+export function silenceLimit(tc: TimeControl, clock: Clock | null, turn: Color): number {
+  if (tc.kind === 'nodes') return Math.max(NODES_WAIT_MS, tc.nodes / SLOWEST_NODES_PER_MS);
+  // a search's time grows about as fast as this with its depth
+  if (tc.kind === 'depth') return NODES_WAIT_MS * 2 ** (Math.max(0, tc.depth - QUICK_DEPTH) / 2);
+  if (tc.kind === 'movetime') return tc.ms + SILENT_GRACE_MS;
+  return (clock?.remaining(turn) ?? 0) + SILENT_GRACE_MS;
+}
+
+/** the end of the forfeit message for an engine silent under a control with no clock */
+const UNCLOCKED: Partial<Record<TimeControl['kind'], string>> = {
+  nodes: 'under a node budget; it may not take go nodes',
+  movetime: 'at a fixed time a move; it may not take go movetime',
+  depth: 'to a fixed depth; it may not take go depth',
+};
 
 export interface Turn {
   game: Game;
@@ -65,8 +94,7 @@ export async function engineTurn(t: Turn): Promise<Info | null> {
   const started = performance.now();
   /** the search's last report with a depth and a score; a holder, as the callback sets it */
   const seen: { last: Info | null } = { last: null };
-  const limit =
-    control.kind === 'nodes' ? NODES_WAIT_MS : (clock?.remaining(color) ?? 0) + SILENT_GRACE_MS;
+  const limit = silenceLimit(control, clock, color);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const silent = new Promise<'silent'>((resolve) => {
     timer = setTimeout(() => resolve('silent'), Math.max(0, limit));
@@ -87,7 +115,7 @@ export async function engineTurn(t: Turn): Promise<Info | null> {
       else {
         game.forfeit(
           color,
-          `${name} gave no move in ${NODES_WAIT_MS / 1000} s under a node budget; it may not take go nodes`,
+          `${name} gave no move in ${limit / 1000} s ${UNCLOCKED[control.kind] ?? 'with no clock'}`,
           'rules infraction',
         );
       }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import Panel from '../components/Panel.vue';
 import { useBooks } from '../stores/books.ts';
@@ -24,6 +24,11 @@ onMounted(() => Promise.all([tournaments.load(), books.load()]));
 
 const selected = computed(() => (typeof route.params['id'] === 'string' ? route.params['id'] : ''));
 const creating = computed(() => selected.value === 'new');
+/** a New pressed while the setup is open starts it over */
+const fresh = ref(0);
+const setupKey = computed(
+  () => `${fresh.value}.${typeof route.query['from'] === 'string' ? route.query['from'] : ''}`,
+);
 const item = computed<Item | undefined>(() =>
   tournaments.items.find((i) => i.config.id === selected.value),
 );
@@ -34,7 +39,7 @@ const item = computed<Item | undefined>(() =>
     <h1 class="text-[15px] font-semibold">Tourneys</h1>
     <span class="text-xs text-dim">matches and tournaments played in this browser</span>
     <span class="flex-1" />
-    <RouterLink to="/tournaments/new" :class="buttonClass">New…</RouterLink>
+    <RouterLink to="/tournaments/new" :class="buttonClass" @click="fresh++">New…</RouterLink>
   </div>
   <div v-if="tournaments.error" class="mb-3 text-bad">{{ tournaments.error }}</div>
 
@@ -70,7 +75,7 @@ const item = computed<Item | undefined>(() =>
       </Panel>
     </div>
 
-    <TournamentSetup v-if="creating" />
+    <TournamentSetup v-if="creating" :key="setupKey" />
     <TournamentPage v-else-if="item" :key="item.config.id" :item="item" />
   </div>
 </template>
