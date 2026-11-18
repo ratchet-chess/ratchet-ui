@@ -1,0 +1,30 @@
+@import 'tailwindcss';
+
+@theme {
+  --color-bg: #0f1216;
+  --color-bar: #161a20;
+  --color-panel: #181c22;
+  --color-panel2: #1e232b;
+  --color-line: #2a313b;
+  --color-row: #20262e;
+  --color-text: #d8dee6;
+  --color-dim: #7d8794;
+  --color-faint: #4a525d;
+  --color-accent: #5aa9e6;
+  --color-good: #4cc38a;
+  --color-bad: #e5604d;
+  --color-warn: #e0a83a;
+  --font-mono: ui-monospace, 'JetBrains Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
+  --breakpoint-wide: 1100px;
+}
+
+@layer base {
+  body {
+    @apply bg-bg text-text text-sm;
+  }
+}
+
+@utility num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}

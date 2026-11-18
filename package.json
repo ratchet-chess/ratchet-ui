@@ -1,0 +1,51 @@
+{
+  "name": "ratchet-ui",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc -b && vite build",
+    "preview": "vite preview",
+    "engines": "bun scripts/engines.ts",
+    "typecheck": "vue-tsc -b",
+    "lint": "oxlint --type-aware src/ scripts/",
+    "lint:fix": "oxlint --type-aware --fix src/ scripts/",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
+    "knip": "knip",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepare": "husky || true"
+  },
+  "lint-staged": {
+    "*.{ts,vue,js,json,css,md,yaml,yml}": "oxfmt --no-error-on-unmatched-pattern"
+  },
+  "dependencies": {
+    "@lucide/vue": "^1.74.0",
+    "pinia": "^4.1.0",
+    "vue": "^3.5.45",
+    "vue-router": "^5.5.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.5",
+    "@types/bun": "^1.4.4",
+    "@types/node": "^26.6.6",
+    "@vitejs/plugin-vue": "^6.0.11",
+    "husky": "^9.1.7",
+    "knip": "^6.45.1",
+    "lint-staged": "^17.6.1",
+    "oxfmt": "^0.79.0",
+    "oxlint": "^1.94.0",
+    "oxlint-tsgolint": "^7.0.2007",
+    "tailwindcss": "^4.3.5",
+    "typescript": "npm:typescript-native-bridge@6.0.3-bridge.15.tsgo.7.0.2",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0",
+    "vue-tsc": "^3.3.14"
+  },
+  "overrides": {
+    "typescript": "npm:typescript-native-bridge@6.0.3-bridge.15.tsgo.7.0.2"
+  }
+}

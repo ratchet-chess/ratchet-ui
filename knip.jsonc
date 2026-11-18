@@ -1,0 +1,11 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+
+  // knip's plugins find the app's entry from vite.config.ts and index.html, so it is
+  // not declared here.
+  "entry": [
+    // Each runs alone through `bun scripts/<file>`, so each is its own entry point.
+    "scripts/**/*.ts",
+  ],
+  "project": ["src/**/*.{ts,vue,css}", "scripts/**/*.ts"],
+}
