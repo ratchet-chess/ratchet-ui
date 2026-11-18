@@ -63,13 +63,12 @@ const rows = computed(() => {
 
 const tag = (k: string) => props.game.headers.get(k) ?? '?';
 const TAGS = ['Event', 'Site', 'Date', 'Round', 'TimeControl', 'Termination'];
-const buttonClass = 'rounded border border-line bg-panel2 px-3 py-1.5 disabled:text-faint';
 </script>
 
 <template>
   <div class="grid gap-3.5 wide:grid-cols-[minmax(0,520px)_minmax(240px,1fr)]">
     <div class="max-w-[520px]">
-      <div class="mb-1.5 flex items-baseline justify-between gap-2 text-[13px]">
+      <div class="mb-1.5 flex items-baseline justify-between gap-2 text-dense">
         <span class="truncate">
           <span class="font-semibold">{{ tag('White') }}</span>
           <span class="text-dim"> vs </span>
@@ -87,41 +86,41 @@ const buttonClass = 'rounded border border-line bg-panel2 px-3 py-1.5 disabled:t
         :check="step?.check ?? false"
       />
       <div class="mt-1.5 flex gap-1.5">
-        <button :class="buttonClass" :disabled="ply === 0" title="Home" @click="go(0)">
+        <button class="btn px-3 py-1.5" :disabled="ply === 0" title="Home" @click="go(0)">
           <ChevronFirst :size="16" />
         </button>
-        <button :class="buttonClass" :disabled="ply === 0" title="←" @click="go(ply - 1)">
+        <button class="btn px-3 py-1.5" :disabled="ply === 0" title="←" @click="go(ply - 1)">
           <ChevronLeft :size="16" />
         </button>
-        <button :class="buttonClass" :disabled="ply === last" title="→" @click="go(ply + 1)">
+        <button class="btn px-3 py-1.5" :disabled="ply === last" title="→" @click="go(ply + 1)">
           <ChevronRight :size="16" />
         </button>
-        <button :class="buttonClass" :disabled="ply === last" title="End" @click="go(last)">
+        <button class="btn px-3 py-1.5" :disabled="ply === last" title="End" @click="go(last)">
           <ChevronLast :size="16" />
         </button>
         <button
-          :class="buttonClass"
+          class="btn px-3 py-1.5"
           title="Flip"
           @click="orientation = orientation === 'white' ? 'black' : 'white'"
         >
           <FlipVertical2 :size="16" />
         </button>
       </div>
-      <div v-if="step && step.comments.length > 0" class="num mt-1.5 text-[12px] text-dim">
+      <div v-if="step && step.comments.length > 0" class="num mt-1.5 text-dense text-dim">
         {{ step.comments.join(' ') }}
       </div>
     </div>
 
     <div>
       <Panel title="Moves">
-        <div class="num max-h-96 overflow-auto px-3 py-2 text-[12.5px]">
+        <div class="num max-h-96 overflow-auto px-3 py-2 text-dense">
           <div v-for="r in rows" :key="r.n" class="grid grid-cols-[2.5rem_1fr_1fr]">
             <span class="text-faint">{{ r.n }}.</span>
             <template v-for="i in [r.white, r.black]" :key="String(i)">
               <button
                 v-if="i !== null"
-                class="w-fit rounded px-1 text-left hover:bg-[#232b35]"
-                :class="i === ply ? 'bg-[#2c4a66] text-text' : ''"
+                class="w-fit rounded px-1 text-left hover:bg-active"
+                :class="i === ply ? 'bg-accent-line text-text' : ''"
                 @click="go(i)"
               >
                 {{ rp.steps[i]?.san }}
@@ -134,7 +133,7 @@ const buttonClass = 'rounded border border-line bg-panel2 px-3 py-1.5 disabled:t
         </div>
       </Panel>
       <Panel title="Tags">
-        <div class="grid grid-cols-[max-content_1fr] gap-x-3 px-3 py-2 text-[12.5px]">
+        <div class="grid grid-cols-[max-content_1fr] gap-x-3 px-3 py-2 text-dense">
           <template v-for="k in TAGS" :key="k">
             <span class="text-dim">{{ k }}</span><span class="num">{{ tag(k) }}</span>
           </template>

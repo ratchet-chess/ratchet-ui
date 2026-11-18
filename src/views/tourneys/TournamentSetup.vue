@@ -6,6 +6,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import HelpTip from '../../components/HelpTip.vue';
+import Segmented from '../../components/Segmented.vue';
 import { resolveControl } from '../../chess/clock.ts';
 import { STANDARD_ADJUDICATION, type Adjudication } from '../../match/adjudicate.ts';
 import { mayUnpair, plannedGames, type Format, type TournamentConfig } from '../../match/format.ts';
@@ -17,7 +18,7 @@ import { useTournaments } from '../../stores/tournaments.ts';
 import ControlPicker from './ControlPicker.vue';
 import EngineCombo from './EngineCombo.vue';
 import EnginePicker from './EnginePicker.vue';
-import { buttonClass, cloneName } from './show.ts';
+import { cloneName } from './show.ts';
 
 const tournaments = useTournaments();
 const engines = useEngines();
@@ -102,6 +103,28 @@ const KIND_NAMES: Record<Format['kind'], string> = {
   swiss: 'Swiss',
   knockout: 'knockout',
 };
+const KIND_OPTIONS = (Object.keys(KIND_NAMES) as Format['kind'][]).map((k) => ({
+  value: k,
+  label: KIND_NAMES[k],
+}));
+const ADJUDICATION_OPTIONS = [
+  { value: 'standard', label: 'draw and resign' },
+  { value: 'draw', label: 'draw only' },
+  { value: 'none', label: 'none' },
+] as const;
+const SPRT_OPTIONS = [
+  ...SPRT_PRESETS.map((p) => ({ value: p.label, label: p.label })),
+  { value: 'custom', label: 'custom' },
+];
+/** a preset's bounds, or custom ones typed in */
+const sprtChoice = computed<string>({
+  get: () => (customBounds.value ? 'custom' : sprtPreset.value),
+  set: (v) => {
+    const p = SPRT_PRESETS.find((x) => x.label === v);
+    customBounds.value = !p;
+    if (p) [elo0.value, elo1.value] = [p.elo0, p.elo1];
+  },
+});
 const defaultName = computed(() =>
   kind.value === 'match'
     ? `${tested.value} vs ${base.value}`
@@ -295,35 +318,27 @@ const blocked = computed(() => {
 });
 
 // ── looks ──────────────────────────────────────────────────────────────────
-const number =
-  'num h-[30px] w-24 rounded-md border border-line bg-panel2 px-2 text-right text-[12.5px] text-text [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none';
-const select =
-  'h-[30px] w-60 max-w-full rounded-md border border-line bg-panel2 px-2 text-[13px] text-text';
-const segWrap =
-  'inline-flex w-fit flex-wrap overflow-hidden rounded-md border border-line bg-panel2';
-const segButton = (on: boolean) =>
-  `border-r border-line px-2.5 py-[5px] text-[13px] last:border-r-0 ${on ? 'bg-[#22303d] text-text shadow-[inset_0_-2px_0_var(--color-accent)]' : 'text-dim hover:text-text'}`;
 const section = 'border-b border-row px-3.5 py-3 last:border-b-0';
-const sectionTitle = 'mb-2.5 text-[10.5px] font-semibold tracking-widest text-dim uppercase';
+const sectionTitle = 'caps mb-2.5 text-label font-semibold';
 const row = 'mb-3 grid grid-cols-[7.5rem_minmax(0,1fr)] items-start gap-3 last:mb-0';
-const label = 'flex items-center justify-between gap-2 pt-1.5 text-[13px] text-dim';
-const terse = 'text-xs text-dim';
+const label = 'flex items-center justify-between gap-2 pt-1.5 text-dense text-dim';
+const terse = 'text-dense text-dim';
 </script>
 
 <template>
   <div class="@container">
-    <RouterLink to="/tournaments" class="mb-2 inline-block text-[12.5px] text-accent wide:hidden"
+    <RouterLink to="/tournaments" class="mb-2 inline-block text-dense text-accent wide:hidden"
       >‹ Tourneys</RouterLink
     >
     <div class="grid items-start gap-4 @5xl:grid-cols-[minmax(0,1fr)_17rem]">
       <section class="min-w-0 rounded-lg border border-line bg-panel">
         <!-- ── templates ─────────────────────────────────────────────────── -->
         <div class="flex flex-wrap items-center gap-2 border-b border-line px-3.5 py-2">
-          <span class="text-[10.5px] font-semibold tracking-widest text-dim uppercase">New</span>
+          <span class="caps text-label font-semibold">New</span>
           <span class="flex-1" />
           <select
             :value="template"
-            class="h-7 max-w-56 rounded-md border border-line bg-panel2 px-2 text-[12.5px]"
+            class="field-sm max-w-56"
             title="Start from a saved setup"
             @change="useTemplate(($event.target as HTMLSelectElement).value)"
           >
@@ -332,10 +347,10 @@ const terse = 'text-xs text-dim';
               {{ t.name }}{{ t.name === settings.startTemplate ? ' ★' : '' }}
             </option>
           </select>
-          <button :class="buttonClass" @click="saveTemplate">Save as template…</button>
+          <button class="btn" @click="saveTemplate">Save as template…</button>
           <template v-if="template">
             <button
-              :class="buttonClass"
+              class="btn"
               :title="
                 settings.startTemplate === template
                   ? 'Each New starts from this template; click to stop'
@@ -345,9 +360,7 @@ const terse = 'text-xs text-dim';
             >
               {{ settings.startTemplate === template ? '★' : '☆' }}
             </button>
-            <button :class="buttonClass" title="Delete this template" @click="deleteTemplate">
-              ✕
-            </button>
+            <button class="btn" title="Delete this template" @click="deleteTemplate">✕</button>
           </template>
         </div>
 
@@ -356,16 +369,7 @@ const terse = 'text-xs text-dim';
           <div :class="sectionTitle">Who plays</div>
           <div :class="row">
             <span :class="label">format</span>
-            <span :class="segWrap">
-              <button
-                v-for="(n, k) in KIND_NAMES"
-                :key="k"
-                :class="segButton(kind === k)"
-                @click="kind = k"
-              >
-                {{ n }}
-              </button>
-            </span>
+            <Segmented v-model="kind" :options="KIND_OPTIONS" />
           </div>
 
           <div v-if="kind === 'match'" :class="row">
@@ -375,9 +379,7 @@ const terse = 'text-xs text-dim';
             >
             <span class="flex flex-wrap items-center gap-2">
               <EngineCombo v-model="tested" :engines="engineIds" />
-              <button :class="buttonClass" title="Swap" @click="[tested, base] = [base, tested]">
-                ⇄
-              </button>
+              <button class="btn" title="Swap" @click="[tested, base] = [base, tested]">⇄</button>
               <EngineCombo v-model="base" :engines="engineIds" />
             </span>
           </div>
@@ -409,40 +411,19 @@ const terse = 'text-xs text-dim';
               <span class="flex flex-wrap items-center gap-2">
                 <input v-model="useSprt" type="checkbox" class="accent-accent" />
                 <template v-if="useSprt">
-                  <span :class="segWrap" class="num">
-                    <button
-                      v-for="p in SPRT_PRESETS"
-                      :key="p.label"
-                      :class="segButton(!customBounds && sprtPreset === p.label)"
-                      class="num text-[12.5px]"
-                      @click="
-                        customBounds = false;
-                        [elo0, elo1] = [p.elo0, p.elo1];
-                      "
-                    >
-                      {{ p.label }}
-                    </button>
-                    <button
-                      :class="segButton(customBounds || sprtPreset === 'custom')"
-                      @click="customBounds = true"
-                    >
-                      custom
-                    </button>
-                  </span>
-                  <span v-if="customBounds || sprtPreset === 'custom'" class="num text-[12.5px]">
+                  <Segmented v-model="sprtChoice" :options="SPRT_OPTIONS" class="num" />
+                  <span v-if="customBounds || sprtPreset === 'custom'" class="num text-dense">
                     [<input
                       v-model.number="elo0"
                       type="number"
                       step="0.5"
-                      :class="number"
-                      class="w-16"
+                      class="field num no-spin w-16 text-right"
                     />,
                     <input
                       v-model.number="elo1"
                       type="number"
                       step="0.5"
-                      :class="number"
-                      class="w-16"
+                      class="field num no-spin w-16 text-right"
                     />]
                   </span>
                   <span v-if="sprtEstimate !== null" class="num" :class="terse"
@@ -464,7 +445,7 @@ const terse = 'text-xs text-dim';
                   v-model.number="pairs"
                   type="number"
                   min="1"
-                  :class="number"
+                  class="field num no-spin w-24 text-right"
                   @input="pairsEdited = true"
                 />
                 <span v-if="paired" class="num" :class="terse"
@@ -472,7 +453,7 @@ const terse = 'text-xs text-dim';
                 >
                 <span
                   v-if="useSprt && sprtEstimate !== null && pairs * perOpening < sprtEstimate"
-                  class="text-xs text-warn"
+                  class="text-dense text-warn"
                   >below the estimate</span
                 >
               </span>
@@ -488,7 +469,12 @@ const terse = 'text-xs text-dim';
               ></span
             >
             <span class="flex items-center gap-2">
-              <input v-model.number="rounds" type="number" min="1" :class="number" />
+              <input
+                v-model.number="rounds"
+                type="number"
+                min="1"
+                class="field num no-spin w-24 text-right"
+              />
               <span :class="terse">{{ settling }} to settle</span>
             </span>
           </div>
@@ -501,17 +487,32 @@ const terse = 'text-xs text-dim';
               ></span
             >
             <span class="flex items-center gap-2">
-              <input v-model.number="matchPairs" type="number" min="1" :class="number" />
+              <input
+                v-model.number="matchPairs"
+                type="number"
+                min="1"
+                class="field num no-spin w-24 text-right"
+              />
               <span :class="terse">pairs</span>
             </span>
           </div>
           <div v-if="kind === 'gauntlet'" :class="row">
             <span :class="label">seeds</span>
-            <input v-model.number="seeds" type="number" min="1" :class="number" />
+            <input
+              v-model.number="seeds"
+              type="number"
+              min="1"
+              class="field num no-spin w-24 text-right"
+            />
           </div>
           <div v-if="kind === 'roundrobin' || kind === 'gauntlet'" :class="row">
             <span :class="label">cycles</span>
-            <input v-model.number="cycles" type="number" min="1" :class="number" />
+            <input
+              v-model.number="cycles"
+              type="number"
+              min="1"
+              class="field num no-spin w-24 text-right"
+            />
           </div>
         </div>
 
@@ -532,7 +533,7 @@ const terse = 'text-xs text-dim';
           </div>
           <div :class="row">
             <span :class="label">opening</span>
-            <select v-model="book" :class="select" class="num text-[12.5px]">
+            <select v-model="book" class="field num w-60 max-w-full">
               <option value="">start position</option>
               <option v-for="b in books.usable" :key="b.id" :value="b.id">{{ b.id }}</option>
             </select>
@@ -547,7 +548,7 @@ const terse = 'text-xs text-dim';
                 games (trinomial). Wants a balanced book.
               </HelpTip></span
             >
-            <label class="flex cursor-pointer items-center gap-2 pt-1 text-[13px]">
+            <label class="flex cursor-pointer items-center gap-2 pt-1 text-dense">
               <input v-model="paired" type="checkbox" class="accent-accent" />
               <span :class="paired ? 'text-text' : 'text-dim'">{{
                 paired ? 'each opening twice, swapped' : 'each opening once'
@@ -562,20 +563,7 @@ const terse = 'text-xs text-dim';
                 after 3 moves of one side at −600 cp or worse.
               </HelpTip></span
             >
-            <span :class="segWrap">
-              <button
-                v-for="[v, l] in [
-                  ['standard', 'draw and resign'],
-                  ['draw', 'draw only'],
-                  ['none', 'none'],
-                ] as const"
-                :key="v"
-                :class="segButton(adjudicationChoice === v)"
-                @click="adjudicationChoice = v"
-              >
-                {{ l }}
-              </button>
-            </span>
+            <Segmented v-model="adjudicationChoice" :options="ADJUDICATION_OPTIONS" />
           </div>
         </div>
 
@@ -589,7 +577,7 @@ const terse = 'text-xs text-dim';
                 v-model.number="concurrency"
                 type="number"
                 min="1"
-                :class="number"
+                class="field num no-spin w-24 text-right"
                 @input="concurrencyEdited = true"
               />
               <span class="num" :class="terse">of {{ hardwareThreads }} threads</span>
@@ -597,25 +585,21 @@ const terse = 'text-xs text-dim';
           </div>
           <div :class="row">
             <span :class="label">name</span>
-            <input
-              v-model="name"
-              :placeholder="defaultName"
-              class="h-[30px] w-full max-w-md rounded-md border border-line bg-panel2 px-2 text-[13px] placeholder:text-faint placeholder:italic"
-            />
+            <input v-model="name" :placeholder="defaultName" class="field w-full max-w-md" />
           </div>
         </div>
       </section>
 
       <!-- ── the summary and Start ─────────────────────────────────────── -->
       <aside class="rounded-lg border border-line bg-panel p-3.5 @5xl:sticky @5xl:top-3">
-        <div class="mb-2.5 text-[15px] font-semibold break-words">
+        <div class="mb-2.5 text-title font-semibold break-words">
           {{ name.trim() || defaultName }}
         </div>
         <div :class="terse">games{{ gamesBound ? `, ${gamesBound}` : '' }}</div>
-        <div class="num mb-2.5 text-[22px] font-semibold">
+        <div class="num mb-2.5 text-hero font-semibold">
           {{ totalGames.toLocaleString('en-US') }}
         </div>
-        <dl class="mb-3.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[12.5px]">
+        <dl class="mb-3.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-dense">
           <dt class="text-dim">format</dt>
           <dd>{{ formatSummary }}</dd>
           <dt class="text-dim">engines</dt>
@@ -634,13 +618,13 @@ const terse = 'text-xs text-dim';
           <dd class="num">{{ concurrency }}</dd>
         </dl>
         <button
-          class="w-full rounded-md bg-accent py-2.5 text-[13px] font-semibold text-[#08131d] disabled:bg-line disabled:text-faint"
+          class="btn-primary w-full py-2.5"
           :disabled="!canStart || blocked !== ''"
           @click="startNew"
         >
           Start
         </button>
-        <div v-if="blocked" class="mt-2 text-xs text-warn">{{ blocked }}</div>
+        <div v-if="blocked" class="mt-2 text-dense text-warn">{{ blocked }}</div>
       </aside>
     </div>
   </div>

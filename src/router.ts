@@ -6,6 +6,7 @@ import JobsView from './views/JobsView.vue';
 import LaterView from './views/LaterView.vue';
 import PlayView from './views/PlayView.vue';
 import SettingsView from './views/SettingsView.vue';
+import StyleView from './views/StyleView.vue';
 import TournamentsView from './views/TournamentsView.vue';
 
 // Hash history, because a static host such as GitHub Pages cannot route a deep path to the app.
@@ -20,6 +21,7 @@ export const router = createRouter({
     { path: '/tournaments/:id?', component: TournamentsView },
     { path: '/games/:id?/:game?', component: GamesView },
     { path: '/settings', component: SettingsView },
+    { path: '/style', component: StyleView },
     {
       path: '/:section(hosts|ratings)',
       component: LaterView,

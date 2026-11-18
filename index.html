@@ -4,6 +4,15 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Ratchet</title>
+    <script>
+      // the theme before the first paint, as src/ui/theme.ts sets it later
+      try {
+        const t = localStorage.getItem('ratchet-ui.theme');
+        const light =
+          t === 'light' || (t !== 'dark' && matchMedia('(prefers-color-scheme: light)').matches);
+        document.documentElement.dataset.theme = light ? 'light' : 'dark';
+      } catch {}
+    </script>
   </head>
   <body>
     <div id="app"></div>

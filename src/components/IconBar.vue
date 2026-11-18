@@ -12,7 +12,7 @@ const connected = computed(() => settings.managerUrl !== '');
   <nav
     class="flex items-center gap-0.5 border-b border-line bg-bar px-2 py-1 wide:flex-col wide:items-stretch wide:gap-1 wide:border-r wide:border-b-0 wide:px-1.5 wide:py-2.5"
   >
-    <span class="mr-2 text-[13px] font-bold wide:mr-0 wide:mb-2.5 wide:text-center wide:text-xs">
+    <span class="mr-2 text-dense font-bold wide:mr-0 wide:mb-2.5 wide:text-center wide:text-dense">
       Ratchet
     </span>
     <div class="flex gap-0.5 wide:flex-col wide:gap-1">
@@ -21,8 +21,8 @@ const connected = computed(() => settings.managerUrl !== '');
         :key="s.path"
         :to="s.path"
         :title="s.label"
-        class="relative flex flex-col items-center gap-px rounded-md px-1.5 py-1 text-[10px] text-dim hover:bg-[#1f252d] hover:text-text wide:px-0.5 wide:pt-1.5 wide:pb-1"
-        active-class="!bg-[#232b35] !text-text"
+        class="relative flex flex-col items-center gap-px rounded-md px-1.5 py-1 text-label text-dim hover:bg-hover hover:text-text wide:px-0.5 wide:pt-1.5 wide:pb-1"
+        active-class="!bg-active !text-text"
       >
         <component :is="s.icon" :size="20" :stroke-width="1.7" />
         <span class="hidden wide:block">{{ s.label }}</span>
@@ -30,7 +30,7 @@ const connected = computed(() => settings.managerUrl !== '');
     </div>
     <span class="flex-1" />
     <div
-      class="flex items-center gap-2.5 text-[11.5px] whitespace-nowrap text-dim wide:flex-col wide:gap-1.5 wide:text-center wide:text-[10.5px] wide:whitespace-normal"
+      class="flex items-center gap-2.5 text-small whitespace-nowrap text-dim wide:flex-col wide:gap-1.5 wide:text-center wide:text-label wide:whitespace-normal"
     >
       <RouterLink to="/settings" title="Settings › Manager">
         <span

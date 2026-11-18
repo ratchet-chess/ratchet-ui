@@ -58,6 +58,10 @@ and Elo over the pairs. Copy puts a match's statistics, in OpenBench's stat bloc
 the clipboard as text. PGN downloads the games played so far. A game in Last games opens in Games, found by its
 PGN `Round` tag.
 
+Settings sets the theme: light, dark, or as the system asks. The style page, `#/style`, shows the colors, the type
+scale and the shared pieces every page is drawn from. `src/style.css` holds them, and a test fails on a raw color or
+font size in a view.
+
 Every engine runs in `vendor/ratchet-wasi-host/`, a copy of Ratchet's browser host for WASI builds. Its `README.md`
 names the commit it came from.
 

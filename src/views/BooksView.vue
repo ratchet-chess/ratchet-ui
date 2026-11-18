@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ChevronDown, ChevronUp, Download, Trash2, Upload } from '@lucide/vue';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
+import PageHeader from '../components/PageHeader.vue';
 import Panel from '../components/Panel.vue';
 import { useBooks } from '../stores/books.ts';
+import { bytes, count } from '../ui/format.ts';
 
 const books = useBooks();
 
@@ -20,17 +22,7 @@ onUnmounted(() => {
   window.removeEventListener('drop', keep);
 });
 
-const size = (b: number) =>
-  b >= 1e9
-    ? `${(b / 1e9).toFixed(1)} GB`
-    : b >= 1e6
-      ? `${(b / 1e6).toFixed(1)} MB`
-      : `${Math.max(1, Math.round(b / 1e3))} KB`;
-const count = (n: number) => n.toLocaleString('en-US');
 const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
-const th = 'border-b border-line px-2 py-1 font-medium whitespace-nowrap';
-const buttonClass =
-  'rounded border border-line bg-panel2 px-2 py-0.5 text-xs inline-flex items-center gap-1';
 
 /** how many listed books show while the rest are folded away */
 const LISTED_SHOWN = 5;
@@ -66,56 +58,59 @@ function dropped(e: DragEvent): void {
 </script>
 
 <template>
-  <h1 class="mb-2.5 flex items-baseline gap-2.5 text-[15px] font-semibold">
-    Books
-    <span class="text-xs font-normal text-dim"
-      >pulled on demand from their repos, or added from your files; kept in this browser</span
-    >
-  </h1>
+  <PageHeader
+    title="Books"
+    sub="pulled on demand from their repos, or added from your files; kept in this browser"
+  />
   <div v-if="books.error" class="mb-3 text-bad">{{ books.error }}</div>
 
   <Panel title="Listed" note="the app's list, pinned by sha256">
-    <div class="overflow-x-auto">
-      <table class="w-full border-collapse text-[13px]">
+    <div class="@container overflow-x-auto">
+      <table class="w-full border-collapse text-dense">
         <thead>
-          <tr class="text-left text-[11.5px] text-dim">
-            <th :class="th">book</th>
-            <th :class="th" class="text-right">openings</th>
-            <th :class="th" class="text-right">download</th>
-            <th :class="th" class="text-right">unpacked</th>
-            <th :class="th">source</th>
-            <th :class="th" />
+          <tr class="text-left text-small text-dim">
+            <th class="th">book</th>
+            <th class="th text-right">openings</th>
+            <th class="th text-right">download</th>
+            <th class="th text-right">unpacked</th>
+            <th class="th hidden @4xl:table-cell">source</th>
+            <th class="th" />
           </tr>
         </thead>
         <tbody>
           <tr v-for="b in listedRows" :key="b.id" class="border-b border-row last:border-0">
-            <td class="num px-2 py-1.5 whitespace-nowrap">{{ b.id }}</td>
-            <td class="num px-2 py-1.5 text-right">{{ count(b.positions) }}</td>
-            <td class="num px-2 py-1.5 text-right text-dim">{{ size(b.zipBytes) }}</td>
-            <td class="num px-2 py-1.5 text-right text-dim">{{ size(b.bytes) }}</td>
             <td
-              class="num px-2 py-1.5 text-[11.5px] whitespace-nowrap text-dim"
+              class="num px-2 py-1.5 whitespace-nowrap"
+              :title="`${b.repo} @ ${b.commit.slice(0, 7)} · ${b.license}`"
+            >
+              {{ b.id }}
+            </td>
+            <td class="num px-2 py-1.5 text-right">{{ count(b.positions) }}</td>
+            <td class="num px-2 py-1.5 text-right whitespace-nowrap text-dim">
+              {{ bytes(b.zipBytes) }}
+            </td>
+            <td class="num px-2 py-1.5 text-right whitespace-nowrap text-dim">
+              {{ bytes(b.bytes) }}
+            </td>
+            <td
+              class="num hidden px-2 py-1.5 text-small whitespace-nowrap text-dim @4xl:table-cell"
               :title="`sha256 ${b.sha256}`"
             >
               {{ b.repo }} @ {{ b.commit.slice(0, 7) }} · {{ b.license }}
             </td>
             <td class="px-2 py-1.5 text-right whitespace-nowrap">
               <template v-if="books.progress.has(b.id)">
-                <span class="num text-xs text-dim">
+                <span class="num text-dense text-dim">
                   {{ Math.round((100 * (books.progress.get(b.id) ?? 0)) / b.zipBytes) }}%
                 </span>
               </template>
               <template v-else-if="books.pulled.has(b.id)">
-                <span class="mr-2 text-xs text-good">in this browser</span>
-                <button
-                  :class="buttonClass"
-                  title="Delete from this browser"
-                  @click="books.remove(b)"
-                >
+                <span class="mr-2 text-dense text-good">in this browser</span>
+                <button class="btn-sm" title="Delete from this browser" @click="books.remove(b)">
                   <Trash2 :size="13" />
                 </button>
               </template>
-              <button v-else :class="buttonClass" @click="books.pull(b)">
+              <button v-else class="btn-sm" @click="books.pull(b)">
                 <Download :size="13" /> Pull
               </button>
             </td>
@@ -123,7 +118,7 @@ function dropped(e: DragEvent): void {
           <tr v-if="listed.length > LISTED_SHOWN">
             <td colspan="6" class="px-2 py-1">
               <button
-                class="inline-flex items-center gap-1 text-xs text-dim hover:text-text"
+                class="inline-flex items-center gap-1 text-dense text-dim hover:text-text"
                 @click="listedOpen = !listedOpen"
               >
                 <template v-if="listedOpen"><ChevronUp :size="13" /> fewer</template>
@@ -146,14 +141,14 @@ function dropped(e: DragEvent): void {
       @dragleave="over = false"
       @drop.prevent="dropped"
     >
-      <table class="w-full border-collapse text-[13px]">
+      <table class="w-full border-collapse text-dense">
         <thead>
-          <tr class="text-left text-[11.5px] text-dim">
-            <th :class="th">book</th>
-            <th :class="th" class="text-right">openings</th>
-            <th :class="th" class="text-right">size</th>
-            <th :class="th">added</th>
-            <th :class="th" class="text-right">
+          <tr class="text-left text-small text-dim">
+            <th class="th">book</th>
+            <th class="th text-right">openings</th>
+            <th class="th text-right">size</th>
+            <th class="th">added</th>
+            <th class="th text-right">
               <input
                 ref="picker"
                 type="file"
@@ -162,7 +157,7 @@ function dropped(e: DragEvent): void {
                 @change="picked"
               />
               <button
-                :class="buttonClass"
+                class="btn-sm"
                 :disabled="books.adding !== null"
                 title="Add a book from a file of yours; drop one here too"
                 @click="picker?.click()"
@@ -176,11 +171,13 @@ function dropped(e: DragEvent): void {
           <tr v-for="b in books.user" :key="b.id" class="border-b border-row last:border-0">
             <td class="num px-2 py-1.5 whitespace-nowrap">{{ b.id }}</td>
             <td class="num px-2 py-1.5 text-right">{{ count(b.positions) }}</td>
-            <td class="num px-2 py-1.5 text-right text-dim">{{ size(b.bytes) }}</td>
+            <td class="num px-2 py-1.5 text-right whitespace-nowrap text-dim">
+              {{ bytes(b.bytes) }}
+            </td>
             <td class="num px-2 py-1.5 text-dim">{{ day(b.added) }}</td>
             <td class="px-2 py-1.5 text-right whitespace-nowrap">
               <button
-                :class="buttonClass"
+                class="btn-sm"
                 title="Delete this browser's copy; your file is untouched"
                 @click="books.removeUser(b.id)"
               >
@@ -190,7 +187,7 @@ function dropped(e: DragEvent): void {
           </tr>
           <tr v-if="books.adding" class="border-b border-row last:border-0">
             <td class="num px-2 py-1.5 whitespace-nowrap">{{ books.adding.name }}</td>
-            <td colspan="4" class="num px-2 py-1.5 text-right text-xs text-dim">
+            <td colspan="4" class="num px-2 py-1.5 text-right text-dense text-dim">
               <template v-if="books.adding.total === 0">copying into this browser…</template>
               <template v-else>
                 checking {{ count(books.adding.checked) }} of
@@ -199,7 +196,7 @@ function dropped(e: DragEvent): void {
             </td>
           </tr>
           <tr v-if="books.user.length === 0 && !books.adding">
-            <td colspan="5" class="px-2 py-3 text-center text-xs text-dim">
+            <td colspan="5" class="px-2 py-3 text-center text-dense text-dim">
               No book of yours yet. Add one, or drop a file here.
             </td>
           </tr>
@@ -208,12 +205,12 @@ function dropped(e: DragEvent): void {
     </div>
   </Panel>
 
-  <p class="text-[12px] text-faint">
+  <p class="text-dense text-faint">
     A pull checks the archive's sha256 against the app's list before it keeps the book. A book of
     yours is kept once every opening in it reads; the first that does not is named. Play and
     Tourneys draw openings from any book in this browser.
     <template v-if="books.storage">
-      Storage: {{ size(books.storage.usage) }} of {{ size(books.storage.quota) }}.
+      Storage: {{ bytes(books.storage.usage) }} of {{ bytes(books.storage.quota) }}.
     </template>
   </p>
 </template>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
+import PageHeader from '../components/PageHeader.vue';
 import Panel from '../components/Panel.vue';
 import { sections } from '../sections.ts';
 
@@ -15,7 +16,7 @@ const label = computed(() => sections.find((s) => s.path === `/${props.section}`
 </script>
 
 <template>
-  <h1 class="mb-2.5 text-[15px] font-semibold">{{ label }}</h1>
+  <PageHeader :title="label" />
   <Panel>
     <div class="px-3 py-4 text-dim">{{ plans[section] ?? '' }} Not built yet.</div>
   </Panel>

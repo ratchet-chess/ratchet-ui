@@ -7,7 +7,8 @@ import { bracket } from '../../match/director.ts';
 import { problemOf, type Problem } from '../../match/referee.ts';
 import type { GameRecord } from '../../match/summary.ts';
 import type { Item } from '../../stores/tournaments.ts';
-import { count, fmt, label, planned, roundName } from './show.ts';
+import { count, signed, spanText, whenText } from '../../ui/format.ts';
+import { label, planned, roundName } from './show.ts';
 
 export type Group = 'running' | 'stopped' | 'finished';
 
@@ -51,22 +52,6 @@ export function archiveMonths(items: readonly Item[], now: number): [string, Ite
   return [...months]
     .toSorted((a, b) => b[0].localeCompare(a[0]))
     .map(([m, list]) => [m, list.toSorted((a, b) => endOf(b).localeCompare(endOf(a)))]);
-}
-
-/** a past time as a reader places it: today's clock time, yesterday, or a date */
-export function whenText(iso: string, now: number): string {
-  const t = new Date(iso);
-  const n = new Date(now);
-  const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-  const days = Math.round((day(n) - day(t)) / DAY);
-  if (days === 0)
-    return t.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
-  if (days === 1) return 'yesterday';
-  return t.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    ...(t.getFullYear() === n.getFullYear() ? {} : { year: 'numeric' }),
-  });
 }
 
 export const endedText = (i: Item, now: number): string => whenText(endOf(i), now);
@@ -123,7 +108,7 @@ export function standingText(i: Item): string {
   if (i.state.games.length === 0) return '';
   if (s.match) {
     const { value, ci } = s.match.nelo;
-    return `nElo ${fmt(value)} ± ${Number.isFinite(ci) ? ci.toFixed(1) : '—'}`;
+    return `nElo ${signed(value)} ± ${Number.isFinite(ci) ? ci.toFixed(1) : '—'}`;
   }
   const f = i.config.format;
   if (f.kind === 'knockout') {
@@ -239,17 +224,6 @@ export function etaOf(i: Item, now: number): Eta | null {
     ms: (left * Math.max(1000, now - i.since.at)) / done,
     bound: f.kind === 'match' && f.sprt ? 'at most' : f.kind === 'knockout' ? 'at least' : 'about',
   };
-}
-
-/** a span to come, as precise as it is worth: `8 min`, `3 h 10 min`, `14 h`, `4 d 14 h` */
-export function spanText(ms: number): string {
-  const min = Math.max(1, Math.round(ms / 60_000));
-  if (min < 60) return `${min} min`;
-  const h = Math.round(min / 60);
-  if (min < 10 * 60)
-    return min % 60 === 0 ? `${min / 60} h` : `${Math.floor(min / 60)} h ${min % 60} min`;
-  if (h < 48) return `${h} h`;
-  return h % 24 === 0 ? `${h / 24} d` : `${Math.floor(h / 24)} d ${h % 24} h`;
 }
 
 const BOUND_MARK: Record<Eta['bound'], string> = { about: '≈', 'at most': '≤', 'at least': '≥' };

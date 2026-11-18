@@ -10,6 +10,7 @@ import { usePlay, type Player } from '../play/usePlay.ts';
 import { useBooks } from '../stores/books.ts';
 import { useEngines } from '../stores/engines.ts';
 import { PLAYED } from '../stores/games.ts';
+import { thousands } from '../ui/format.ts';
 
 const engines = useEngines();
 const books = useBooks();
@@ -150,11 +151,6 @@ function savePgn(): void {
   a.click();
   URL.revokeObjectURL(url);
 }
-
-const kn = (n: number) => `${Math.round(n / 1000).toLocaleString('en-US')} k`;
-const selectClass =
-  'num rounded border border-line bg-panel2 px-1.5 py-0.5 text-[12.5px] text-text';
-const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs disabled:text-faint';
 </script>
 
 <template>
@@ -181,7 +177,7 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
               <button
                 v-for="p in PROMOTIONS"
                 :key="p.role"
-                class="size-14 rounded bg-panel2 text-4xl hover:bg-[#2a3440]"
+                class="size-14 rounded bg-panel2 text-glyph hover:bg-active"
                 @click="promote(p.role)"
               >
                 {{ p.glyph }}
@@ -202,7 +198,7 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
             />
             {{ names[sides[where]] }}
           </span>
-          <span class="num text-lg">{{ clockText(times[sides[where]]) }}</span>
+          <span class="num text-stat">{{ clockText(times[sides[where]]) }}</span>
         </div>
       </template>
     </div>
@@ -210,12 +206,12 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
     <div>
       <Panel title="Game">
         <div
-          class="grid grid-cols-[max-content_1fr] items-center gap-x-3 gap-y-1.5 px-3 py-2.5 text-[13px]"
+          class="grid grid-cols-[max-content_1fr] items-center gap-x-3 gap-y-1.5 px-3 py-2.5 text-dense"
         >
           <span class="text-dim">White</span>
           <select
             v-model="whiteChoice"
-            :class="selectClass"
+            class="field-sm num"
             :disabled="phase === 'playing' || phase === 'starting'"
           >
             <option value="person">You</option>
@@ -224,7 +220,7 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
           <span class="text-dim">Black</span>
           <select
             v-model="blackChoice"
-            :class="selectClass"
+            class="field-sm num"
             :disabled="phase === 'playing' || phase === 'starting'"
           >
             <option value="person">You</option>
@@ -233,7 +229,7 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
           <span class="text-dim">opening</span>
           <select
             v-model="book"
-            :class="selectClass"
+            class="field-sm num"
             :disabled="phase === 'playing' || phase === 'starting'"
           >
             <option value="">start position</option>
@@ -244,7 +240,7 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
           <span class="text-dim">time</span>
           <select
             v-model="controlLabel"
-            :class="selectClass"
+            class="field-sm num"
             :disabled="phase === 'playing' || phase === 'starting'"
           >
             <option v-for="t in TIME_CONTROLS" :key="t.label" :value="t.label">
@@ -253,30 +249,26 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
           </select>
         </div>
         <div class="flex flex-wrap gap-1.5 border-t border-row px-3 py-2">
-          <button :class="buttonClass" :disabled="phase === 'starting'" @click="newGame">
-            New game
-          </button>
-          <button :class="buttonClass" :disabled="phase !== 'playing'" @click="play.resign()">
-            Resign
-          </button>
+          <button class="btn" :disabled="phase === 'starting'" @click="newGame">New game</button>
+          <button class="btn" :disabled="phase !== 'playing'" @click="play.resign()">Resign</button>
           <button
-            :class="buttonClass"
+            class="btn"
             :disabled="phase !== 'playing' && phase !== 'starting'"
             @click="play.abort()"
           >
             Abort
           </button>
-          <button :class="buttonClass" @click="orientation = opposite(orientation)">Flip</button>
-          <button :class="buttonClass" :disabled="game.san.length === 0" @click="copyPgn">
+          <button class="btn" @click="orientation = opposite(orientation)">Flip</button>
+          <button class="btn" :disabled="game.san.length === 0" @click="copyPgn">
             {{ copyNote || 'Copy PGN' }}
           </button>
-          <button :class="buttonClass" :disabled="game.san.length === 0" @click="savePgn">
+          <button class="btn" :disabled="game.san.length === 0" @click="savePgn">
             Download PGN
           </button>
         </div>
         <div
           v-if="openingLabel && phase !== 'setup'"
-          class="num border-t border-row px-3 py-1.5 text-[12px] text-dim"
+          class="num border-t border-row px-3 py-1.5 text-dense text-dim"
         >
           from {{ openingLabel }}
         </div>
@@ -287,15 +279,10 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
         <div v-else-if="phase === 'over'" class="border-t border-row px-3 py-2">
           <span class="num mr-2 font-semibold">{{ game.outcome?.result ?? '*' }}</span>
           <span class="text-dim">{{ game.outcome?.reason ?? 'aborted' }}</span>
-          <RouterLink v-if="saved" :to="`/games/${PLAYED}`" class="ml-2 text-xs text-accent"
+          <RouterLink v-if="saved" :to="`/games/${PLAYED}`" class="ml-2 text-dense text-accent"
             >in Games</RouterLink
           >
-          <button
-            v-else-if="game.san.length > 0"
-            :class="buttonClass"
-            class="ml-2"
-            @click="play.save()"
-          >
+          <button v-else-if="game.san.length > 0" class="btn ml-2" @click="play.save()">
             Save to Games
           </button>
         </div>
@@ -307,12 +294,12 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
         :title="names[c]"
         :note="c"
       >
-        <div class="num px-3 py-2 text-[12px]">
+        <div class="num px-3 py-2 text-dense">
           <template v-if="thinking[c]">
             <div>
               depth {{ thinking[c]?.depth }} ·
               <span class="text-text">{{ thinking[c]?.score }}</span> ·
-              {{ kn(thinking[c]?.nodes ?? 0) }}n · {{ kn(thinking[c]?.nps ?? 0) }}n/s
+              {{ thousands(thinking[c]?.nodes ?? 0) }}n · {{ thousands(thinking[c]?.nps ?? 0) }}n/s
             </div>
             <div class="mt-0.5 text-dim">{{ thinking[c]?.line.join(' ') }}</div>
           </template>
@@ -321,7 +308,7 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
       </Panel>
 
       <Panel title="Moves">
-        <div class="num max-h-72 overflow-auto px-3 py-2 text-[12.5px]">
+        <div class="num max-h-72 overflow-auto px-3 py-2 text-dense">
           <div v-for="r in moveRows" :key="r.n" class="grid grid-cols-[2.5rem_1fr_1fr]">
             <span class="text-faint">{{ r.n }}.</span><span>{{ r.white }}</span
             ><span>{{ r.black }}</span>

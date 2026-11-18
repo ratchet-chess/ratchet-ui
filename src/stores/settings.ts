@@ -8,6 +8,12 @@ const MANAGER_KEY = 'ratchet-ui.manager';
 const CONTROLS_KEY = 'ratchet-ui.controls';
 const TEMPLATES_KEY = 'ratchet-ui.templates';
 const START_KEY = 'ratchet-ui.template-start';
+/** index.html reads this key too, to set the theme before the first paint */
+const THEME_KEY = 'ratchet-ui.theme';
+
+/** light, dark, or as the system asks */
+export type Theme = 'light' | 'dark' | 'system';
+const isTheme = (x: unknown): x is Theme => x === 'light' || x === 'dark' || x === 'system';
 
 /** a tournament's setup without what makes one run: its id, date, name and seed */
 export type Setup = Omit<TournamentConfig, 'id' | 'created' | 'name' | 'seed'>;
@@ -60,8 +66,8 @@ function readControls(): string[] {
 }
 
 /**
- * The app's settings that outlive a reload: the manager's address, the user's own time controls
- * and the tournament templates. They are small, so localStorage holds them; games and books are in
+ * The app's settings that outlive a reload: the manager's address, the user's own time controls,
+ * the tournament templates and the theme. They are small, so localStorage holds them; games and books are in
  * OPFS.
  */
 export const useSettings = defineStore('settings', () => {
@@ -86,6 +92,13 @@ export const useSettings = defineStore('settings', () => {
     else localStorage.removeItem(START_KEY);
   });
 
+  const stored = localStorage.getItem(THEME_KEY);
+  const theme = ref<Theme>(isTheme(stored) ? stored : 'system');
+  watch(theme, (t) => {
+    if (t === 'system') localStorage.removeItem(THEME_KEY);
+    else localStorage.setItem(THEME_KEY, t);
+  });
+
   /** keeps a setup under a name, replacing a template of that name */
   function saveTemplate(name: string, setup: Setup): void {
     const rest = templates.value.filter((t) => t.name !== name);
@@ -104,6 +117,7 @@ export const useSettings = defineStore('settings', () => {
     controls,
     templates,
     startTemplate,
+    theme,
     saveTemplate,
     removeTemplate,
   };

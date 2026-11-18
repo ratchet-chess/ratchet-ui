@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import PageHeader from '../components/PageHeader.vue';
 import Panel from '../components/Panel.vue';
 import { useSettings } from '../stores/settings.ts';
 
@@ -6,9 +7,7 @@ const settings = useSettings();
 </script>
 
 <template>
-  <h1 class="mb-2.5 flex items-baseline gap-2.5 text-[15px] font-semibold">
-    Jobs <span class="text-xs font-normal text-dim">on the manager · read only</span>
-  </h1>
+  <PageHeader title="Jobs" sub="on the manager · read only" />
   <Panel>
     <div class="px-3 py-4 text-dim">
       <template v-if="settings.managerUrl === ''">

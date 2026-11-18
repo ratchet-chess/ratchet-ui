@@ -1,30 +1,163 @@
 @import 'tailwindcss';
 
+/*
+ * The app's look in one place: colors by role, a type scale, and the small shared classes. Views use
+ * these names only; style.test.ts fails on a raw color or a hand-picked size in a view, and the
+ * style page (#/style) shows every piece. The dark values are here; the light ones override them.
+ */
 @theme {
+  /* surfaces */
   --color-bg: #0f1216;
   --color-bar: #161a20;
   --color-panel: #181c22;
   --color-panel2: #1e232b;
+  --color-popover: #11161c;
+  /* lines */
   --color-line: #2a313b;
+  --color-line-strong: #3a4553;
   --color-row: #20262e;
+  /* text */
   --color-text: #d8dee6;
   --color-dim: #7d8794;
   --color-faint: #4a525d;
+  --color-on-accent: #08131d;
+  /* states of a row or a control */
+  --color-hover: #1c2128;
+  --color-active: #232b35;
+  --color-selected: #1d2631;
+  --color-chosen: #22303d;
+  /* tones, each with a border for its tags */
   --color-accent: #5aa9e6;
+  --color-accent-line: #2c4a66;
   --color-good: #4cc38a;
+  --color-good-line: #2c6b4d;
   --color-bad: #e5604d;
+  --color-bad-line: #7a3a30;
   --color-warn: #e0a83a;
+  --color-warn-line: #7a5d24;
+  /* bars: the empty track, and games in play beside those done */
+  --color-track: #262c35;
+  --color-live: #3a6f99;
+
+  /* the type scale; nothing else sets a size */
+  --text-*: initial;
+  --text-label: 10.5px;
+  --text-small: 11.5px;
+  --text-dense: 12.5px;
+  --text-base: 14px;
+  --text-base--line-height: calc(20 / 14);
+  --text-title: 15px;
+  --text-stat: 18px;
+  --text-stat--line-height: 1.5;
+  --text-hero: 22px;
+  --text-hero--line-height: 1.4;
+  --text-glyph: 36px;
+  --text-glyph--line-height: 1;
+
   --font-mono: ui-monospace, 'JetBrains Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
   --breakpoint-wide: 1100px;
 }
 
 @layer base {
+  :root {
+    color-scheme: dark;
+  }
+  :root[data-theme='light'] {
+    color-scheme: light;
+    --color-bg: #f4f6f9;
+    --color-bar: #e9edf2;
+    --color-panel: #ffffff;
+    --color-panel2: #f5f7fa;
+    --color-popover: #ffffff;
+    --color-line: #d3dae3;
+    --color-line-strong: #b4bfcc;
+    --color-row: #e6ebf0;
+    --color-text: #1b232d;
+    --color-dim: #566272;
+    --color-faint: #8d97a4;
+    --color-on-accent: #ffffff;
+    --color-hover: #eef2f6;
+    --color-active: #e3e8ee;
+    --color-selected: #e0ebf6;
+    --color-chosen: #dbe8f5;
+    --color-accent: #1a6bb0;
+    --color-accent-line: #9cc2e4;
+    --color-good: #16804d;
+    --color-good-line: #92cfae;
+    --color-bad: #c23b27;
+    --color-bad-line: #e6a497;
+    --color-warn: #965f00;
+    --color-warn-line: #dcbf7d;
+    --color-track: #e1e6ec;
+    --color-live: #8dbbe3;
+  }
   body {
-    @apply bg-bg text-text text-sm;
+    @apply bg-bg text-base text-text;
   }
 }
 
 @utility num {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
+}
+
+/* a label in capitals: a panel's title (text-small), a card's or a group's (text-label) */
+@utility caps {
+  @apply tracking-widest text-dim uppercase;
+}
+
+/* buttons: the usual one, a small one for a row or a pager, and the one main action of a form */
+@utility btn {
+  @apply inline-flex items-center justify-center gap-1 rounded border border-line bg-panel2 px-2.5 py-1 text-dense text-text hover:border-line-strong disabled:cursor-not-allowed disabled:border-line disabled:text-faint;
+}
+@utility btn-sm {
+  @apply inline-flex items-center justify-center gap-1 rounded border border-line bg-panel2 px-2 py-0.5 text-small text-dim hover:text-text disabled:cursor-not-allowed disabled:text-faint;
+}
+@utility btn-primary {
+  @apply rounded-md bg-accent px-3 py-2 text-dense font-semibold text-on-accent disabled:cursor-not-allowed disabled:bg-line disabled:text-faint;
+}
+
+/* a text box or a select: the form's size, and a compact one for a header or a toolbar */
+@utility field {
+  @apply h-[30px] rounded-md border border-line bg-panel2 px-2 text-dense text-text outline-none placeholder:text-faint placeholder:italic focus:border-accent;
+}
+@utility field-sm {
+  @apply h-7 rounded-md border border-line bg-panel2 px-2 text-dense text-text outline-none focus:border-accent;
+}
+
+/* a number box with no spinner, typed into */
+@utility no-spin {
+  appearance: textfield;
+  &::-webkit-inner-spin-button,
+  &::-webkit-outer-spin-button {
+    appearance: none;
+  }
+}
+
+/* a short status word in a box; a tone class gives its color */
+@utility tag {
+  @apply num inline-block rounded border px-1.5 text-label whitespace-nowrap;
+}
+@utility tone-dim {
+  @apply border-line text-dim;
+}
+@utility tone-accent {
+  @apply border-accent-line text-accent;
+}
+@utility tone-good {
+  @apply border-good-line text-good;
+}
+@utility tone-bad {
+  @apply border-bad-line text-bad;
+}
+@utility tone-warn {
+  @apply border-warn-line text-warn;
+}
+
+/* a table's header cell, and a row of a list a click opens */
+@utility th {
+  @apply border-b border-line px-2 py-1 font-medium whitespace-nowrap;
+}
+@utility row {
+  @apply cursor-pointer border-b border-row last:border-b-0 hover:bg-hover;
 }

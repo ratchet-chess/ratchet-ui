@@ -111,11 +111,11 @@ const hoverLeft = computed(() => (hover.value ? (100 * x(hover.value.pairs)) / W
 
 <template>
   <figure class="min-w-0">
-    <figcaption class="mb-1 text-[10.5px] tracking-wider text-dim uppercase">
+    <figcaption class="mb-1 text-label tracking-wider text-dim uppercase">
       {{ title }}
     </figcaption>
     <div class="flex gap-1.5">
-      <div class="num relative w-10 shrink-0 text-right text-[10.5px] text-faint">
+      <div class="num relative w-10 shrink-0 text-right text-label text-faint">
         <span
           v-for="t in ticks"
           :key="t"
@@ -169,7 +169,7 @@ const hoverLeft = computed(() => (hover.value ? (100 * x(hover.value.pairs)) / W
         </svg>
         <div
           v-if="unbounded"
-          class="pointer-events-none absolute inset-0 flex items-center justify-center text-xs text-dim"
+          class="pointer-events-none absolute inset-0 flex items-center justify-center text-dense text-dim"
         >
           not finite yet: every pair so far went one way
         </div>
@@ -179,7 +179,7 @@ const hoverLeft = computed(() => (hover.value ? (100 * x(hover.value.pairs)) / W
             :style="{ left: `${hoverLeft}%` }"
           />
           <div
-            class="num pointer-events-none absolute top-1 z-10 rounded border border-line bg-panel px-2 py-1 text-[11.5px] whitespace-nowrap shadow"
+            class="num pointer-events-none absolute top-1 z-10 rounded border border-line bg-panel px-2 py-1 text-small whitespace-nowrap shadow"
             :style="
               hoverLeft > 60 ? { right: `${100 - hoverLeft + 1}%` } : { left: `${hoverLeft + 1}%` }
             "
@@ -198,7 +198,7 @@ const hoverLeft = computed(() => (hover.value ? (100 * x(hover.value.pairs)) / W
         </template>
       </div>
     </div>
-    <div class="num mt-0.5 flex justify-between pl-11.5 text-[10.5px] text-faint">
+    <div class="num mt-0.5 flex justify-between pl-11.5 text-label text-faint">
       <span>0</span><span>{{ maxPairs.toLocaleString('en-US') }} {{ unit }}</span>
     </div>
   </figure>

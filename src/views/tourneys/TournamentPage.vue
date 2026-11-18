@@ -3,7 +3,9 @@
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import HelpTip from '../../components/HelpTip.vue';
+import Pager from '../../components/Pager.vue';
 import Panel from '../../components/Panel.vue';
+import StatCard from '../../components/StatCard.vue';
 import { bracket } from '../../match/director.ts';
 import { BYE, gameNumber, gamesPerPair, plannedGames } from '../../match/format.ts';
 import { matchText, score, standingsText, TIEBREAK_NAMES, tiebreaks } from '../../match/report.ts';
@@ -12,17 +14,8 @@ import { pointsOf, type GameRecord, type PairRecord } from '../../match/summary.
 import { useGames } from '../../stores/games.ts';
 import { collectionOf, useTournaments, type Item } from '../../stores/tournaments.ts';
 import MatchChart, { type ChartPoint } from './MatchChart.vue';
-import {
-  buttonClass,
-  fmt,
-  formatText,
-  label,
-  progress,
-  roundName,
-  statusClass,
-  statusText,
-  th,
-} from './show.ts';
+import { signed } from '../../ui/format.ts';
+import { formatText, label, progress, roundName, statusClass, statusText } from './show.ts';
 
 const props = defineProps<{ item: Item }>();
 const tournaments = useTournaments();
@@ -34,6 +27,8 @@ const bracketRounds = computed(() => {
   if (i.config.format.kind !== 'knockout') return [];
   return bracket(i.config.entrants.length, i.config.format.pairs, i.state.pairs, i.state.games);
 });
+/** a 95% interval's half-width, or a dash while it is unbounded */
+const interval = (ci: number) => (Number.isFinite(ci) ? ci.toFixed(1) : '—');
 const llrAt = (v: number, lo: number, hi: number) =>
   (100 * (Math.min(hi, Math.max(lo, v)) - lo)) / (hi - lo);
 /** a tournament this tab may play on or delete: not done, and not played by a tab */
@@ -93,7 +88,7 @@ const eloPoints = computed<ChartPoint[]>(() =>
     pairs: p.pairs,
     value: p.elo.value,
     ci: p.elo.ci,
-    note: `nElo ${fmt(p.nelo.value)}`,
+    note: `nElo ${signed(p.nelo.value)}`,
   })),
 );
 
@@ -177,52 +172,44 @@ async function copy(): Promise<void> {
 
 <template>
   <div class="@container">
-    <RouterLink to="/tournaments" class="mb-2 inline-block text-[12.5px] text-accent wide:hidden"
+    <RouterLink to="/tournaments" class="mb-2 inline-block text-dense text-accent wide:hidden"
       >‹ Tourneys</RouterLink
     >
     <div class="mb-2 flex flex-wrap items-baseline gap-2">
-      <h2 class="text-[15px] font-semibold">{{ item.config.name }}</h2>
-      <span
-        class="num rounded border px-1.5 text-[10.5px]"
-        :class="statusClass(statusText(item))"
-        >{{ statusText(item) }}</span
-      >
+      <h2 class="text-title font-semibold">{{ item.config.name }}</h2>
+      <span class="tag" :class="statusClass(statusText(item))">{{ statusText(item) }}</span>
       <span class="flex-1" />
-      <span v-if="notice" class="text-xs text-dim">{{ notice }}</span>
+      <span v-if="notice" class="text-dense text-dim">{{ notice }}</span>
       <template v-if="tournaments.running(item.config.id)">
         <button
-          :class="buttonClass"
+          class="btn"
           :disabled="item.state.status !== 'running'"
           @click="tournaments.stop(item.config.id, false)"
         >
           Stop after these games
         </button>
-        <button :class="buttonClass" @click="tournaments.stop(item.config.id, true)">
-          Stop now
-        </button>
+        <button class="btn" @click="tournaments.stop(item.config.id, true)">Stop now</button>
       </template>
       <template v-else-if="idle(item)">
         <button
           v-if="item.ended !== 'done'"
-          :class="buttonClass"
+          class="btn"
           title="Plays the unfinished games of its pairs, then the rest"
           @click="tournaments.resume(item.config.id)"
         >
           Resume
         </button>
-        <button :class="buttonClass" @click="remove(item)">Delete</button>
+        <button class="btn" @click="remove(item)">Delete</button>
       </template>
-      <RouterLink :to="`/games/${collectionOf(item.config.id)}`" :class="buttonClass"
-        >Games</RouterLink
-      >
+      <RouterLink :to="`/games/${collectionOf(item.config.id)}`" class="btn">Games</RouterLink>
       <RouterLink
         :to="{ path: '/tournaments/new', query: { from: item.config.id } }"
-        :class="buttonClass"
+        class="btn"
         title="A new setup with this one's settings"
         >Clone</RouterLink
       >
       <button
-        :class="buttonClass"
+        class="btn"
         title="Download the games played so far as one PGN file"
         :disabled="item.state.games.length === 0"
         @click="exportPgn"
@@ -230,7 +217,7 @@ async function copy(): Promise<void> {
         PGN
       </button>
       <button
-        :class="buttonClass"
+        class="btn"
         :title="
           item.state.summary.match
             ? 'Copy the statistics as text, as OpenBench writes them'
@@ -241,7 +228,7 @@ async function copy(): Promise<void> {
         Copy
       </button>
     </div>
-    <div class="num mb-3 text-[12px] text-dim">
+    <div class="num mb-3 text-dense text-dim">
       {{ formatText(item.config.format, item.config.paired) }} · {{ item.config.control }} ·
       {{ item.config.book || 'start position' }} ·
       {{
@@ -257,77 +244,60 @@ async function copy(): Promise<void> {
 
     <template v-if="item.state.summary.match">
       <div class="mb-3 grid grid-cols-2 gap-2 @4xl:grid-cols-5">
-        <div
+        <StatCard
           v-if="item.state.summary.match.llr !== null && item.state.summary.match.bounds"
-          class="col-span-2 rounded-md border border-line bg-panel2 px-2.5 py-2"
+          label="LLR"
+          class="col-span-2"
         >
-          <div class="flex items-center gap-1.5 text-[10.5px] tracking-wider text-dim uppercase">
-            LLR
+          <template #help>
             <HelpTip
               >The evidence so far: the SPRT accepts H1 at the upper bound and H0 at the lower. The
               marker is where it sits between them.</HelpTip
             >
-          </div>
-          <div class="num text-lg">
-            {{ item.state.summary.match.llr.toFixed(2) }}
-            <span class="text-xs text-dim"
-              >of [{{ item.state.summary.match.bounds.lower.toFixed(2) }},
-              {{ item.state.summary.match.bounds.upper.toFixed(2) }}]</span
-            >
-          </div>
-          <div class="relative mt-1.5 h-2 rounded bg-[#262c35]">
-            <div
-              class="absolute top-[-2px] h-3 w-1 -translate-x-1/2 rounded bg-accent"
-              :style="{
-                left: `${llrAt(item.state.summary.match.llr, item.state.summary.match.bounds.lower, item.state.summary.match.bounds.upper)}%`,
-              }"
-            />
-            <div class="absolute top-0 left-1/2 h-2 w-px bg-faint" />
-          </div>
-        </div>
-        <div class="rounded-md border border-line bg-panel2 px-2.5 py-2">
-          <div class="flex items-center gap-1.5 text-[10.5px] tracking-wider text-dim uppercase">
-            nElo
+          </template>
+          {{ item.state.summary.match.llr.toFixed(2) }}
+          <span class="text-dense text-dim"
+            >of [{{ item.state.summary.match.bounds.lower.toFixed(2) }},
+            {{ item.state.summary.match.bounds.upper.toFixed(2) }}]</span
+          >
+          <template #below>
+            <div class="relative mt-1.5 h-2 rounded bg-track">
+              <div
+                class="absolute top-[-2px] h-3 w-1 -translate-x-1/2 rounded bg-accent"
+                :style="{
+                  left: `${llrAt(item.state.summary.match.llr, item.state.summary.match.bounds.lower, item.state.summary.match.bounds.upper)}%`,
+                }"
+              />
+              <div class="absolute top-0 left-1/2 h-2 w-px bg-faint" />
+            </div>
+          </template>
+        </StatCard>
+        <StatCard label="nElo">
+          <template #help>
             <HelpTip
               >Normalized Elo: the difference scaled by how much results vary, as fishtest and
               OpenBench report it; the SPRT's bounds are in nElo. ± is the 95% interval.</HelpTip
             >
-          </div>
-          <div class="num text-lg">{{ fmt(item.state.summary.match.nelo.value) }}</div>
-          <div class="num text-xs text-dim">
-            ±
-            {{
-              Number.isFinite(item.state.summary.match.nelo.ci)
-                ? item.state.summary.match.nelo.ci.toFixed(1)
-                : '—'
-            }}
-          </div>
-        </div>
-        <div class="rounded-md border border-line bg-panel2 px-2.5 py-2">
-          <div class="text-[10.5px] tracking-wider text-dim uppercase">Elo</div>
-          <div class="num text-lg">{{ fmt(item.state.summary.match.elo.value) }}</div>
-          <div class="num text-xs text-dim">
-            ±
-            {{
-              Number.isFinite(item.state.summary.match.elo.ci)
-                ? item.state.summary.match.elo.ci.toFixed(1)
-                : '—'
-            }}
-          </div>
-        </div>
-        <div class="rounded-md border border-line bg-panel2 px-2.5 py-2">
-          <div class="flex items-center gap-1.5 text-[10.5px] tracking-wider text-dim uppercase">
-            {{ per === 2 ? 'W D L · pairs' : 'W D L' }}
-            <HelpTip v-if="per === 2" side="left"
+          </template>
+          {{ signed(item.state.summary.match.nelo.value) }}
+          <template #sub>± {{ interval(item.state.summary.match.nelo.ci) }}</template>
+        </StatCard>
+        <StatCard label="Elo">
+          {{ signed(item.state.summary.match.elo.value) }}
+          <template #sub>± {{ interval(item.state.summary.match.elo.ci) }}</template>
+        </StatCard>
+        <StatCard :label="per === 2 ? 'W D L · pairs' : 'W D L'">
+          <template v-if="per === 2" #help>
+            <HelpTip side="left"
               >The tested engine's wins, draws and losses; under them the pairs by their score from
               its side, 0, ½, 1, 1½ and 2 points (pentanomial).</HelpTip
             >
-          </div>
-          <div class="num text-[15px]">{{ item.state.summary.match.wdl.join(' ') }}</div>
-          <div v-if="item.state.summary.match.model === 'pentanomial'" class="num text-xs text-dim">
-            {{ item.state.summary.match.ptnml.join(' ') }}
-          </div>
-        </div>
+          </template>
+          <span class="text-title">{{ item.state.summary.match.wdl.join(' ') }}</span>
+          <template v-if="item.state.summary.match.model === 'pentanomial'" #sub>{{
+            item.state.summary.match.ptnml.join(' ')
+          }}</template>
+        </StatCard>
       </div>
       <Panel
         v-if="eloPoints.length >= 2"
@@ -354,25 +324,25 @@ async function copy(): Promise<void> {
 
     <Panel v-else title="Standings">
       <div class="overflow-x-auto">
-        <table class="w-full border-collapse text-[12.5px]">
+        <table class="w-full border-collapse text-dense">
           <thead>
-            <tr class="text-left text-[11.5px] text-dim">
-              <th :class="th">#</th>
-              <th :class="th">engine</th>
-              <th :class="th" class="text-right">games</th>
-              <th :class="th" class="text-right">W</th>
-              <th :class="th" class="text-right">D</th>
-              <th :class="th" class="text-right">L</th>
-              <th :class="th" class="text-right">points</th>
-              <th :class="th" class="text-right">score</th>
-              <th v-if="isSwiss" :class="th" class="text-right">byes</th>
-              <th v-for="t in breaks" :key="t" :class="th" class="text-right">
+            <tr class="text-left text-small text-dim">
+              <th class="th">#</th>
+              <th class="th">engine</th>
+              <th class="th text-right">games</th>
+              <th class="th text-right">W</th>
+              <th class="th text-right">D</th>
+              <th class="th text-right">L</th>
+              <th class="th text-right">points</th>
+              <th class="th text-right">score</th>
+              <th v-if="isSwiss" class="th text-right">byes</th>
+              <th v-for="t in breaks" :key="t" class="th text-right">
                 <span class="inline-flex items-center gap-1">
                   {{ TIEBREAK_NAMES[t] }}
                   <HelpTip side="left">{{ TIEBREAK_HELP[t] }}</HelpTip>
                 </span>
               </th>
-              <th :class="th" class="text-right">Elo vs field</th>
+              <th class="th text-right">Elo vs field</th>
             </tr>
           </thead>
           <tbody>
@@ -395,7 +365,9 @@ async function copy(): Promise<void> {
               <td v-for="t in breaks" :key="t" class="num px-2 py-1 text-right">
                 {{ Number(r[t].toFixed(2)) }}
               </td>
-              <td class="num px-2 py-1 text-right">{{ r.elo === null ? '—' : fmt(r.elo, 0) }}</td>
+              <td class="num px-2 py-1 text-right">
+                {{ r.elo === null ? '—' : signed(r.elo, 0) }}
+              </td>
             </tr>
           </tbody>
         </table>
@@ -403,9 +375,9 @@ async function copy(): Promise<void> {
     </Panel>
 
     <Panel v-if="bracketRounds.length > 0" title="Bracket" note="points over finished pairs">
-      <div class="grid gap-3 px-3 py-2 text-[12.5px] @3xl:grid-flow-col">
+      <div class="grid gap-3 px-3 py-2 text-dense @3xl:grid-flow-col">
         <div v-for="(round, r) in bracketRounds" :key="r">
-          <div class="mb-1 text-[10.5px] tracking-wider text-dim uppercase">
+          <div class="caps mb-1 text-label">
             {{ roundName(r, bracketRounds.length) }}
           </div>
           <div
@@ -424,7 +396,7 @@ async function copy(): Promise<void> {
               }}</span>
               <span v-if="t.pairs.length > 0">{{ t.points[s] }}</span>
             </div>
-            <div v-if="t.by === 'seed'" class="text-[11px] text-faint">
+            <div v-if="t.by === 'seed'" class="text-small text-faint">
               tied after {{ t.done }} pairs: the higher seed goes through
             </div>
           </div>
@@ -441,9 +413,9 @@ async function copy(): Promise<void> {
       note="points of the row's engine against the column's, over games played; in standings order"
     >
       <div class="overflow-x-auto">
-        <table class="border-collapse text-[12px]">
+        <table class="border-collapse text-dense">
           <thead>
-            <tr class="text-[11px] text-dim">
+            <tr class="text-small text-dim">
               <th class="px-2 py-0.5 font-medium" />
               <th class="px-2 py-0.5" />
               <th v-for="(_, k) in crossOrder" :key="k" class="num px-2 py-0.5 font-medium">
@@ -479,8 +451,8 @@ async function copy(): Promise<void> {
       title="Schedule"
       :note="`${item.state.pairs.length} ${per === 2 ? 'pairs' : 'games'} issued${unissued === null ? '; the next are paired from results' : unissued > 0 ? `, ${unissued} to come` : ''}`"
     >
-      <div class="px-3 py-1.5 text-[12px]">
-        <button class="text-xs text-dim hover:text-text" @click="scheduleOpen = !scheduleOpen">
+      <div class="px-3 py-1.5 text-dense">
+        <button class="text-dense text-dim hover:text-text" @click="scheduleOpen = !scheduleOpen">
           {{
             scheduleOpen
               ? `▾ hide the ${per === 2 ? 'pairs' : 'games'}`
@@ -495,7 +467,7 @@ async function copy(): Promise<void> {
           >
             <div
               v-if="byRound && (k === 0 || scheduleRows[k - 1]?.round !== p.round)"
-              class="col-span-4 mt-1.5 text-[10.5px] tracking-wider text-dim uppercase"
+              class="caps col-span-4 mt-1.5 text-label"
             >
               {{
                 item.config.format.kind === 'knockout'
@@ -515,13 +487,7 @@ async function copy(): Promise<void> {
             }}</span>
             <span class="text-right text-dim">{{ pairState(p) }}</span>
           </div>
-          <div v-if="schedulePages > 1" class="mt-1.5 flex items-center gap-2 text-xs text-dim">
-            <button :disabled="schedulePage === 0" @click="schedulePage--">‹ newer</button>
-            <span class="num">{{ schedulePage + 1 }} of {{ schedulePages }}</span>
-            <button :disabled="schedulePage >= schedulePages - 1" @click="schedulePage++">
-              older ›
-            </button>
-          </div>
+          <Pager v-model="schedulePage" :pages="schedulePages" class="mt-1.5" />
         </template>
       </div>
     </Panel>
@@ -531,7 +497,7 @@ async function copy(): Promise<void> {
       title="Playing"
       :note="`${item.state.live.length} game${item.state.live.length === 1 ? '' : 's'}`"
     >
-      <div class="num max-h-60 overflow-auto px-3 py-1.5 text-[12px]">
+      <div class="num max-h-60 overflow-auto px-3 py-1.5 text-dense">
         <div v-for="g in item.state.live" :key="`${g.pair}.${g.game}`" class="flex gap-2 py-0.5">
           <span class="w-14 text-faint">{{ number(g) }}</span>
           <span class="flex-1 truncate"
@@ -544,11 +510,11 @@ async function copy(): Promise<void> {
     </Panel>
 
     <Panel title="Last games" note="by number, highest first; a click opens the game">
-      <div class="num px-1.5 py-1 text-[12px]">
+      <div class="num px-1.5 py-1 text-dense">
         <button
           v-for="g in recent"
           :key="`${g.pair}.${g.game}`"
-          class="grid w-full grid-cols-[3rem_minmax(0,1.2fr)_4.5rem_minmax(0,1fr)] gap-2 rounded px-1.5 py-0.5 text-left hover:bg-[#1c2128]"
+          class="grid w-full grid-cols-[3rem_minmax(0,1.2fr)_4.5rem_minmax(0,1fr)] gap-2 rounded px-1.5 py-0.5 text-left hover:bg-hover"
           @click="openGame(g)"
         >
           <span class="text-faint">{{ number(g) }}</span>

@@ -64,7 +64,7 @@ onBeforeUnmount(close);
   <button
     ref="button"
     type="button"
-    class="inline-flex size-[15px] shrink-0 cursor-help items-center justify-center rounded-full border align-middle text-[10px] leading-none font-semibold normal-case focus-visible:outline-none"
+    class="inline-flex size-[15px] shrink-0 cursor-help items-center justify-center rounded-full border align-middle text-label leading-none font-semibold normal-case focus-visible:outline-none"
     :class="
       shown || pinned
         ? 'border-accent text-accent'
@@ -86,7 +86,7 @@ onBeforeUnmount(close);
       :id="id"
       ref="note"
       role="tooltip"
-      class="fixed z-50 rounded-md border border-line bg-[#11161c] px-3 py-2 text-left text-[12.5px] leading-normal font-normal tracking-normal whitespace-normal text-text normal-case shadow-lg"
+      class="fixed z-50 rounded-md border border-line bg-popover px-3 py-2 text-left text-dense leading-normal font-normal tracking-normal whitespace-normal text-text normal-case shadow-lg"
       :style="{ left: `${at.left}px`, top: `${at.top}px`, width: `${WIDTH}px` }"
     >
       <slot />

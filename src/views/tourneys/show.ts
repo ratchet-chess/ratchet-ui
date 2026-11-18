@@ -2,6 +2,7 @@
 import { knockoutGamesLeft } from '../../match/director.ts';
 import { gamesPerPair, plannedGames, type Format } from '../../match/format.ts';
 import type { Item } from '../../stores/tournaments.ts';
+import { count } from '../../ui/format.ts';
 
 /** an entrant's name; an engine entered twice gets #1, #2 in field order */
 export const label = (i: Item, n: number): string => {
@@ -39,9 +40,6 @@ export function formatShort(f: Format): string {
 /** a knockout round's name, from the last: final, semifinals, then by number */
 export const roundName = (r: number, total: number): string =>
   r === total - 1 ? 'final' : r === total - 2 ? 'semifinals' : `round ${r + 1}`;
-
-/** a count with thousands marked, as 5,120 */
-export const count = (n: number): string => n.toLocaleString('en-US');
 
 /**
  * the games a tournament plays: all of them, the most for an SPRT; for a knockout, the games played
@@ -86,24 +84,17 @@ export function statusText(i: Item): string {
   return i.ended === 'stopped' ? 'stopped' : 'interrupted';
 }
 
+/** the tone of a status's tag: a verdict's color, running in the accent, interrupted as a warning */
 export const statusClass = (s: string): string =>
   s === 'H1'
-    ? 'text-good border-[#2c6b4d]'
+    ? 'tone-good'
     : s === 'H0'
-      ? 'text-bad border-[#7a3a30]'
+      ? 'tone-bad'
       : s === 'running' || s === 'in another tab'
-        ? 'text-accent border-[#2c4a66]'
+        ? 'tone-accent'
         : s === 'interrupted'
-          ? 'text-warn border-[#7a5d24]'
-          : 'text-dim border-line';
-
-/** a signed value; an unbounded one, as an all-or-nothing score gives, shows as ±∞ */
-export const fmt = (v: number, d = 1): string =>
-  Number.isFinite(v) ? `${v >= 0 ? '+' : ''}${v.toFixed(d)}` : v > 0 ? '+∞' : '−∞';
-
-export const th = 'border-b border-line px-2 py-1 font-medium whitespace-nowrap';
-export const buttonClass =
-  'rounded border border-line bg-panel2 px-2.5 py-1 text-xs disabled:text-faint';
+          ? 'tone-warn'
+          : 'tone-dim';
 
 /**
  * a clone's name: its source's with the next free number, `X (2)`, `X (3)`; a clone of `X (2)`

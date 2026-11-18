@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import IconBar from './components/IconBar.vue';
+import { useTheme } from './ui/theme.ts';
+
+useTheme();
 </script>
 
 <template>

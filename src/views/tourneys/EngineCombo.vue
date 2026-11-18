@@ -40,7 +40,7 @@ function key(e: KeyboardEvent): void {
       :value="open ? query : value"
       type="search"
       :placeholder="open ? `search ${engines.length} engines` : ''"
-      class="num h-[30px] w-full rounded-md border border-line bg-panel2 px-2 text-[12.5px] text-text placeholder:text-faint placeholder:italic"
+      class="field num w-full"
       role="combobox"
       :aria-expanded="open"
       @focus="show"
@@ -53,21 +53,21 @@ function key(e: KeyboardEvent): void {
     />
     <span
       v-if="open"
-      class="absolute top-[34px] right-0 left-0 z-20 max-h-56 overflow-auto rounded-md border border-line bg-[#11161c] py-0.5 shadow-lg"
+      class="absolute top-[34px] right-0 left-0 z-20 max-h-56 overflow-auto rounded-md border border-line bg-popover py-0.5 shadow-lg"
       role="listbox"
     >
       <span
         v-for="(e, i) in hits"
         :key="e"
-        class="num block cursor-pointer px-2 py-0.5 text-[12.5px]"
-        :class="i === active ? 'bg-[#22303d] text-text' : e === value ? 'text-accent' : ''"
+        class="num block cursor-pointer px-2 py-0.5 text-dense"
+        :class="i === active ? 'bg-chosen text-text' : e === value ? 'text-accent' : ''"
         role="option"
         :aria-selected="e === value"
         @mousedown.prevent="pick(e)"
         @mouseenter="active = i"
         >{{ e }}</span
       >
-      <span v-if="hits.length === 0" class="block px-2 py-1 text-xs text-faint">none match</span>
+      <span v-if="hits.length === 0" class="block px-2 py-1 text-dense text-faint">none match</span>
     </span>
   </span>
 </template>

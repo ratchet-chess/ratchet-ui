@@ -3,9 +3,11 @@ import { computed, onMounted, ref, shallowRef, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Download, Trash2 } from '@lucide/vue';
 import GameViewer from '../components/GameViewer.vue';
+import PageHeader from '../components/PageHeader.vue';
 import Panel from '../components/Panel.vue';
 import { parseCollection, type Parsed } from '../games/pgn.ts';
 import { PLAYED, useGames, type Collection } from '../stores/games.ts';
+import { bytes } from '../ui/format.ts';
 
 const games = useGames();
 const route = useRoute();
@@ -96,19 +98,12 @@ async function remove(c: Collection): Promise<void> {
   if (openId.value === c.id) await router.push('/games');
 }
 
-const size = (b: number) =>
-  b >= 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`;
 const day = (iso: string) => iso.slice(0, 10);
-const th = 'border-b border-line px-2 py-1 font-medium';
-const buttonClass = 'rounded border border-line bg-panel2 px-1.5 py-1 align-middle text-xs';
 </script>
 
 <template>
-  <div class="mb-2.5 flex flex-wrap items-baseline gap-2.5">
-    <h1 class="text-[15px] font-semibold">Games</h1>
-    <span class="text-xs text-dim">PGN collections kept in this browser</span>
-    <span class="flex-1" />
-    <button :class="buttonClass" @click="fileInput?.click()">Open PGN files…</button>
+  <PageHeader title="Games" sub="PGN collections kept in this browser">
+    <button class="btn" @click="fileInput?.click()">Open PGN files…</button>
     <input
       ref="fileInput"
       type="file"
@@ -117,33 +112,33 @@ const buttonClass = 'rounded border border-line bg-panel2 px-1.5 py-1 align-midd
       class="hidden"
       @change="onFiles"
     />
-  </div>
+  </PageHeader>
   <div v-if="games.error" class="mb-3 text-bad">{{ games.error }}</div>
   <div v-if="busy" class="mb-3 text-dim">{{ busy }}</div>
 
   <div class="grid gap-3.5" :class="game ? 'wide:grid-cols-[minmax(340px,440px)_1fr]' : ''">
     <div :class="game ? 'hidden wide:block' : ''">
       <Panel title="Collections">
-        <table class="w-full border-collapse text-[13px]">
+        <table class="w-full border-collapse text-dense">
           <tbody>
             <tr
               v-for="c in collections"
               :key="c.id"
-              class="cursor-pointer border-b border-row last:border-0 hover:bg-[#1c2128]"
-              :class="c.id === openId ? 'bg-[#1d2631]' : ''"
+              class="row"
+              :class="c.id === openId ? 'bg-selected' : ''"
               @click="router.push(`/games/${c.id}`)"
             >
               <td class="w-full max-w-0 truncate px-2 py-1.5" :title="c.name">{{ c.name }}</td>
               <td class="num px-2 py-1.5 text-right">{{ c.games }}</td>
               <td class="num px-2 py-1.5 text-right whitespace-nowrap text-dim">
-                {{ size(c.bytes) }}
+                {{ bytes(c.bytes) }}
               </td>
               <td class="num px-2 py-1.5 whitespace-nowrap text-dim">{{ day(c.updated) }}</td>
               <td class="px-2 py-1.5 text-right whitespace-nowrap" @click.stop>
-                <button :class="buttonClass" title="Download as PGN" @click="download(c)">
+                <button class="btn" title="Download as PGN" @click="download(c)">
                   <Download :size="13" />
                 </button>
-                <button :class="buttonClass" class="ml-1" title="Delete" @click="remove(c)">
+                <button class="btn ml-1" title="Delete" @click="remove(c)">
                   <Trash2 :size="13" />
                 </button>
               </td>
@@ -157,23 +152,23 @@ const buttonClass = 'rounded border border-line bg-panel2 px-1.5 py-1 align-midd
 
       <Panel v-if="open && parsed" :title="open.name" :note="`${parsed.summaries.length} games`">
         <div class="overflow-x-auto">
-          <table class="w-full border-collapse text-[12.5px]">
+          <table class="w-full border-collapse text-dense">
             <thead>
-              <tr class="text-left text-[11.5px] text-dim">
-                <th :class="th">#</th>
-                <th :class="th">White</th>
-                <th :class="th">Black</th>
-                <th :class="th">result</th>
-                <th :class="th" class="text-right">plies</th>
-                <th :class="th">date</th>
+              <tr class="text-left text-small text-dim">
+                <th class="th">#</th>
+                <th class="th">White</th>
+                <th class="th">Black</th>
+                <th class="th">result</th>
+                <th class="th text-right">plies</th>
+                <th class="th">date</th>
               </tr>
             </thead>
             <tbody>
               <tr
                 v-for="s in shown"
                 :key="s.index"
-                class="cursor-pointer border-b border-row last:border-0 hover:bg-[#1c2128]"
-                :class="s.index === gameIndex ? 'bg-[#1d2631]' : ''"
+                class="row"
+                :class="s.index === gameIndex ? 'bg-selected' : ''"
                 @click="router.push(`/games/${openId}/${s.index}`)"
               >
                 <td class="num px-2 py-1 text-faint">{{ s.index + 1 }}</td>
@@ -188,11 +183,11 @@ const buttonClass = 'rounded border border-line bg-panel2 px-1.5 py-1 align-midd
         </div>
         <div
           v-if="pages > 1"
-          class="flex items-center gap-2 border-t border-row px-3 py-1.5 text-xs text-dim"
+          class="flex items-center gap-2 border-t border-row px-3 py-1.5 text-dense text-dim"
         >
-          <button :class="buttonClass" :disabled="page === 0" @click="page--">‹</button>
+          <button class="btn" :disabled="page === 0" @click="page--">‹</button>
           page {{ page + 1 }} of {{ pages }}
-          <button :class="buttonClass" :disabled="page + 1 >= pages" @click="page++">›</button>
+          <button class="btn" :disabled="page + 1 >= pages" @click="page++">›</button>
         </div>
       </Panel>
     </div>
@@ -200,7 +195,7 @@ const buttonClass = 'rounded border border-line bg-panel2 px-1.5 py-1 align-midd
     <div v-if="game">
       <RouterLink
         :to="`/games/${openId}`"
-        class="mb-2 inline-block text-[12.5px] text-accent wide:hidden"
+        class="mb-2 inline-block text-dense text-accent wide:hidden"
         >‹ {{ open?.name }}</RouterLink
       >
       <GameViewer :game="game" />

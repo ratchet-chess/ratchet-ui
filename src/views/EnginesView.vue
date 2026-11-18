@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
+import PageHeader from '../components/PageHeader.vue';
 import Panel from '../components/Panel.vue';
 import type { ServedEngine } from '../engine/manifest.ts';
 import type { Info } from '../engine/info.ts';
 import { UciEngine, inputMode } from '../engine/uci.ts';
 import { useEngines } from '../stores/engines.ts';
+import { thousands } from '../ui/format.ts';
 
 const engines = useEngines();
 const mode = inputMode();
@@ -60,8 +62,7 @@ const rows = computed(() => engines.list.map((e) => ({ e, t: trials.get(e.id) })
 
 const score = (i: Info) =>
   i.mate !== undefined ? `mate ${i.mate}` : `${((i.cp ?? 0) / 100).toFixed(2)}`;
-const kn = (n: number | undefined) =>
-  n === undefined ? '—' : `${Math.round(n / 1000).toLocaleString('en-US')} k`;
+const kn = (n: number | undefined) => (n === undefined ? '—' : thousands(n));
 
 onMounted(() => void engines.load());
 onUnmounted(() => {
@@ -70,20 +71,14 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <h1 class="mb-2.5 flex items-baseline gap-2.5 text-[15px] font-semibold">
-    Engines
-    <span class="text-xs font-normal text-dim">run in this browser, each in its own Worker</span>
-  </h1>
+  <PageHeader title="Engines" sub="run in this browser, each in its own Worker" />
 
   <Panel>
-    <div class="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 text-[12.5px] text-dim">
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 text-dense text-dim">
       <span>input during a search: <span class="num text-text">{{ mode }}</span></span>
       <label>
         trial search depth
-        <select
-          v-model.number="depth"
-          class="num ml-1 rounded border border-line bg-panel2 px-1 text-text"
-        >
+        <select v-model.number="depth" class="field-sm num ml-1">
           <option v-for="d in [8, 10, 12, 14, 16]" :key="d" :value="d">{{ d }}</option>
         </select>
       </label>
@@ -98,9 +93,9 @@ onUnmounted(() => {
 
   <Panel v-else>
     <div class="overflow-x-auto">
-      <table class="w-full border-collapse text-[13px]">
+      <table class="w-full border-collapse text-dense">
         <thead>
-          <tr class="text-left text-[11.5px] text-dim">
+          <tr class="text-left text-small text-dim">
             <th class="border-b border-line px-2 py-1 font-medium">engine</th>
             <th class="border-b border-line px-2 py-1 font-medium">source</th>
             <th class="border-b border-line px-2 py-1 font-medium">wasm sha256</th>
@@ -113,13 +108,13 @@ onUnmounted(() => {
             <td class="num px-2 py-1.5 whitespace-nowrap">{{ e.id }}</td>
             <td class="px-2 py-1.5">
               <span
-                class="num rounded border border-line px-1.5 text-[10.5px] whitespace-nowrap text-dim"
+                class="num rounded border border-line px-1.5 text-label whitespace-nowrap text-dim"
                 :title="e.license ?? ''"
                 >{{ e.source }}</span
               >
             </td>
-            <td class="num px-2 py-1.5 text-[11.5px] text-dim">{{ e.sha256.slice(0, 12) }}…</td>
-            <td class="num px-2 py-1.5 text-[12px]">
+            <td class="num px-2 py-1.5 text-small text-dim">{{ e.sha256.slice(0, 12) }}…</td>
+            <td class="num px-2 py-1.5 text-dense">
               <template v-if="t">
                 <span v-if="t.state === 'failed'" class="text-bad"
                   >{{ t.error }} · is it copied in? run bun run engines</span
@@ -140,7 +135,7 @@ onUnmounted(() => {
             </td>
             <td class="px-2 py-1.5 text-right">
               <button
-                class="rounded border border-line bg-panel2 px-2.5 py-0.5 text-xs disabled:text-faint"
+                class="rounded border border-line bg-panel2 px-2.5 py-0.5 text-dense disabled:text-faint"
                 :disabled="t?.state === 'starting' || t?.state === 'searching'"
                 @click="tryEngine(e)"
               >

@@ -68,10 +68,9 @@ function drop(to: number): void {
   dragging.value = null;
 }
 
-const head = 'flex min-h-10 items-center gap-1.5 border-b border-row px-2 py-1.5 text-xs text-dim';
-const small =
-  'rounded border border-line bg-panel px-2 py-0.5 text-[11.5px] text-dim hover:text-text disabled:text-faint';
-const icon = 'px-0.5 text-[12px] text-faint hover:text-text';
+const head =
+  'flex min-h-10 items-center gap-1.5 border-b border-row px-2 py-1.5 text-dense text-dim';
+const icon = 'px-0.5 text-dense text-faint hover:text-text';
 </script>
 
 <template>
@@ -85,10 +84,10 @@ const icon = 'px-0.5 text-[12px] text-faint hover:text-text';
             v-model="query"
             type="search"
             :placeholder="`search ${engines.length} engines`"
-            class="num h-7 min-w-0 flex-1 rounded border border-line bg-panel px-2 text-[12.5px] text-text placeholder:text-faint placeholder:italic"
+            class="field-sm num min-w-0 flex-1 placeholder:text-faint placeholder:italic"
           />
           <button
-            :class="small"
+            class="btn-sm"
             :disabled="addable.length === 0"
             title="Add every engine shown"
             @click="addShown"
@@ -103,8 +102,8 @@ const icon = 'px-0.5 text-[12px] text-faint hover:text-text';
           <button
             v-for="[f, n] in [['', engines.length] as const, ...programs]"
             :key="f"
-            class="rounded-full border px-2 text-[11.5px]"
-            :class="program === f ? 'border-[#2c4a66] text-accent' : 'border-line text-dim'"
+            class="rounded-full border px-2 text-small"
+            :class="program === f ? 'border-accent-line text-accent' : 'border-line text-dim'"
             @click="program = f"
           >
             {{ f || 'all' }} <span class="text-faint">{{ n }}</span>
@@ -114,7 +113,7 @@ const icon = 'px-0.5 text-[12px] text-faint hover:text-text';
           <label
             v-for="e in shown"
             :key="e"
-            class="num grid cursor-pointer grid-cols-[18px_minmax(0,1fr)] items-center gap-1.5 px-2 py-0.5 text-[12.5px] hover:bg-[#222a33]"
+            class="num grid cursor-pointer grid-cols-[18px_minmax(0,1fr)] items-center gap-1.5 px-2 py-0.5 text-dense hover:bg-hover"
           >
             <input
               type="checkbox"
@@ -124,7 +123,7 @@ const icon = 'px-0.5 text-[12px] text-faint hover:text-text';
             />
             <span class="truncate">{{ e }}</span>
           </label>
-          <div v-if="shown.length === 0" class="px-2 py-3 text-xs text-faint">
+          <div v-if="shown.length === 0" class="px-2 py-3 text-dense text-faint">
             No engine matches.
           </div>
         </div>
@@ -134,15 +133,15 @@ const icon = 'px-0.5 text-[12px] text-faint hover:text-text';
         <div :class="head">
           <b class="font-semibold text-text">{{ field.length }}</b> in the field
           <span class="flex-1" />
-          <button :class="small" :disabled="field.length < 2" @click="sortField">sort A–Z</button>
-          <button :class="small" :disabled="field.length === 0" @click="field = []">clear</button>
+          <button class="btn-sm" :disabled="field.length < 2" @click="sortField">sort A–Z</button>
+          <button class="btn-sm" :disabled="field.length === 0" @click="field = []">clear</button>
         </div>
         <div class="max-h-56 min-h-16 overflow-auto @2xl:max-h-[17.5rem]">
           <div
             v-for="(e, i) in field"
             :key="`${i}.${e}`"
             draggable="true"
-            class="num grid cursor-grab grid-cols-[2rem_minmax(0,1fr)_auto_auto] items-center gap-1.5 border-b border-row px-2 py-0.5 text-[12.5px]"
+            class="num grid cursor-grab grid-cols-[2rem_minmax(0,1fr)_auto_auto] items-center gap-1.5 border-b border-row px-2 py-0.5 text-dense"
             :class="dragging === i ? 'opacity-40' : ''"
             @dragstart="dragging = i"
             @dragover.prevent
@@ -154,7 +153,7 @@ const icon = 'px-0.5 text-[12px] text-faint hover:text-text';
               >{{ e }}
               <span
                 v-if="i < seeds"
-                class="rounded border border-[#2c4a66] px-1 font-sans text-[10.5px] text-accent"
+                class="rounded border border-accent-line px-1 font-sans text-label text-accent"
                 >seed</span
               ></span
             >
@@ -165,7 +164,7 @@ const icon = 'px-0.5 text-[12px] text-faint hover:text-text';
             </span>
             <button :class="icon" title="Remove" @click="remove(i)">✕</button>
           </div>
-          <div v-if="field.length === 0" class="px-2 py-3 text-xs text-faint">
+          <div v-if="field.length === 0" class="px-2 py-3 text-dense text-faint">
             Tick engines to enter them.
           </div>
         </div>

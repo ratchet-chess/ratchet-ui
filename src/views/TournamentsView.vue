@@ -1,21 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import PageHeader from '../components/PageHeader.vue';
 import Panel from '../components/Panel.vue';
+import ProgressBar from '../components/ProgressBar.vue';
 import { useBooks } from '../stores/books.ts';
 import { useTournaments, type Item } from '../stores/tournaments.ts';
 import { archived, groupOf, type Group } from './tourneys/overview.ts';
 import TournamentOverview from './tourneys/TournamentOverview.vue';
 import TournamentPage from './tourneys/TournamentPage.vue';
 import TournamentSetup from './tourneys/TournamentSetup.vue';
-import {
-  buttonClass,
-  formatShort,
-  pct,
-  progressShort,
-  statusClass,
-  statusText,
-} from './tourneys/show.ts';
+import { formatShort, pct, progressShort, statusClass, statusText } from './tourneys/show.ts';
 
 const tournaments = useTournaments();
 const books = useBooks();
@@ -54,12 +49,9 @@ const listed = computed(() => {
 </script>
 
 <template>
-  <div class="mb-2.5 flex items-baseline gap-2.5">
-    <h1 class="text-[15px] font-semibold">Tourneys</h1>
-    <span class="text-xs text-dim">matches and tournaments played in this browser</span>
-    <span class="flex-1" />
-    <RouterLink to="/tournaments/new" :class="buttonClass" @click="fresh++">New…</RouterLink>
-  </div>
+  <PageHeader title="Tourneys" sub="matches and tournaments played in this browser">
+    <RouterLink to="/tournaments/new" class="btn" @click="fresh++">New…</RouterLink>
+  </PageHeader>
   <div v-if="tournaments.error" class="mb-3 text-bad">{{ tournaments.error }}</div>
 
   <TournamentOverview v-if="!selected" />
@@ -69,7 +61,7 @@ const listed = computed(() => {
         <template v-for="group in listed.groups" :key="group.g">
           <div
             v-if="group.items.length > 0"
-            class="border-b border-line bg-panel2 px-3 py-1 text-[10.5px] tracking-widest text-dim uppercase"
+            class="border-b border-line bg-panel2 px-3 py-1 text-label tracking-widest text-dim uppercase"
           >
             {{ group.name }}
             <span class="tracking-normal text-faint">{{ group.items.length }}</span>
@@ -77,33 +69,27 @@ const listed = computed(() => {
           <div
             v-for="i in group.items"
             :key="i.config.id"
-            class="cursor-pointer border-b border-row px-3 py-2 hover:bg-[#1c2128]"
-            :class="i.config.id === selected ? 'bg-[#1d2631]' : ''"
+            class="row px-3 py-2"
+            :class="i.config.id === selected ? 'bg-selected' : ''"
             @click="router.push(`/tournaments/${i.config.id}`)"
           >
             <div class="flex items-baseline gap-2">
               <span class="flex-1 truncate">{{ i.config.name }}</span>
-              <span
-                class="num rounded border px-1.5 text-[10.5px]"
-                :class="statusClass(statusText(i))"
-                >{{ statusText(i) }}</span
-              >
+              <span class="tag" :class="statusClass(statusText(i))">{{ statusText(i) }}</span>
             </div>
-            <div class="num mt-0.5 flex gap-2 text-[11.5px] text-dim">
+            <div class="num mt-0.5 flex gap-2 text-small text-dim">
               <span class="min-w-0 flex-1 truncate"
                 >{{ formatShort(i.config.format) }} · {{ i.config.control }}</span
               >
               <span class="shrink-0">{{ progressShort(i) }}</span>
             </div>
-            <div class="mt-1 h-1 overflow-hidden rounded bg-[#262c35]">
-              <div class="h-full bg-accent" :style="{ width: `${pct(i)}%` }" />
-            </div>
+            <ProgressBar class="mt-1" :parts="[{ share: pct(i), tone: 'accent' }]" />
           </div>
         </template>
         <RouterLink
           v-if="listed.archived > 0"
           :to="{ path: '/tournaments', query: { show: 'finished' } }"
-          class="block px-3 py-2 text-[12px] text-dim hover:text-text"
+          class="block px-3 py-2 text-dense text-dim hover:text-text"
           >Archive · {{ listed.archived }} ›</RouterLink
         >
         <div v-if="tournaments.items.length === 0" class="px-3 py-3 text-dim">None yet.</div>
