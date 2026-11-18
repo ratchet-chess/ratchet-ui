@@ -4,7 +4,7 @@
 
 ## Terms
 
-The rows for **release**, **own engine**, **WASI build** and **condition** quote Ratchet's `AGENTS.md` § Terms. Ratchet's list holds for every other word the two repos share.
+The rows for **release**, **own engine**, **WASI build** and **condition** quote the `AGENTS.md` of the repo that owns the thing: ratchet-historical, ratchet and ratchet-bench. Those lists hold for every other word this repo shares with them.
 
 | term             | meaning                                                                                                                                                        | not                                 |
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- |
@@ -40,5 +40,10 @@ The rows for **release**, **own engine**, **WASI build** and **condition** quote
 - **A Swiss round is paired from the rounds before it,** so the director waits until a round's games finish.
 - **A pair's opening comes from the tournament's seed and the pair's number,** so a resumed pair gets it again.
 - **A stopped run writes nothing more.** A late write would make a deleted tournament's folder again.
+- **Text that a page always shows is a number or a few words.** These pages are dense and technical.
+- **Add a help note only where a reader needs a rule or a definition.** In a form, it is right-aligned in the label's column.
+- **Check a page by eye in Chrome before you call it done.** Use about 800 px and full width, with realistic and extreme data.
+- **A layout choice gets an HTML mock with its variants first.**
+- **Design a list for more than a hundred engines,** user-defined options and saved templates, not for a fixed list.
 - **This repo is public.** Commit no machine path, host name, address or task reference, in files or in commit messages.
 - **A commit passes the pre-commit hook:** format, typecheck, lint, knip and tests.
