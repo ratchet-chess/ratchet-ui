@@ -91,6 +91,19 @@ function itp(f: (x: number) => number, a0: number, b0: number, fa0: number, fb0:
   return (a + b) / 2;
 }
 
+/**
+ * About how many games an SPRT takes when the true nElo is on one of its bounds: Wald's average
+ * sample number, with an LLR drift of (t1 - t0)² / 2 a pair. It takes longer between the bounds
+ * and fewer games far outside them.
+ */
+export function sprtGames(elo0: number, elo1: number, alpha = 0.05, beta = 0.05): number {
+  const { lower, upper } = bounds(alpha, beta);
+  const drift = ((Math.SQRT2 * (elo1 - elo0)) / NELO_SCALE) ** 2 / 2;
+  const h1 = ((1 - beta) * upper + beta * lower) / drift;
+  const h0 = -((1 - alpha) * lower + alpha * upper) / drift;
+  return 2 * Math.round(Math.max(h0, h1));
+}
+
 function moments(counts: Ptnml): { pairs: number; mean: number; sd: number } {
   const pairs = sum(counts);
   if (pairs === 0) return { pairs, mean: 0.5, sd: 0 };

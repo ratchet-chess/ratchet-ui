@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bounds, bucket, elo, llr, nelo, type Ptnml } from './stats.ts';
+import { bounds, bucket, elo, llr, nelo, sprtGames, type Ptnml } from './stats.ts';
 
 // Each row is what Ratchet's tools/llr.ts and tools/pool.ts print for the same counts.
 const ORACLE: { counts: Ptnml; llr: number; nelo: [number, number]; elo: [number, number] }[] = [
@@ -48,6 +48,12 @@ describe('the statistics match Ratchet’s', () => {
     expect(elo([0, 0, 0, 0, 9])).toEqual({ value: Infinity, ci: Infinity });
     expect(elo([9, 0, 0, 0, 0])).toEqual({ value: -Infinity, ci: Infinity });
     expect(elo([0, 0, 0, 9, 0]).ci).toBe(Infinity);
+  });
+
+  // 100 simulated SPRTs at nElo 5 and at nElo 0 took a mean of 12043 and 12326 pairs
+  it('an SPRT on [0, 5] takes about 25.6k games at a bound', () => {
+    expect(sprtGames(0, 5)).toBe(25590);
+    expect(sprtGames(-5, 0)).toBe(25590);
   });
 
   it('bounds at alpha = beta = 0.05 are ±2.94', () => {

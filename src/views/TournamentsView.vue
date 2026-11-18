@@ -5,6 +5,7 @@ import Panel from '../components/Panel.vue';
 import { TIME_CONTROLS } from '../chess/clock.ts';
 import { STANDARD_ADJUDICATION, type Adjudication } from '../match/adjudicate.ts';
 import type { Format, TournamentConfig } from '../match/format.ts';
+import { sprtGames } from '../match/stats.ts';
 import { useBooks } from '../stores/books.ts';
 import { useEngines } from '../stores/engines.ts';
 import { collectionOf, useTournaments, type Item } from '../stores/tournaments.ts';
@@ -17,7 +18,7 @@ const router = useRouter();
 
 onMounted(async () => {
   await Promise.all([tournaments.load(), books.load()]);
-  if (!book.value && books.pulled.has('8moves_v3.pgn')) book.value = '8moves_v3.pgn';
+  if (creating.value) reset();
 });
 
 const selected = computed(() => (typeof route.params['id'] === 'string' ? route.params['id'] : ''));
@@ -47,6 +48,46 @@ const adjudicationChoice = ref<'standard' | 'draw' | 'none'>('standard');
 const concurrency = ref(1);
 const concurrencyEdited = ref(false);
 
+/** the bounds a match's SPRT offers; the first is the default */
+const SPRT_PRESETS = [
+  { label: '[0, 5]', elo0: 0, elo1: 5 },
+  { label: 'gainer [0, 3]', elo0: 0, elo1: 3 },
+  { label: 'non-regression [-5, 0]', elo0: -5, elo1: 0 },
+] as const;
+const sprtPreset = computed({
+  get: () =>
+    SPRT_PRESETS.find((p) => p.elo0 === elo0.value && p.elo1 === elo1.value)?.label ?? 'custom',
+  set: (label: string) => {
+    const p = SPRT_PRESETS.find((x) => x.label === label);
+    if (p) [elo0.value, elo1.value] = [p.elo0, p.elo1];
+  },
+});
+const sprtEstimate = computed(() =>
+  elo1.value > elo0.value ? sprtGames(elo0.value, elo1.value) : null,
+);
+
+/** the setup as a new tournament starts: each New begins here, not from the last one's values */
+function reset(): void {
+  kind.value = 'match';
+  name.value = '';
+  tested.value = engines.list.at(-1)?.id ?? '';
+  base.value = engines.list.at(-2)?.id ?? tested.value;
+  field.value = [];
+  adding.value = '';
+  pairs.value = 500;
+  useSprt.value = true;
+  [elo0.value, elo1.value] = [SPRT_PRESETS[0].elo0, SPRT_PRESETS[0].elo1];
+  cycles.value = 1;
+  seeds.value = 1;
+  control.value = '10+0.1';
+  book.value = books.pulled.has('8moves_v3.pgn') ? '8moves_v3.pgn' : '';
+  adjudicationChoice.value = 'standard';
+  concurrencyEdited.value = false;
+  concurrency.value = defaultConcurrency();
+}
+watch(creating, (now) => {
+  if (now) reset();
+});
 watch(
   () => engines.list.length,
   () => {
@@ -87,7 +128,11 @@ const totalGames = computed(() => {
   return 2 * s * (n - s) * cycles.value;
 });
 const canStart = computed(
-  () => entrants.value.length >= 2 && entrants.value.every((e) => e) && totalGames.value > 0,
+  () =>
+    entrants.value.length >= 2 &&
+    entrants.value.every((e) => e) &&
+    totalGames.value > 0 &&
+    !(kind.value === 'match' && useSprt.value && elo1.value <= elo0.value),
 );
 
 function adjudication(): Adjudication | null {
@@ -273,6 +318,12 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
             <span class="flex flex-wrap items-center gap-2">
               <input v-model="useSprt" type="checkbox" />
               <template v-if="useSprt">
+                <select v-model="sprtPreset" :class="inputClass">
+                  <option v-for="p in SPRT_PRESETS" :key="p.label" :value="p.label">
+                    {{ p.label }}
+                  </option>
+                  <option value="custom" disabled>custom</option>
+                </select>
                 nElo [<input
                   v-model.number="elo0"
                   type="number"
@@ -290,6 +341,14 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
                 <span class="text-dim">α = β = 0.05</span>
               </template>
             </span>
+            <template v-if="useSprt">
+              <span />
+              <span class="text-xs text-dim">{{
+                sprtEstimate === null
+                  ? 'the upper bound must be above the lower'
+                  : `about ${sprtEstimate.toLocaleString()} games when the true nElo is on a bound; more between the bounds, fewer far outside them${sprtEstimate > pairs * 2 ? `. Its ${(pairs * 2).toLocaleString()} games may end it before a verdict` : ''}`
+              }}</span>
+            </template>
           </template>
 
           <template v-else>
