@@ -4,7 +4,14 @@ import { TIME_CONTROLS } from '../chess/clock.ts';
 import type { TournamentConfig } from '../match/format.ts';
 import { configOf, gamesOf, pairsOf } from '../match/records.ts';
 import { Run, stateOf, type Entrant, type RunState } from '../match/runner.ts';
-import { appendText, folders, readText, removeFolder, writeText } from '../storage/opfs.ts';
+import {
+  appendText,
+  folders,
+  readText,
+  removeFile,
+  removeFolder,
+  writeText,
+} from '../storage/opfs.ts';
 import { useBooks } from './books.ts';
 import { useEngines } from './engines.ts';
 import { useGames } from './games.ts';
@@ -15,6 +22,8 @@ export interface Item {
   state: RunState;
   /** how a run that is not in this tab ended: `done`, `stopped`, or null when the tab closed during it */
   ended: 'done' | 'stopped' | null;
+  /** true while another tab of this browser plays it, as its Web Lock shows */
+  elsewhere: boolean;
 }
 
 const ROOT = ['tournaments'];
@@ -26,6 +35,9 @@ function pick(seed: number, pair: number): number {
   t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
   return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
 }
+
+/** the Web Lock a tab holds while it plays a tournament, so no other tab plays or deletes it */
+const lockOf = (id: string) => `ratchet-ui:tournament:${id}`;
 
 /** the collection in Games that holds a tournament's games */
 export const collectionOf = (id: string) => `t-${id}`;
@@ -42,10 +54,13 @@ export const useTournaments = defineStore('tournaments', () => {
   const items = ref<Item[]>([]);
   const error = ref('');
   const runs = new Map<string, Run>();
+  /** releases each held Web Lock, by tournament */
+  const releases = new Map<string, () => void>();
 
   async function load(): Promise<void> {
     try {
       await engines.load();
+      const held = new Set(((await navigator.locks.query()).held ?? []).map((l) => l.name));
       const out: Item[] = [];
       for (const id of await folders(ROOT)) {
         const live = items.value.find((i) => i.config.id === id && runs.has(id));
@@ -64,7 +79,7 @@ export const useTournaments = defineStore('tournaments', () => {
         );
         const ended = end === null ? null : end.includes('"done"') ? 'done' : 'stopped';
         state.status = ended === 'done' ? 'done' : 'stopped';
-        out.push({ config, state: reactive(state), ended });
+        out.push({ config, state: reactive(state), ended, elsewhere: held.has(lockOf(id)) });
       }
       items.value = out.toSorted((a, b) => b.config.created.localeCompare(a.config.created));
       error.value = '';
@@ -86,12 +101,37 @@ export const useTournaments = defineStore('tournaments', () => {
     });
   }
 
-  function start(item: Item): void {
+  /** takes the tournament's Web Lock; false when another tab holds it */
+  function lock(id: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      void navigator.locks.request(lockOf(id), { ifAvailable: true }, (held) => {
+        resolve(held !== null);
+        if (held === null) return undefined;
+        return new Promise<void>((release) => {
+          releases.set(id, release);
+        });
+      });
+    });
+  }
+
+  function unlock(id: string): void {
+    releases.get(id)?.();
+    releases.delete(id);
+  }
+
+  /** plays a tournament in this tab, from its saved records on */
+  async function start(item: Item): Promise<void> {
     const { config } = item;
     const control = TIME_CONTROLS.find((t) => t.label === config.control);
     if (!control) throw new Error(`the time control ${config.control} is not known`);
+    const players = entrantsOf(config);
+    if (!(await lock(config.id))) {
+      item.elsewhere = true;
+      throw new Error('another tab plays this tournament');
+    }
     const path = [...ROOT, config.id];
-    const run = new Run(config, entrantsOf(config), control, item.state, {
+    await removeFile(path, 'end.json');
+    const run = new Run(config, players, control, item.state, {
       opening: async (pair) =>
         config.book ? books.openingAt(config.book, pick(config.seed, pair)) : undefined,
       savePair: (p) => appendText(path, 'pairs.jsonl', `${JSON.stringify(p)}\n`),
@@ -103,19 +143,38 @@ export const useTournaments = defineStore('tournaments', () => {
         await writeText(path, 'end.json', JSON.stringify({ status, at: new Date().toISOString() }));
         item.ended = status === 'done' ? 'done' : 'stopped';
         runs.delete(config.id);
+        unlock(config.id);
       },
     });
     runs.set(config.id, run);
     item.ended = null;
+    item.elsewhere = false;
+    item.state.error = '';
     run.start();
   }
 
   /** saves a new tournament and starts it */
   async function create(config: TournamentConfig): Promise<void> {
     await writeText([...ROOT, config.id], 'config.json', JSON.stringify(config, null, 1));
-    const item: Item = reactive({ config, state: stateOf(config, [], []), ended: null });
+    const item: Item = reactive({
+      config,
+      state: stateOf(config, [], []),
+      ended: null,
+      elsewhere: false,
+    });
     items.value.unshift(item);
-    start(item);
+    await start(item);
+  }
+
+  /** plays a stopped or interrupted tournament on: the unfinished games of its pairs, then the rest */
+  async function resume(id: string): Promise<void> {
+    const item = items.value.find((i) => i.config.id === id);
+    if (!item || runs.has(id) || item.ended === 'done') return;
+    try {
+      await start(item);
+    } catch (e) {
+      item.state.error = `It could not resume: ${e instanceof Error ? e.message : String(e)}`;
+    }
   }
 
   function stop(id: string, now: boolean): void {
@@ -124,13 +183,17 @@ export const useTournaments = defineStore('tournaments', () => {
 
   const running = (id: string) => runs.has(id);
 
-  /** deletes a tournament's records; its games stay in Games */
+  /** deletes a tournament's records, unless a tab plays it; its games stay in Games */
   async function remove(id: string): Promise<void> {
-    runs.get(id)?.stop(true);
-    runs.delete(id);
-    await removeFolder(ROOT, id);
+    if (runs.has(id)) throw new Error('stop the tournament before deleting it');
+    if (!(await lock(id))) throw new Error('another tab plays this tournament');
+    try {
+      await removeFolder(ROOT, id);
+    } finally {
+      unlock(id);
+    }
     items.value = items.value.filter((i) => i.config.id !== id);
   }
 
-  return { items, error, load, create, stop, remove, running };
+  return { items, error, load, create, resume, stop, remove, running };
 });

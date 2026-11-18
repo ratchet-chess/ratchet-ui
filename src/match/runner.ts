@@ -2,7 +2,8 @@ import { pgnTimeControl, type TimeControl } from '../chess/clock.ts';
 import { Game } from '../chess/game.ts';
 import type { Opening } from '../books/opening.ts';
 import { UciEngine } from '../engine/uci.ts';
-import { schedule, type Meeting, type TournamentConfig } from './format.ts';
+import { directorOf, type Director } from './director.ts';
+import type { TournamentConfig } from './format.ts';
 import { playOut, type Side } from './referee.ts';
 import { summarize, type GameRecord, type PairRecord, type Summary } from './summary.ts';
 
@@ -60,10 +61,20 @@ export function stateOf(
   };
 }
 
+/** A game waiting for a free slot; a resumed pair's opening is fetched again when it starts. */
+interface Waiting {
+  pair: PairRecord;
+  game: 0 | 1;
+  opening: Opening | undefined;
+  /** false for a resumed pair's game, whose opening is not fetched yet */
+  fetched: boolean;
+}
+
 /**
- * Plays a tournament in this browser: its pairs in schedule order, up to `concurrency` games at a
+ * Plays a tournament in this browser: the pairs its director issues, up to `concurrency` games at a
  * time, each game with two fresh engine Workers. A match with an SPRT issues no pair once the LLR
- * crosses a bound; the games in play finish and count.
+ * crosses a bound; the games in play finish and count. Started on saved records, it first plays
+ * the games of issued pairs that have no result, then continues.
  */
 export class Run {
   private readonly config: TournamentConfig;
@@ -71,10 +82,9 @@ export class Run {
   private readonly control: TimeControl;
   private readonly state: RunState;
   private readonly deps: RunDeps;
-  private readonly meetings: Meeting[];
-  /** the games waiting for a free place, both of a pair at once */
-  private readonly waiting: { pair: PairRecord; game: 0 | 1; opening: Opening | undefined }[] = [];
-  private nextMeeting: number;
+  private readonly director: Director;
+  /** the games waiting for a free slot, both of a pair at once */
+  private readonly waiting: Waiting[] = [];
   private running = 0;
   private filling = false;
   /** false once the run is stopped at once; games in play then end without a result */
@@ -93,8 +103,14 @@ export class Run {
     this.control = control;
     this.state = state;
     this.deps = deps;
-    this.meetings = schedule(config.format, entrants.length);
-    this.nextMeeting = state.pairs.length;
+    this.director = directorOf(config.format, entrants.length);
+    const finished = new Set(state.games.map((g) => `${g.pair}:${g.game}`));
+    for (const pair of state.pairs) {
+      for (const game of [0, 1] as const) {
+        if (!finished.has(`${pair.pair}:${game}`))
+          this.waiting.push({ pair, game, opening: undefined, fetched: false });
+      }
+    }
   }
 
   start(): void {
@@ -115,6 +131,11 @@ export class Run {
     }
   }
 
+  /** read through a call, since a stop between awaits changes `alive` out of the type checker's sight */
+  private stopped(): boolean {
+    return !this.alive;
+  }
+
   private decided(): boolean {
     return this.state.summary.match?.verdict != null;
   }
@@ -130,11 +151,12 @@ export class Run {
       ) {
         let next = this.waiting.shift();
         if (!next) {
-          if (this.decided() || this.nextMeeting >= this.meetings.length) break;
-          const m = this.meetings[this.nextMeeting];
-          if (!m) break;
-          const index = this.nextMeeting++;
+          if (this.decided()) break;
+          const m = this.director.next(this.state.pairs, this.state.games);
+          if (m === 'wait' || m === 'done') break;
+          const index = this.state.pairs.length;
           const opening = await this.deps.opening(index);
+          if (this.stopped()) return;
           const pair: PairRecord = {
             pair: index,
             a: m.a,
@@ -144,9 +166,25 @@ export class Run {
           };
           this.state.pairs.push(pair);
           await this.deps.savePair(pair);
-          this.waiting.push({ pair, game: 0, opening }, { pair, game: 1, opening });
+          if (this.stopped()) return;
+          this.waiting.push(
+            { pair, game: 0, opening, fetched: true },
+            { pair, game: 1, opening, fetched: true },
+          );
           next = this.waiting.shift();
           if (!next) break;
+        }
+        if (!next.fetched) {
+          const opening = await this.deps.opening(next.pair.pair);
+          if (this.stopped()) return;
+          if ((opening?.label ?? '') !== next.pair.opening) {
+            throw new Error(
+              `pair ${next.pair.pair + 1} cannot be replayed: its opening is no longer in the book`,
+            );
+          }
+          for (const w of [next, ...this.waiting]) {
+            if (w.pair === next.pair) Object.assign(w, { opening, fetched: true });
+          }
         }
         this.running++;
         void this.play(next.pair, next.game, next.opening);
@@ -157,13 +195,18 @@ export class Run {
     } finally {
       this.filling = false;
     }
-    if (this.running > 0) return;
+    if (!this.alive || this.running > 0) return;
     if (this.state.status === 'stopping') void this.end('stopped');
-    else if (
-      this.waiting.length === 0 &&
-      (this.decided() || this.nextMeeting >= this.meetings.length)
-    ) {
-      void this.end('done');
+    else if (this.state.status !== 'running' || this.waiting.length > 0) return;
+    else if (this.decided()) void this.end('done');
+    else {
+      const next = this.director.next(this.state.pairs, this.state.games);
+      if (next === 'done') void this.end('done');
+      else {
+        // nothing in play and nothing to issue: the director would wait for ever
+        this.state.error = 'the tournament has no pair to play and no game in play';
+        void this.end('stopped');
+      }
     }
   }
 
@@ -229,7 +272,7 @@ export class Run {
         this.workers.delete(e);
       }
     }
-    if (!this.alive) return;
+    if (this.stopped()) return;
     const i = this.state.live.indexOf(live);
     if (i >= 0) this.state.live.splice(i, 1);
     const outcome = game.outcome;
@@ -246,6 +289,7 @@ export class Run {
       this.state.games.push(record);
       this.state.summary = summarize(this.config.format, this.entrants.length, this.state.games);
       await this.deps.saveGame(record, this.pgn(game, pair, n, white, black));
+      if (this.stopped()) return;
     }
     this.running--;
     void this.fill();

@@ -61,6 +61,17 @@ export async function folders(path: string[]): Promise<string[]> {
   return out;
 }
 
+/** deletes a file; a file that does not exist is already deleted */
+export function removeFile(path: string[], file: string): Promise<void> {
+  return serial(async () => {
+    try {
+      await (await folder(path, false)).removeEntry(file);
+    } catch (e) {
+      if (!(e instanceof DOMException && e.name === 'NotFoundError')) throw e;
+    }
+  });
+}
+
 export function removeFolder(path: string[], name: string): Promise<void> {
   return serial(async () => {
     await (await folder(path, true)).removeEntry(name, { recursive: true });

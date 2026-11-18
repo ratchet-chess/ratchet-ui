@@ -150,6 +150,7 @@ function plannedGames(i: Item): number {
   return 2 * s * (n - s) * f.cycles;
 }
 function statusText(i: Item): string {
+  if (i.elsewhere) return 'in another tab';
   if (i.state.status === 'running') return 'running';
   if (i.state.status === 'stopping') return 'stopping';
   if (i.ended === 'done') return i.state.summary.match?.verdict ?? 'done';
@@ -160,7 +161,7 @@ const statusClass = (s: string) =>
     ? 'text-good border-[#2c6b4d]'
     : s === 'H0'
       ? 'text-bad border-[#7a3a30]'
-      : s === 'running'
+      : s === 'running' || s === 'in another tab'
         ? 'text-accent border-[#2c4a66]'
         : s === 'interrupted'
           ? 'text-warn border-[#7a5d24]'
@@ -172,6 +173,19 @@ const fmt = (v: number, d = 1) =>
 const pct = (i: Item) => Math.min(100, (100 * i.state.games.length) / Math.max(1, plannedGames(i)));
 const llrAt = (v: number, lo: number, hi: number) =>
   (100 * (Math.min(hi, Math.max(lo, v)) - lo)) / (hi - lo);
+/** a tournament this tab may play on or delete: not done, and not played by a tab */
+const idle = (i: Item) => !tournaments.running(i.config.id) && !i.elsewhere;
+
+async function remove(i: Item): Promise<void> {
+  if (!confirm(`Delete “${i.config.name}”? Its games stay in Games.`)) return;
+  try {
+    await tournaments.remove(i.config.id);
+    await router.push('/tournaments');
+  } catch (e) {
+    i.state.error = `It could not be deleted: ${e instanceof Error ? e.message : String(e)}`;
+  }
+}
+
 const recent = computed(() => (item.value ? item.value.state.games.slice(-12).toReversed() : []));
 
 const th = 'border-b border-line px-2 py-1 font-medium whitespace-nowrap';
@@ -409,6 +423,17 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
             Stop now
           </button>
         </template>
+        <template v-else-if="idle(item)">
+          <button
+            v-if="item.ended !== 'done'"
+            :class="buttonClass"
+            title="Plays the unfinished games of its pairs, then the rest"
+            @click="tournaments.resume(item.config.id)"
+          >
+            Resume
+          </button>
+          <button :class="buttonClass" @click="remove(item)">Delete</button>
+        </template>
         <RouterLink :to="`/games/${collectionOf(item.config.id)}`" :class="buttonClass"
           >Games</RouterLink
         >
@@ -558,7 +583,7 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
       <Panel
         v-if="item.state.live.length > 0"
         title="Playing"
-        :note="`${item.state.live.length} games`"
+        :note="`${item.state.live.length} game${item.state.live.length === 1 ? '' : 's'}`"
       >
         <div class="num max-h-60 overflow-auto px-3 py-1.5 text-[12px]">
           <div v-for="g in item.state.live" :key="`${g.pair}.${g.game}`" class="flex gap-2 py-0.5">
