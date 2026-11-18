@@ -24,6 +24,25 @@ export interface Item {
   ended: 'done' | 'stopped' | null;
   /** true while another tab of this browser plays it, as its Web Lock shows */
   elsewhere: boolean;
+  /** ISO time its run last ended, from end.json; null while it runs or when the tab closed during it */
+  endedAt: string | null;
+  /** when this tab started its run, and the games then finished, to time the run's pace by */
+  since: { at: number; games: number } | null;
+}
+
+/** end.json's status and time; a file it cannot read counts as stopped, at no known time */
+function endOf(text: string): { ended: 'done' | 'stopped'; at: string | null } {
+  try {
+    const x: unknown = JSON.parse(text);
+    if (typeof x === 'object' && x !== null) {
+      const status = 'status' in x ? x.status : undefined;
+      const at = 'at' in x && typeof x.at === 'string' ? x.at : null;
+      return { ended: status === 'done' ? 'done' : 'stopped', at };
+    }
+  } catch {
+    // a torn write
+  }
+  return { ended: 'stopped', at: null };
 }
 
 const ROOT = ['tournaments'];
@@ -77,9 +96,16 @@ export const useTournaments = defineStore('tournaments', () => {
           pairsOf(await readText([...ROOT, id], 'pairs.jsonl')),
           gamesOf(await readText([...ROOT, id], 'games.jsonl')),
         );
-        const ended = end === null ? null : end.includes('"done"') ? 'done' : 'stopped';
+        const { ended, at } = end === null ? { ended: null, at: null } : endOf(end);
         state.status = ended === 'done' ? 'done' : 'stopped';
-        out.push({ config, state: reactive(state), ended, elsewhere: held.has(lockOf(id)) });
+        out.push({
+          config,
+          state: reactive(state),
+          ended,
+          elsewhere: held.has(lockOf(id)),
+          endedAt: at,
+          since: null,
+        });
       }
       items.value = out.toSorted((a, b) => b.config.created.localeCompare(a.config.created));
       error.value = '';
@@ -140,14 +166,19 @@ export const useTournaments = defineStore('tournaments', () => {
         await games.append(collectionOf(config.id), config.name, 'match', pgn);
       },
       saveEnd: async (status) => {
-        await writeText(path, 'end.json', JSON.stringify({ status, at: new Date().toISOString() }));
+        const at = new Date().toISOString();
+        await writeText(path, 'end.json', JSON.stringify({ status, at }));
         item.ended = status === 'done' ? 'done' : 'stopped';
+        item.endedAt = at;
+        item.since = null;
         runs.delete(config.id);
         unlock(config.id);
       },
     });
     runs.set(config.id, run);
     item.ended = null;
+    item.endedAt = null;
+    item.since = { at: Date.now(), games: item.state.games.length };
     item.elsewhere = false;
     item.state.error = '';
     run.start();
@@ -161,6 +192,8 @@ export const useTournaments = defineStore('tournaments', () => {
       state: stateOf(config, [], []),
       ended: null,
       elsewhere: false,
+      endedAt: null,
+      since: null,
     });
     items.value.unshift(item);
     await start(item);

@@ -230,6 +230,30 @@ export function bracket(
   return rounds;
 }
 
+/**
+ * the fewest games a knockout still plays as its records stand: the pairs each undecided match
+ * still needs, one more for a match tied after its pairs, less the games of pairs in play
+ */
+export function knockoutGamesLeft(
+  entrants: number,
+  pairsPerMatch: number,
+  pairs: readonly PairRecord[],
+  games: readonly GameRecord[],
+): number {
+  const played = gamesByPair(games);
+  let left = 0;
+  for (const t of bracket(entrants, pairsPerMatch, pairs, games).flat()) {
+    if (t.winner !== null) continue;
+    const target = t.done >= pairsPerMatch ? t.done + 1 : pairsPerMatch;
+    const inPlay = t.pairs.reduce((n, p) => {
+      const k = played.get(p.pair)?.length ?? 0;
+      return n + (k < 2 ? k : 0);
+    }, 0);
+    left += Math.max(0, 2 * (target - t.done) - inPlay);
+  }
+  return left;
+}
+
 function knockout(pairsPerMatch: number, entrants: number): Director {
   return {
     next(pairs, games) {

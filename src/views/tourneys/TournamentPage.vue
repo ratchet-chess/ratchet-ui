@@ -18,6 +18,7 @@ import {
   formatText,
   label,
   progress,
+  roundName,
   statusClass,
   statusText,
   th,
@@ -33,8 +34,6 @@ const bracketRounds = computed(() => {
   if (i.config.format.kind !== 'knockout') return [];
   return bracket(i.config.entrants.length, i.config.format.pairs, i.state.pairs, i.state.games);
 });
-const roundName = (r: number, total: number) =>
-  r === total - 1 ? 'final' : r === total - 2 ? 'semifinals' : `round ${r + 1}`;
 const llrAt = (v: number, lo: number, hi: number) =>
   (100 * (Math.min(hi, Math.max(lo, v)) - lo)) / (hi - lo);
 /** a tournament this tab may play on or delete: not done, and not played by a tab */

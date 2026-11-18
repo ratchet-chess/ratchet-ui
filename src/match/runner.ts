@@ -4,7 +4,7 @@ import type { Opening } from '../books/opening.ts';
 import { UciEngine } from '../engine/uci.ts';
 import { directorOf, type Director } from './director.ts';
 import { BYE, gameNumber, gamesPerPair, type TournamentConfig } from './format.ts';
-import { playOut, type Side } from './referee.ts';
+import { forfeitReason, playOut, type Side } from './referee.ts';
 import { summarize, type GameRecord, type PairRecord, type Summary } from './summary.ts';
 
 /** One engine of a tournament. */
@@ -292,7 +292,7 @@ export class Run {
       if (this.alive)
         game.forfeit(
           failed,
-          `an engine failed: ${e instanceof Error ? e.message : String(e)}`,
+          forfeitReason.start(e instanceof Error ? e.message : String(e)),
           'rules infraction',
         );
     } finally {

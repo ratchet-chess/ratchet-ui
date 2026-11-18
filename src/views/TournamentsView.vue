@@ -4,6 +4,8 @@ import { useRoute, useRouter } from 'vue-router';
 import Panel from '../components/Panel.vue';
 import { useBooks } from '../stores/books.ts';
 import { useTournaments, type Item } from '../stores/tournaments.ts';
+import { archived, groupOf, type Group } from './tourneys/overview.ts';
+import TournamentOverview from './tourneys/TournamentOverview.vue';
 import TournamentPage from './tourneys/TournamentPage.vue';
 import TournamentSetup from './tourneys/TournamentSetup.vue';
 import {
@@ -32,6 +34,23 @@ const setupKey = computed(
 const item = computed<Item | undefined>(() =>
   tournaments.items.find((i) => i.config.id === selected.value),
 );
+
+/** the list beside a tournament: by state, the archive left to the overview */
+const GROUPS: [Group, string][] = [
+  ['running', 'Running'],
+  ['stopped', 'Stopped'],
+  ['finished', 'Finished'],
+];
+const listed = computed(() => {
+  const now = Date.now();
+  const shown = tournaments.items.filter(
+    (i) => !archived(i, now) || i.config.id === selected.value,
+  );
+  return {
+    groups: GROUPS.map(([g, name]) => ({ g, name, items: shown.filter((i) => groupOf(i) === g) })),
+    archived: tournaments.items.length - shown.length,
+  };
+});
 </script>
 
 <template>
@@ -43,34 +62,50 @@ const item = computed<Item | undefined>(() =>
   </div>
   <div v-if="tournaments.error" class="mb-3 text-bad">{{ tournaments.error }}</div>
 
-  <div class="grid gap-3.5 wide:grid-cols-[minmax(300px,380px)_1fr]">
-    <div :class="selected ? 'hidden wide:block' : ''">
+  <TournamentOverview v-if="!selected" />
+  <div v-else class="grid gap-3.5 wide:grid-cols-[minmax(300px,380px)_1fr]">
+    <div class="hidden wide:block">
       <Panel>
-        <div
-          v-for="i in tournaments.items"
-          :key="i.config.id"
-          class="cursor-pointer border-b border-row px-3 py-2 last:border-0 hover:bg-[#1c2128]"
-          :class="i.config.id === selected ? 'bg-[#1d2631]' : ''"
-          @click="router.push(`/tournaments/${i.config.id}`)"
+        <template v-for="group in listed.groups" :key="group.g">
+          <div
+            v-if="group.items.length > 0"
+            class="border-b border-line bg-panel2 px-3 py-1 text-[10.5px] tracking-widest text-dim uppercase"
+          >
+            {{ group.name }}
+            <span class="tracking-normal text-faint">{{ group.items.length }}</span>
+          </div>
+          <div
+            v-for="i in group.items"
+            :key="i.config.id"
+            class="cursor-pointer border-b border-row px-3 py-2 hover:bg-[#1c2128]"
+            :class="i.config.id === selected ? 'bg-[#1d2631]' : ''"
+            @click="router.push(`/tournaments/${i.config.id}`)"
+          >
+            <div class="flex items-baseline gap-2">
+              <span class="flex-1 truncate">{{ i.config.name }}</span>
+              <span
+                class="num rounded border px-1.5 text-[10.5px]"
+                :class="statusClass(statusText(i))"
+                >{{ statusText(i) }}</span
+              >
+            </div>
+            <div class="num mt-0.5 flex gap-2 text-[11.5px] text-dim">
+              <span class="min-w-0 flex-1 truncate"
+                >{{ formatShort(i.config.format) }} · {{ i.config.control }}</span
+              >
+              <span class="shrink-0">{{ progressShort(i) }}</span>
+            </div>
+            <div class="mt-1 h-1 overflow-hidden rounded bg-[#262c35]">
+              <div class="h-full bg-accent" :style="{ width: `${pct(i)}%` }" />
+            </div>
+          </div>
+        </template>
+        <RouterLink
+          v-if="listed.archived > 0"
+          :to="{ path: '/tournaments', query: { show: 'finished' } }"
+          class="block px-3 py-2 text-[12px] text-dim hover:text-text"
+          >Archive · {{ listed.archived }} ›</RouterLink
         >
-          <div class="flex items-baseline gap-2">
-            <span class="flex-1 truncate">{{ i.config.name }}</span>
-            <span
-              class="num rounded border px-1.5 text-[10.5px]"
-              :class="statusClass(statusText(i))"
-              >{{ statusText(i) }}</span
-            >
-          </div>
-          <div class="num mt-0.5 flex gap-2 text-[11.5px] text-dim">
-            <span class="min-w-0 flex-1 truncate"
-              >{{ formatShort(i.config.format) }} · {{ i.config.control }}</span
-            >
-            <span class="shrink-0">{{ progressShort(i) }}</span>
-          </div>
-          <div class="mt-1 h-1 overflow-hidden rounded bg-[#262c35]">
-            <div class="h-full bg-accent" :style="{ width: `${pct(i)}%` }" />
-          </div>
-        </div>
         <div v-if="tournaments.items.length === 0" class="px-3 py-3 text-dim">None yet.</div>
       </Panel>
     </div>

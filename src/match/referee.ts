@@ -72,6 +72,33 @@ const UNCLOCKED: Partial<Record<TimeControl['kind'], string>> = {
   depth: 'to a fixed depth; it may not take go depth',
 };
 
+/** The reasons a game ends against an engine for something other than its play. */
+export const forfeitReason = {
+  silent: (name: string, limitMs: number, kind: TimeControl['kind']) =>
+    `${name} gave no move in ${limitMs / 1000} s ${UNCLOCKED[kind] ?? 'with no clock'}`,
+  illegal: (name: string, move: string) => `${name} played an illegal move, ${move}`,
+  failed: (name: string, why: string) => `${name} failed: ${why}`,
+  /** an engine that does not start; the runner does not know which one */
+  start: (why: string) => `an engine failed: ${why}`,
+};
+
+/** A game that ended for something other than the engines' play, as a reader counts it. */
+export type Problem = 'time' | 'illegal' | 'no move' | 'failed';
+
+/**
+ * what made a game end abnormally, read from its recorded reason: a flag that fell, an illegal
+ * move, no move given, or an engine that failed; null for a game that ended over the board or by
+ * adjudication. Saved games keep only their reason, so this reads the words `forfeitReason` and
+ * `Game.flag` write.
+ */
+export function problemOf(reason: string): Problem | null {
+  if (/ ran out of time\b/.test(reason)) return 'time';
+  if (reason.includes(' played an illegal move, ')) return 'illegal';
+  if (reason.includes(' gave no move in ')) return 'no move';
+  if (/(^| )failed: /.test(reason)) return 'failed';
+  return null;
+}
+
 export interface Turn {
   game: Game;
   color: Color;
@@ -113,11 +140,7 @@ export async function engineTurn(t: Turn): Promise<Info | null> {
       engine.stop();
       if (clock) game.flag(color);
       else {
-        game.forfeit(
-          color,
-          `${name} gave no move in ${limit / 1000} s ${UNCLOCKED[control.kind] ?? 'with no clock'}`,
-          'rules infraction',
-        );
+        game.forfeit(color, forfeitReason.silent(name, limit, control.kind), 'rules infraction');
       }
       return null;
     }
@@ -126,7 +149,7 @@ export async function engineTurn(t: Turn): Promise<Info | null> {
       return null;
     }
     if (!game.play(answer.move)) {
-      game.forfeit(color, `${name} played an illegal move, ${answer.move}`, 'rules infraction');
+      game.forfeit(color, forfeitReason.illegal(name, answer.move), 'rules infraction');
       return null;
     }
     const seconds = ((performance.now() - started) / 1000).toFixed(3);
@@ -138,7 +161,7 @@ export async function engineTurn(t: Turn): Promise<Info | null> {
     if (!t.live()) return null;
     game.forfeit(
       color,
-      `${name} failed: ${e instanceof Error ? e.message : String(e)}`,
+      forfeitReason.failed(name, e instanceof Error ? e.message : String(e)),
       'rules infraction',
     );
   } finally {

@@ -1,4 +1,5 @@
 /** How Tourneys writes a tournament for a reader: shared by the list, the setup and a tournament's page. */
+import { knockoutGamesLeft } from '../../match/director.ts';
 import { gamesPerPair, plannedGames, type Format } from '../../match/format.ts';
 import type { Item } from '../../stores/tournaments.ts';
 
@@ -35,23 +36,47 @@ export function formatShort(f: Format): string {
   return f.seeds > 1 ? `gauntlet, ${f.seeds} seeds` : 'gauntlet';
 }
 
-export const planned = (i: Item): number =>
-  plannedGames(i.config.format, i.config.entrants.length, i.config.paired);
+/** a knockout round's name, from the last: final, semifinals, then by number */
+export const roundName = (r: number, total: number): string =>
+  r === total - 1 ? 'final' : r === total - 2 ? 'semifinals' : `round ${r + 1}`;
 
-/** games played over games planned; a knockout plays at least its planned games */
-export const progress = (i: Item): string =>
-  i.config.format.kind === 'knockout'
-    ? `${i.state.games.length} of ${planned(i)} or more`
-    : `${i.state.games.length}/${planned(i)}`;
+/** a count with thousands marked, as 5,120 */
+export const count = (n: number): string => n.toLocaleString('en-US');
+
+/**
+ * the games a tournament plays: all of them, the most for an SPRT; for a knockout, the games played
+ * and the fewest still to come, which grows as tied matches play on
+ */
+export function planned(i: Item): number {
+  const f = i.config.format;
+  if (f.kind !== 'knockout') return plannedGames(f, i.config.entrants.length, i.config.paired);
+  const { pairs, games } = i.state;
+  return games.length + knockoutGamesLeft(i.config.entrants.length, f.pairs, pairs, games);
+}
+
+/**
+ * games played over games planned; a knockout plays at least its planned games, and a finished
+ * tournament shows the games it played, as an SPRT ends before its most
+ */
+export function progress(i: Item): string {
+  const n = count(i.state.games.length);
+  if (i.ended === 'done') return n;
+  return i.config.format.kind === 'knockout'
+    ? `${n} of ${count(planned(i))} or more`
+    : `${n}/${count(planned(i))}`;
+}
 
 /** `progress` in the list's few characters */
-export const progressShort = (i: Item): string =>
-  i.config.format.kind === 'knockout'
-    ? `${i.state.games.length}/${planned(i)}+`
-    : `${i.state.games.length}/${planned(i)}`;
+export function progressShort(i: Item): string {
+  const n = count(i.state.games.length);
+  if (i.ended === 'done') return n;
+  return i.config.format.kind === 'knockout'
+    ? `${n}/${count(planned(i))}+`
+    : `${n}/${count(planned(i))}`;
+}
 
 export const pct = (i: Item): number =>
-  Math.min(100, (100 * i.state.games.length) / Math.max(1, planned(i)));
+  i.ended === 'done' ? 100 : Math.min(100, (100 * i.state.games.length) / Math.max(1, planned(i)));
 
 export function statusText(i: Item): string {
   if (i.elsewhere) return 'in another tab';

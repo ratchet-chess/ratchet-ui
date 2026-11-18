@@ -47,6 +47,11 @@ Its games' PGN goes to a collection in Games, which stays when the tournament is
 the games in play, and they do not count. Resume plays the unfinished games of the issued pairs, then continues. One
 tab at a time plays a tournament.
 
+With none selected, Tourneys shows an overview: tournaments running, stopped and finished, and notices of what wants
+a look. A notice is about a run its tab left, games that ended abnormally (a time loss, an illegal move, no move given or an
+engine failure), an engine or book a resume needs, or storage near its quota. Finished tournaments move into a monthly
+archive 30 days after their end. A run's time left is timed by its pace in this tab.
+
 A tournament's standings rank by points, then by Buchholz in a Swiss, then by Sonneborn-Berger, then by head to head
 among the engines still tied, as fastchess-gui does. A bye adds to neither tiebreak. A match's page charts its LLR
 and Elo over the pairs. Copy puts a match's statistics, in OpenBench's stat block, or a tournament's standings on

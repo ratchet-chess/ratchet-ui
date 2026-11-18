@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { bracket, bracketOrder, directorOf, swissRound, TIEBREAK_PAIRS } from './director.ts';
+import {
+  bracket,
+  bracketOrder,
+  directorOf,
+  knockoutGamesLeft,
+  swissRound,
+  TIEBREAK_PAIRS,
+} from './director.ts';
 import { BYE, type Format } from './format.ts';
 import type { GameRecord, PairRecord, Result } from './summary.ts';
 
@@ -161,6 +168,22 @@ describe('a resumed tournament', () => {
 });
 
 describe('knockout', () => {
+  it('counts the fewest games still to play: a tied match one pair more, a pair in play less', () => {
+    // 4 engines, 1 pair a match: 3 matches, 6 games at the fewest
+    expect(knockoutGamesLeft(4, 1, [], [])).toBe(6);
+    const p0: PairRecord = { pair: 0, a: 0, b: 3, round: 0, opening: '' };
+    const p1: PairRecord = { pair: 1, a: 1, b: 2, round: 0, opening: '' };
+    const pairs = [p0, p1];
+    // 0 beats 3; 1 and 2 split their pair, so play one more; the final waits
+    const games = [...gamesOf(p0, '1-0', '0-1'), ...gamesOf(p1, '1-0', '1-0')];
+    expect(knockoutGamesLeft(4, 1, pairs, games)).toBe(2 + 2);
+    // one game of the tiebreak pair in play
+    const p2: PairRecord = { pair: 2, a: 1, b: 2, round: 0, opening: '' };
+    expect(
+      knockoutGamesLeft(4, 1, [...pairs, p2], [...games, ...gamesOf(p2, '1-0', '1-0').slice(0, 1)]),
+    ).toBe(1 + 2);
+  });
+
   it('seeds a bracket so the top two meet only in the final', () => {
     expect(bracketOrder(8)).toEqual([0, 7, 3, 4, 1, 6, 2, 5]);
   });
