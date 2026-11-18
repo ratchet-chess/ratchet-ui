@@ -19,6 +19,8 @@ The rows for **release**, **own engine**, **WASI build** and **condition** quote
 | **match**        | two engines' games: a fixed number of pairs, or an SPRT                                                                                  |                                     |
 | **tournament**   | the games of more than two engines in a format: round robin, gauntlet, Swiss or knockout                                                 |                                     |
 | **pair**         | two games on one opening, colors swapped; a match's statistics count pairs                                                               |                                     |
+| **meeting**      | two engines' games against each other in a tournament: one pair, or a knockout's pairs until one engine leads                            | bout, tie                           |
+| **bye**          | a Swiss round an engine sits out; it scores one point                                                                                    |                                     |
 
 ## Rules
 

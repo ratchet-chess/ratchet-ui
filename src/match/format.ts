@@ -30,8 +30,8 @@ export type FixedFormat = Extract<Format, { kind: 'match' | 'roundrobin' | 'gaun
 /** the opponent of a Swiss bye: the engine sits out the round and scores one point */
 export const BYE = -1;
 
-/** One pair to issue: `a` has White in its first game and Black in its second. */
-export interface Meeting {
+/** One pair to issue, and who plays it: `a` has White in its first game and Black in its second. */
+export interface Pairing {
   a: number;
   /** BYE when `a` sits out a Swiss round */
   b: number;
@@ -98,8 +98,8 @@ export function plannedGames(format: Format, entrants: number): number {
 }
 
 /** a format's whole schedule of pairs, for the formats that pair before any game is played */
-export function schedule(format: FixedFormat, entrants: number): Meeting[] {
-  const out: Meeting[] = [];
+export function schedule(format: FixedFormat, entrants: number): Pairing[] {
+  const out: Pairing[] = [];
   if (format.kind === 'match') {
     for (let i = 0; i < format.pairs; i++) out.push({ a: 0, b: 1, round: i });
     return out;

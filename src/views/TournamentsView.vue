@@ -44,7 +44,7 @@ const elo1 = ref(5);
 const cycles = ref(1);
 const seeds = ref(1);
 const rounds = ref(5);
-const boutPairs = ref(1);
+const meetingPairs = ref(1);
 const control = ref('10+0.1');
 const book = ref('');
 const adjudicationChoice = ref<'standard' | 'draw' | 'none'>('standard');
@@ -83,7 +83,7 @@ function reset(): void {
   cycles.value = 1;
   seeds.value = 1;
   rounds.value = 5;
-  boutPairs.value = 1;
+  meetingPairs.value = 1;
   control.value = '10+0.1';
   book.value = books.pulled.has('8moves_v3.pgn') ? '8moves_v3.pgn' : '';
   adjudicationChoice.value = 'standard';
@@ -149,7 +149,7 @@ const format = computed<Format>(() => {
     case 'swiss':
       return { kind: 'swiss', rounds: rounds.value };
     default:
-      return { kind: 'knockout', pairs: boutPairs.value };
+      return { kind: 'knockout', pairs: meetingPairs.value };
   }
 });
 const totalGames = computed(() => plannedGames(format.value, entrants.value.length));
@@ -210,7 +210,7 @@ function formatText(f: Format): string {
 }
 const planned = (i: Item) => plannedGames(i.config.format, i.config.entrants.length);
 /** a knockout's bracket, round by round */
-const bouts = computed(() => {
+const bracketRounds = computed(() => {
   const i = item.value;
   if (i?.config.format.kind !== 'knockout') return [];
   return bracket(i.config.entrants.length, i.config.format.pairs, i.state.pairs, i.state.games);
@@ -439,7 +439,7 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
               <span class="text-dim">pairs</span>
               <span
                 ><input
-                  v-model.number="boutPairs"
+                  v-model.number="meetingPairs"
                   type="number"
                   min="1"
                   :class="inputClass"
@@ -663,11 +663,11 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
         </div>
       </Panel>
 
-      <Panel v-if="bouts.length > 0" title="Bracket" note="points over finished pairs">
+      <Panel v-if="bracketRounds.length > 0" title="Bracket" note="points over finished pairs">
         <div class="grid gap-3 px-3 py-2 text-[12.5px] wide:grid-flow-col">
-          <div v-for="(round, r) in bouts" :key="r">
+          <div v-for="(round, r) in bracketRounds" :key="r">
             <div class="mb-1 text-[10.5px] tracking-wider text-dim uppercase">
-              {{ roundName(r, bouts.length) }}
+              {{ roundName(r, bracketRounds.length) }}
             </div>
             <div
               v-for="(t, k) in round"
