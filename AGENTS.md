@@ -34,5 +34,9 @@ The rows for **release**, **own engine**, **WASI build** and **condition** quote
 - **The browser pulls each book from its repo at the pinned commit.** The app serves no copy of a book.
 - **Keep games and books in OPFS or IndexedDB.** localStorage holds about 5 MB, so it keeps only settings.
 - **Serve the app cross-origin isolated where the host allows it.** Without isolation, the Worker uses a slower input mode.
+- **A tournament's pairs come from its saved records alone.** `directorOf` keeps no state, so a resumed tournament pairs as the first run would.
+- **A Swiss round is paired from the rounds before it,** so the director waits until a round's games finish.
+- **A pair's opening comes from the tournament's seed and the pair's number,** so a resumed pair gets it again.
+- **A stopped run writes nothing more.** A late write would make a deleted tournament's folder again.
 - **This repo is public.** Commit no machine path, host name, address or task reference, in files or in commit messages.
 - **A commit passes the pre-commit hook:** format, typecheck, lint, knip and tests.

@@ -8,18 +8,32 @@ export interface Sprt {
   beta: number;
 }
 
-/** How a tournament's engines meet. Every meeting is a pair: two games on one opening, colors swapped. */
+/**
+ * How a tournament's engines meet. Two engines meet in pairs, two games on one opening with colors
+ * swapped: one pair a meeting, except a knockout's, which plays pairs until one engine leads.
+ */
 export type Format =
   /** two engines; the first is tested against the second. Pairs, or an SPRT up to its pairs */
   | { kind: 'match'; pairs: number; sprt: Sprt | null }
   /** every engine plays every other, `cycles` times */
   | { kind: 'roundrobin'; cycles: number }
   /** the first `seeds` engines each play every other engine, `cycles` times; the others do not meet */
-  | { kind: 'gauntlet'; seeds: number; cycles: number };
+  | { kind: 'gauntlet'; seeds: number; cycles: number }
+  /** `rounds` rounds of a pair each, between engines of about equal points, without a rematch where one can be avoided */
+  | { kind: 'swiss'; rounds: number }
+  /** a seeded bracket; each meeting plays `pairs` pairs, then one more pair at a time while tied */
+  | { kind: 'knockout'; pairs: number };
 
-/** One pair of a schedule: `a` has White in its first game and Black in its second. */
+/** the formats whose whole schedule is known before any game */
+export type FixedFormat = Extract<Format, { kind: 'match' | 'roundrobin' | 'gauntlet' }>;
+
+/** the opponent of a Swiss bye: the engine sits out the round and scores one point */
+export const BYE = -1;
+
+/** One pair to issue: `a` has White in its first game and Black in its second. */
 export interface Meeting {
   a: number;
+  /** BYE when `a` sits out a Swiss round */
   b: number;
   round: number;
 }
@@ -69,8 +83,22 @@ export function bergerRounds(n: number): [number, number][][] {
   return rounds;
 }
 
+/**
+ * The games a format plays for a field of `entrants`: all of them, the most for an SPRT, and the
+ * fewest for a knockout, whose tied meetings play more.
+ */
+export function plannedGames(format: Format, entrants: number): number {
+  const n = entrants;
+  if (format.kind === 'match') return format.pairs * 2;
+  if (format.kind === 'roundrobin') return n * (n - 1) * format.cycles;
+  if (format.kind === 'swiss') return format.rounds * Math.floor(n / 2) * 2;
+  if (format.kind === 'knockout') return Math.max(0, n - 1) * format.pairs * 2;
+  const s = Math.min(format.seeds, n - 1);
+  return 2 * s * (n - s) * format.cycles;
+}
+
 /** a format's whole schedule of pairs, for the formats that pair before any game is played */
-export function schedule(format: Format, entrants: number): Meeting[] {
+export function schedule(format: FixedFormat, entrants: number): Meeting[] {
   const out: Meeting[] = [];
   if (format.kind === 'match') {
     for (let i = 0; i < format.pairs; i++) out.push({ a: 0, b: 1, round: i });

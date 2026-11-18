@@ -24,6 +24,21 @@ bun run build                    # the static site, in dist/
 `books.json` lists the opening books the app can pull. The browser pulls a book from its repo at the pinned commit,
 checks the archive's sha256, and keeps the book in its private file system.
 
+Tourneys plays matches and tournaments between served engines in the browser. The formats are:
+
+- a match of fixed pairs, or an SPRT;
+- a round robin, a gauntlet, a Swiss or a knockout.
+
+Each tournament is a folder in the browser's private file system:
+
+- `config.json`, its setup;
+- `pairs.jsonl` and `games.jsonl`, one JSON line per pair issued and per game finished;
+- `end.json`, once it ends.
+
+Its games' PGN goes to a collection in Games, which stays when the tournament is deleted. Stop now ends
+the games in play, and they do not count. Resume plays the unfinished games of the issued pairs, then continues. One
+tab at a time plays a tournament.
+
 Every engine runs in `vendor/ratchet-wasi-host/`, a copy of Ratchet's browser host for WASI builds. Its `README.md`
 names the commit it came from.
 

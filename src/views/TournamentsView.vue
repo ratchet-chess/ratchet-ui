@@ -4,7 +4,8 @@ import { useRoute, useRouter } from 'vue-router';
 import Panel from '../components/Panel.vue';
 import { TIME_CONTROLS } from '../chess/clock.ts';
 import { STANDARD_ADJUDICATION, type Adjudication } from '../match/adjudicate.ts';
-import type { Format, TournamentConfig } from '../match/format.ts';
+import { bracket } from '../match/director.ts';
+import { plannedGames, type Format, type TournamentConfig } from '../match/format.ts';
 import { sprtGames } from '../match/stats.ts';
 import { useBooks } from '../stores/books.ts';
 import { useEngines } from '../stores/engines.ts';
@@ -42,6 +43,8 @@ const elo0 = ref(0);
 const elo1 = ref(5);
 const cycles = ref(1);
 const seeds = ref(1);
+const rounds = ref(5);
+const boutPairs = ref(1);
 const control = ref('10+0.1');
 const book = ref('');
 const adjudicationChoice = ref<'standard' | 'draw' | 'none'>('standard');
@@ -79,6 +82,8 @@ function reset(): void {
   [elo0.value, elo1.value] = [SPRT_PRESETS[0].elo0, SPRT_PRESETS[0].elo1];
   cycles.value = 1;
   seeds.value = 1;
+  rounds.value = 5;
+  boutPairs.value = 1;
   control.value = '10+0.1';
   book.value = books.pulled.has('8moves_v3.pgn') ? '8moves_v3.pgn' : '';
   adjudicationChoice.value = 'standard';
@@ -115,18 +120,44 @@ watch(
 const entrants = computed(() =>
   kind.value === 'match' ? [tested.value, base.value] : field.value,
 );
+const KIND_NAMES: Record<Format['kind'], string> = {
+  match: 'Match',
+  roundrobin: 'Round robin',
+  gauntlet: 'Gauntlet',
+  swiss: 'Swiss',
+  knockout: 'Knockout',
+};
 const defaultName = computed(() =>
   kind.value === 'match'
     ? `${tested.value} vs ${base.value}`
-    : `${kind.value === 'gauntlet' ? 'Gauntlet' : 'Round robin'} of ${field.value.length}`,
+    : `${KIND_NAMES[kind.value]} of ${field.value.length}`,
 );
-const totalGames = computed(() => {
-  const n = entrants.value.length;
-  if (kind.value === 'match') return pairs.value * 2;
-  if (kind.value === 'roundrobin') return n * (n - 1) * cycles.value;
-  const s = Math.min(seeds.value, n - 1);
-  return 2 * s * (n - s) * cycles.value;
+const format = computed<Format>(() => {
+  switch (kind.value) {
+    case 'match':
+      return {
+        kind: 'match',
+        pairs: pairs.value,
+        sprt: useSprt.value
+          ? { elo0: elo0.value, elo1: elo1.value, alpha: 0.05, beta: 0.05 }
+          : null,
+      };
+    case 'roundrobin':
+      return { kind: 'roundrobin', cycles: cycles.value };
+    case 'gauntlet':
+      return { kind: 'gauntlet', seeds: seeds.value, cycles: cycles.value };
+    case 'swiss':
+      return { kind: 'swiss', rounds: rounds.value };
+    default:
+      return { kind: 'knockout', pairs: boutPairs.value };
+  }
 });
+const totalGames = computed(() => plannedGames(format.value, entrants.value.length));
+/** the rounds a Swiss needs for one engine to be alone on top */
+const settling = computed(() => Math.max(1, Math.ceil(Math.log2(Math.max(2, field.value.length)))));
+/** how the planned games bound the games played */
+const bound = (f: Format) =>
+  f.kind === 'match' && f.sprt ? ' at most' : f.kind === 'knockout' ? ' at least' : '';
 const canStart = computed(
   () =>
     entrants.value.length >= 2 &&
@@ -142,23 +173,11 @@ function adjudication(): Adjudication | null {
 }
 
 async function startNew(): Promise<void> {
-  const format: Format =
-    kind.value === 'match'
-      ? {
-          kind: 'match',
-          pairs: pairs.value,
-          sprt: useSprt.value
-            ? { elo0: elo0.value, elo1: elo1.value, alpha: 0.05, beta: 0.05 }
-            : null,
-        }
-      : kind.value === 'roundrobin'
-        ? { kind: 'roundrobin', cycles: cycles.value }
-        : { kind: 'gauntlet', seeds: seeds.value, cycles: cycles.value };
   const config: TournamentConfig = {
     id: crypto.randomUUID(),
     name: name.value.trim() || defaultName.value,
     created: new Date().toISOString(),
-    format,
+    format: format.value,
     entrants: [...entrants.value],
     control: control.value,
     book: book.value,
@@ -184,16 +203,20 @@ function formatText(f: Format): string {
       : `match of ${f.pairs * 2} games`;
   }
   if (f.kind === 'roundrobin') return `round robin, ${f.cycles} cycle${f.cycles > 1 ? 's' : ''}`;
+  if (f.kind === 'swiss') return `Swiss, ${f.rounds} round${f.rounds > 1 ? 's' : ''}`;
+  if (f.kind === 'knockout')
+    return `knockout, ${f.pairs} pair${f.pairs > 1 ? 's' : ''} a meeting, more while tied`;
   return `gauntlet, ${f.seeds} seed${f.seeds > 1 ? 's' : ''}, ${f.cycles} cycle${f.cycles > 1 ? 's' : ''}`;
 }
-function plannedGames(i: Item): number {
-  const f = i.config.format;
-  const n = i.config.entrants.length;
-  if (f.kind === 'match') return f.pairs * 2;
-  if (f.kind === 'roundrobin') return n * (n - 1) * f.cycles;
-  const s = Math.min(f.seeds, n - 1);
-  return 2 * s * (n - s) * f.cycles;
-}
+const planned = (i: Item) => plannedGames(i.config.format, i.config.entrants.length);
+/** a knockout's bracket, round by round */
+const bouts = computed(() => {
+  const i = item.value;
+  if (i?.config.format.kind !== 'knockout') return [];
+  return bracket(i.config.entrants.length, i.config.format.pairs, i.state.pairs, i.state.games);
+});
+const roundName = (r: number, total: number) =>
+  r === total - 1 ? 'final' : r === total - 2 ? 'semifinals' : `round ${r + 1}`;
 function statusText(i: Item): string {
   if (i.elsewhere) return 'in another tab';
   if (i.state.status === 'running') return 'running';
@@ -215,7 +238,12 @@ const statusClass = (s: string) =>
 /** a signed value; an unbounded one, as an all-or-nothing score gives, shows as ±∞ */
 const fmt = (v: number, d = 1) =>
   Number.isFinite(v) ? `${v >= 0 ? '+' : ''}${v.toFixed(d)}` : v > 0 ? '+∞' : '−∞';
-const pct = (i: Item) => Math.min(100, (100 * i.state.games.length) / Math.max(1, plannedGames(i)));
+/** games played over games planned; a knockout plays at least its planned games */
+const progress = (i: Item) =>
+  i.config.format.kind === 'knockout'
+    ? `${i.state.games.length} of ${planned(i)} or more`
+    : `${i.state.games.length}/${planned(i)}`;
+const pct = (i: Item) => Math.min(100, (100 * i.state.games.length) / Math.max(1, planned(i)));
 const llrAt = (v: number, lo: number, hi: number) =>
   (100 * (Math.min(hi, Math.max(lo, v)) - lo)) / (hi - lo);
 /** a tournament this tab may play on or delete: not done, and not played by a tab */
@@ -267,7 +295,7 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
           </div>
           <div class="num mt-0.5 flex justify-between text-[11.5px] text-dim">
             <span>{{ formatText(i.config.format) }} · {{ i.config.control }}</span>
-            <span>{{ i.state.games.length }}/{{ plannedGames(i) }}</span>
+            <span>{{ progress(i) }}</span>
           </div>
           <div class="mt-1 h-1 overflow-hidden rounded bg-[#262c35]">
             <div class="h-full bg-accent" :style="{ width: `${pct(i)}%` }" />
@@ -291,6 +319,8 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
             <option value="match">match</option>
             <option value="roundrobin">round robin</option>
             <option value="gauntlet">gauntlet</option>
+            <option value="swiss">Swiss</option>
+            <option value="knockout">knockout</option>
           </select>
 
           <template v-if="kind === 'match'">
@@ -391,8 +421,37 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
                 /> <span class="text-dim">the first in the field play all the others</span></span
               >
             </template>
-            <span class="text-dim">cycles</span>
-            <span
+            <template v-if="kind === 'swiss'">
+              <span class="text-dim">rounds</span>
+              <span
+                ><input
+                  v-model.number="rounds"
+                  type="number"
+                  min="1"
+                  :class="inputClass"
+                  class="w-16"
+                /> <span class="text-dim"
+                  >a pair each; {{ settling }} can leave one engine alone on top</span
+                ></span
+              >
+            </template>
+            <template v-if="kind === 'knockout'">
+              <span class="text-dim">pairs</span>
+              <span
+                ><input
+                  v-model.number="boutPairs"
+                  type="number"
+                  min="1"
+                  :class="inputClass"
+                  class="w-16"
+                /> <span class="text-dim"
+                  >a meeting; while tied, one more at a time up to 10, then the higher seed goes
+                  through</span
+                ></span
+              >
+            </template>
+            <span v-if="kind === 'roundrobin' || kind === 'gauntlet'" class="text-dim">cycles</span>
+            <span v-if="kind === 'roundrobin' || kind === 'gauntlet'"
               ><input
                 v-model.number="cycles"
                 type="number"
@@ -450,9 +509,7 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
         </div>
         <div class="flex items-center gap-3 border-t border-row px-3 py-2">
           <button :class="buttonClass" :disabled="!canStart" @click="startNew">Start</button>
-          <span class="num text-xs text-dim"
-            >{{ totalGames }} games{{ kind === 'match' && useSprt ? ' at most' : '' }}</span
-          >
+          <span class="num text-xs text-dim">{{ totalGames }} games{{ bound(format) }}</span>
         </div>
       </Panel>
     </div>
@@ -507,10 +564,7 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
               : 'draw adjudication'
             : 'no adjudication'
         }}
-        · {{ item.config.concurrency }} at once · {{ item.state.games.length }}/{{
-          plannedGames(item)
-        }}
-        games
+        · {{ item.config.concurrency }} at once · {{ progress(item) }} games
       </div>
       <div v-if="item.state.error" class="mb-3 text-bad">{{ item.state.error }}</div>
 
@@ -600,7 +654,7 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
                 <td class="num px-2 py-1 text-right">{{ r.losses }}</td>
                 <td class="num px-2 py-1 text-right">{{ r.points }}</td>
                 <td class="num px-2 py-1 text-right">
-                  {{ r.games ? ((100 * r.points) / r.games).toFixed(1) + '%' : '—' }}
+                  {{ r.games ? ((100 * (r.points - r.byes)) / r.games).toFixed(1) + '%' : '—' }}
                 </td>
                 <td class="num px-2 py-1 text-right">{{ r.elo === null ? '—' : fmt(r.elo, 0) }}</td>
               </tr>
@@ -609,8 +663,41 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
         </div>
       </Panel>
 
+      <Panel v-if="bouts.length > 0" title="Bracket" note="points over finished pairs">
+        <div class="grid gap-3 px-3 py-2 text-[12.5px] wide:grid-flow-col">
+          <div v-for="(round, r) in bouts" :key="r">
+            <div class="mb-1 text-[10.5px] tracking-wider text-dim uppercase">
+              {{ roundName(r, bouts.length) }}
+            </div>
+            <div
+              v-for="(t, k) in round"
+              :key="k"
+              class="num mb-1.5 rounded border border-line bg-panel2 px-2 py-1"
+            >
+              <div
+                v-for="(side, s) in [t.a, t.b]"
+                :key="s"
+                class="flex gap-2"
+                :class="t.winner !== null && side === t.winner ? 'text-text' : 'text-dim'"
+              >
+                <span class="flex-1 truncate">{{
+                  side === null ? (t.by === 'bye' ? 'bye' : '…') : label(item, side)
+                }}</span>
+                <span v-if="t.pairs.length > 0">{{ t.points[s] }}</span>
+              </div>
+              <div v-if="t.by === 'seed'" class="text-[11px] text-faint">
+                tied after {{ t.done }} pairs: the higher seed goes through
+              </div>
+            </div>
+          </div>
+        </div>
+      </Panel>
+
       <Panel
-        v-if="item.config.format.kind === 'roundrobin' && item.config.entrants.length <= 12"
+        v-if="
+          (item.config.format.kind === 'roundrobin' || item.config.format.kind === 'swiss') &&
+          item.config.entrants.length <= 12
+        "
         title="Crosstable"
         note="points of the row's engine against the column's"
       >

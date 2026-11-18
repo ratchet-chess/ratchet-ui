@@ -1,4 +1,4 @@
-import type { Format } from './format.ts';
+import { BYE, type Format } from './format.ts';
 import { bounds, bucket, elo, llr, nelo, type Ptnml } from './stats.ts';
 
 /** One pair as issued: who meets, in which round, and on which opening. */
@@ -32,8 +32,11 @@ export interface Standing {
   wins: number;
   draws: number;
   losses: number;
+  /** points from games, plus a point for each Swiss bye */
   points: number;
-  /** the Elo difference to the field the score implies; null at 0% or 100% */
+  /** Swiss rounds sat out */
+  byes: number;
+  /** the Elo difference to the field the game score implies; null at 0% or 100% */
   elo: number | null;
 }
 
@@ -62,10 +65,17 @@ export interface Summary {
   match: MatchStats | null;
 }
 
-const pointsOf = (result: Result, white: boolean) =>
+/** a side's points from a game's result */
+export const pointsOf = (result: Result, white: boolean) =>
   result === '1/2-1/2' ? 0.5 : (result === '1-0') === white ? 1 : 0;
 
-export function summarize(format: Format, entrants: number, games: GameRecord[]): Summary {
+/** the standings and statistics of a tournament's finished games; a Swiss bye in `pairs` scores a point */
+export function summarize(
+  format: Format,
+  entrants: number,
+  games: readonly GameRecord[],
+  pairs: readonly PairRecord[] = [],
+): Summary {
   const grid = () =>
     Array.from({ length: entrants }, () => Array.from({ length: entrants }, () => 0));
   const points = grid();
@@ -77,6 +87,7 @@ export function summarize(format: Format, entrants: number, games: GameRecord[])
     draws: 0,
     losses: 0,
     points: 0,
+    byes: 0,
     elo: null,
   }));
   const byPair = new Map<number, GameRecord[]>();
@@ -105,6 +116,12 @@ export function summarize(format: Format, entrants: number, games: GameRecord[])
   for (const r of rows) {
     const s = r.games > 0 ? r.points / r.games : 0;
     r.elo = r.games > 0 && s > 0 && s < 1 ? -400 * Math.log10(1 / s - 1) : null;
+  }
+  for (const p of pairs) {
+    const row = rows[p.a];
+    if (p.b !== BYE || !row) continue;
+    row.byes++;
+    row.points += 1;
   }
   const done = [...byPair.values()].filter((gs) => gs.length === 2);
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { BYE } from './format.ts';
 import { summarize, type GameRecord, type Result } from './summary.ts';
 
 /** a pair's two games: `a` White first, then Black */
@@ -43,5 +44,17 @@ describe('summarize', () => {
     expect(s.games[1]?.[2]).toBe(2);
     expect(s.match).toBeNull();
     expect(s.standings[0]?.elo).toBeNull();
+  });
+
+  it('scores a Swiss bye as a point', () => {
+    const s = summarize({ kind: 'swiss', rounds: 1 }, 3, pair(0, 0, 1, '1-0', '0-1'), [
+      { pair: 0, a: 0, b: 1, round: 0, opening: '' },
+      { pair: 1, a: 2, b: BYE, round: 0, opening: '' },
+    ]);
+    expect(s.standings.map((r) => [r.entrant, r.points, r.games, r.byes, r.elo])).toEqual([
+      [0, 2, 2, 0, null],
+      [2, 1, 0, 1, null],
+      [1, 0, 2, 0, null],
+    ]);
   });
 });

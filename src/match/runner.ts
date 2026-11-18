@@ -3,7 +3,7 @@ import { Game } from '../chess/game.ts';
 import type { Opening } from '../books/opening.ts';
 import { UciEngine } from '../engine/uci.ts';
 import { directorOf, type Director } from './director.ts';
-import type { TournamentConfig } from './format.ts';
+import { BYE, type TournamentConfig } from './format.ts';
 import { playOut, type Side } from './referee.ts';
 import { summarize, type GameRecord, type PairRecord, type Summary } from './summary.ts';
 
@@ -56,7 +56,7 @@ export function stateOf(
     pairs,
     games,
     live: [],
-    summary: summarize(config.format, config.entrants.length, games),
+    summary: summarize(config.format, config.entrants.length, games, pairs),
     error: '',
   };
 }
@@ -106,6 +106,7 @@ export class Run {
     this.director = directorOf(config.format, entrants.length);
     const finished = new Set(state.games.map((g) => `${g.pair}:${g.game}`));
     for (const pair of state.pairs) {
+      if (pair.b === BYE) continue;
       for (const game of [0, 1] as const) {
         if (!finished.has(`${pair.pair}:${game}`))
           this.waiting.push({ pair, game, opening: undefined, fetched: false });
@@ -155,6 +156,19 @@ export class Run {
           const m = this.director.next(this.state.pairs, this.state.games);
           if (m === 'wait' || m === 'done') break;
           const index = this.state.pairs.length;
+          if (m.b === BYE) {
+            const bye: PairRecord = { pair: index, a: m.a, b: BYE, round: m.round, opening: '' };
+            this.state.pairs.push(bye);
+            this.state.summary = summarize(
+              this.config.format,
+              this.entrants.length,
+              this.state.games,
+              this.state.pairs,
+            );
+            await this.deps.savePair(bye);
+            if (this.stopped()) return;
+            continue;
+          }
           const opening = await this.deps.opening(index);
           if (this.stopped()) return;
           const pair: PairRecord = {
@@ -287,7 +301,12 @@ export class Run {
         plies: game.san.length - book,
       };
       this.state.games.push(record);
-      this.state.summary = summarize(this.config.format, this.entrants.length, this.state.games);
+      this.state.summary = summarize(
+        this.config.format,
+        this.entrants.length,
+        this.state.games,
+        this.state.pairs,
+      );
       await this.deps.saveGame(record, this.pgn(game, pair, n, white, black));
       if (this.stopped()) return;
     }

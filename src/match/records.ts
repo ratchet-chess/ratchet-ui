@@ -42,6 +42,8 @@ function formatOf(x: unknown): Format {
   if (kind === 'match') return { kind, pairs: int(r, 'pairs'), sprt: sprtOf(r.sprt) };
   if (kind === 'roundrobin') return { kind, cycles: int(r, 'cycles') };
   if (kind === 'gauntlet') return { kind, seeds: int(r, 'seeds'), cycles: int(r, 'cycles') };
+  if (kind === 'swiss') return { kind, rounds: int(r, 'rounds') };
+  if (kind === 'knockout') return { kind, pairs: int(r, 'pairs') };
   throw new Error(`the format ${kind} is not known`);
 }
 
