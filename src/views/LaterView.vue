@@ -9,7 +9,6 @@ const props = defineProps<{ section: string }>();
 const plans: Record<string, string> = {
   tournaments: 'Matches and tournaments played in this browser, with SPRT and standings.',
   hosts: "The manager's hosts: condition, reason, units and benchtop's health line.",
-  books: 'Opening books pulled on demand, pinned by sha256, kept in this browser.',
   ratings: "The manager's ratings, and each version's progress.",
 };
 

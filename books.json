@@ -1,0 +1,64 @@
+{
+  "books": [
+    {
+      "id": "8moves_v3.pgn",
+      "format": "pgn",
+      "positions": 34700,
+      "bytes": 8037438,
+      "url": "https://raw.githubusercontent.com/official-stockfish/books/37751b08db745aa02babfa74056dd1168b9da803/8moves_v3.pgn.zip",
+      "zipBytes": 807558,
+      "sha256": "7e1e9dd118b4bb97d8a8b5b8a790c86e21f8509d59a27d2883767d94477be02e",
+      "repo": "official-stockfish/books",
+      "commit": "37751b08db745aa02babfa74056dd1168b9da803",
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "noob_3moves.epd",
+      "format": "epd",
+      "positions": 150932,
+      "bytes": 9839116,
+      "url": "https://raw.githubusercontent.com/official-stockfish/books/37751b08db745aa02babfa74056dd1168b9da803/noob_3moves.epd.zip",
+      "zipBytes": 785119,
+      "sha256": "68fe2691e0876d0de54fffb68c797e752138d5ed363beab2ac6ca34be68ee9f3",
+      "repo": "official-stockfish/books",
+      "commit": "37751b08db745aa02babfa74056dd1168b9da803",
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "noob_4moves.epd",
+      "format": "epd",
+      "positions": 1837365,
+      "bytes": 122475877,
+      "url": "https://raw.githubusercontent.com/official-stockfish/books/37751b08db745aa02babfa74056dd1168b9da803/noob_4moves.epd.zip",
+      "zipBytes": 10081701,
+      "sha256": "ca8e161fc207e79abfc6fd0e2df3cddfe4b2614a3d871135150ff1c8e1bd9802",
+      "repo": "official-stockfish/books",
+      "commit": "37751b08db745aa02babfa74056dd1168b9da803",
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "UHO_4060_v4.epd",
+      "format": "epd",
+      "positions": 241670,
+      "bytes": 16226151,
+      "url": "https://raw.githubusercontent.com/official-stockfish/books/37751b08db745aa02babfa74056dd1168b9da803/UHO_4060_v4.epd.zip",
+      "zipBytes": 3903223,
+      "sha256": "a97424c5b98b42f8c27ff450f0681ad11696148548c975752350e98417ead11d",
+      "repo": "official-stockfish/books",
+      "commit": "37751b08db745aa02babfa74056dd1168b9da803",
+      "license": "CC0-1.0"
+    },
+    {
+      "id": "UHO_Lichess_4852_v1.epd",
+      "format": "epd",
+      "positions": 2632036,
+      "bytes": 174889110,
+      "url": "https://raw.githubusercontent.com/official-stockfish/books/37751b08db745aa02babfa74056dd1168b9da803/UHO_Lichess_4852_v1.epd.zip",
+      "zipBytes": 42877788,
+      "sha256": "4e298f11e8acfa106babe02968f2e61582145e7874c59284690b20b9650e0e07",
+      "repo": "official-stockfish/books",
+      "commit": "37751b08db745aa02babfa74056dd1168b9da803",
+      "license": "CC0-1.0"
+    }
+  ]
+}

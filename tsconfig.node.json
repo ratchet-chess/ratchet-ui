@@ -15,5 +15,11 @@
     "noEmit": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["vite.config.ts", "scripts/**/*.ts", "src/engine/manifest.ts"]
+  "include": [
+    "vite.config.ts",
+    "scripts/**/*.ts",
+    "src/engine/manifest.ts",
+    "src/books/list.ts",
+    "src/books/zip.ts"
+  ]
 }

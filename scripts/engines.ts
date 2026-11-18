@@ -15,11 +15,22 @@
  * pin matches the release as published. A build whose sha256 differs from its pin stops the script
  * before anything is written.
  */
-import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import type { ServedEngine } from '../src/engine/manifest.ts';
+import {
+  at,
+  download,
+  fail,
+  github,
+  isRecord,
+  repoLicense,
+  sha256,
+  text,
+  upsert,
+  writeList,
+} from './lib.ts';
 
 /** a GitHub release asset in engines.json */
 interface ReleaseEntry {
@@ -53,30 +64,6 @@ const localPath = join(root, 'engines.local.json');
 const outDir = join(root, 'public/engines');
 const servedPath = join(root, 'public/engines.json');
 const HOST = 'wasi-host.js';
-const AGENT = { 'user-agent': 'ratchet-ui-engines' };
-
-const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
-
-function fail(message: string): never {
-  console.error(message);
-  process.exit(1);
-}
-
-const isRecord = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null;
-
-/** the value at `path` inside parsed JSON, or undefined */
-function at(x: unknown, ...path: string[]): unknown {
-  let v = x;
-  for (const k of path) v = isRecord(v) ? v[k] : undefined;
-  return v;
-}
-
-/** the text at `path` inside parsed JSON; anything else stops the script */
-function text(x: unknown, what: string, ...path: string[]): string {
-  const v = at(x, ...path);
-  if (typeof v !== 'string') fail(`${what}: ${path.join('.')} is not text`);
-  return v;
-}
 
 const textOrNull = (x: unknown, what: string, key: string) =>
   at(x, key) === null ? null : text(x, what, key);
@@ -118,32 +105,6 @@ function readLocals(): LocalEntry[] {
       sha256: t('sha256'),
     };
   });
-}
-
-function writeList(path: string, engines: { id: string }[]): void {
-  engines.sort((a, b) => a.id.localeCompare(b.id, 'en', { numeric: true }));
-  writeFileSync(path, `${JSON.stringify({ engines }, null, 2)}\n`);
-}
-
-function upsert<T extends { id: string }>(list: T[], entry: T): void {
-  const i = list.findIndex((e) => e.id === entry.id);
-  if (i >= 0) list[i] = entry;
-  else list.push(entry);
-}
-
-/** GitHub's REST API, without a token: 60 requests an hour, which adding an engine stays far below */
-async function github(path: string): Promise<unknown> {
-  const res = await fetch(`https://api.github.com${path}`, {
-    headers: { accept: 'application/vnd.github+json', ...AGENT },
-  });
-  if (!res.ok) fail(`GitHub ${path}: ${res.status} ${res.statusText}`);
-  return res.json();
-}
-
-async function download(url: string): Promise<Uint8Array> {
-  const res = await fetch(url, { headers: AGENT });
-  if (!res.ok) fail(`${url}: ${res.status} ${res.statusText}`);
-  return new Uint8Array(await res.arrayBuffer());
 }
 
 /** an engine's name and version, from Ratchet's package naming, ratchet-<semver> */
@@ -192,10 +153,9 @@ async function add(args: string[]): Promise<void> {
   }
   const commit = text(ref, what, 'object', 'sha');
 
-  const spdx = at(await github(`/repos/${repo}`), 'license', 'spdx_id');
   const license =
     opt('--license') ??
-    (typeof spdx === 'string' && spdx !== 'NOASSERTION' ? spdx : undefined) ??
+    (await repoLicense(repo)) ??
     fail(`${repo} states no license GitHub can name; give one with --license`);
 
   const id = asset.replace(/\.wasm$/, '');
@@ -213,7 +173,7 @@ async function add(args: string[]): Promise<void> {
     sha256: got,
     license,
   });
-  writeList(listPath, list);
+  writeList(listPath, 'engines', list);
   console.log(`engines.json: ${id} from ${repo} ${tag} (${license}), sha256 ${got.slice(0, 12)}…`);
 }
 
@@ -228,7 +188,7 @@ function addLocal(dir: string | undefined): void {
   if (got !== want) fail(`${path} hashes to ${got}, and SHA256SUMS says ${want}`);
   const list = readLocals();
   upsert(list, { id, ...nameOf(id), path, sha256: got });
-  writeList(localPath, list);
+  writeList(localPath, 'engines', list);
   console.log(`engines.local.json: ${id}`);
 }
 

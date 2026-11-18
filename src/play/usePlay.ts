@@ -4,6 +4,7 @@ import { onBeforeUnmount, reactive, ref, shallowRef, triggerRef } from 'vue';
 import { Clock, TIME_CONTROLS, pgnTimeControl, type TimeControl } from '../chess/clock.ts';
 import { Game } from '../chess/game.ts';
 import type { ServedEngine } from '../engine/manifest.ts';
+import type { Opening } from '../books/opening.ts';
 import type { Info } from '../engine/info.ts';
 import { UciEngine } from '../engine/uci.ts';
 import { useEngines } from '../stores/engines.ts';
@@ -62,6 +63,8 @@ export function usePlay() {
   const error = ref('');
   /** whether this game is in Games: a finished game goes there by itself, an aborted one on request */
   const saved = ref(false);
+  /** the opening this game started from, as a reader sees it; empty for chess's start */
+  const openingLabel = ref('');
 
   let clock: Clock | null = null;
   let workers: Partial<Record<Color, UciEngine>> = {};
@@ -215,15 +218,17 @@ export function usePlay() {
     }
   }
 
-  /** starts a new game with the chosen players and time control */
-  async function start(): Promise<void> {
+  /** starts a new game with the chosen players and time control, from an opening if one is given */
+  async function start(opening?: Opening): Promise<void> {
     token++;
     const mine = token;
     shutDown();
     clock = null;
     error.value = '';
     saved.value = false;
-    game.value = new Game();
+    game.value = new Game(opening?.fen);
+    for (const m of opening?.moves ?? []) game.value.play(m);
+    openingLabel.value = opening?.label ?? '';
     thinking.white = thinking.black = null;
     times.white = times.black = null;
     phase.value = 'starting';
@@ -255,7 +260,7 @@ export function usePlay() {
         tc.kind === 'clock'
           ? new Clock({ baseMs: tc.baseMs, incMs: tc.incMs })
           : new Clock({ baseMs: tc.periodMs, moves: tc.moves });
-      clock.start('white');
+      clock.start(game.value.turn);
       ticker = setInterval(tick, 100);
       tick();
     }
@@ -312,6 +317,7 @@ export function usePlay() {
     times,
     error,
     saved,
+    openingLabel,
     pgn,
     save,
     personToMove,

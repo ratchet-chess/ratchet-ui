@@ -16,9 +16,13 @@ bun run engines add <owner/repo> <tag> <asset.wasm>
                                  # add a GitHub release asset to engines.json, checked against GitHub's digest
 bun run engines add-local <package dir>
                                  # add a build on this machine to engines.local.json, which is not committed
+bun run books add <book>         # add a book from official-stockfish/books to books.json, pinned to a commit
 bun run dev                      # the app, cross-origin isolated, on Vite's dev server
 bun run build                    # the static site, in dist/
 ```
+
+`books.json` lists the opening books the app can pull. The browser pulls a book from its repo at the pinned commit,
+checks the archive's sha256, and keeps the book in its private file system.
 
 Every engine runs in `vendor/ratchet-wasi-host/`, a copy of Ratchet's browser host for WASI builds. Its `README.md`
 names the commit it came from.

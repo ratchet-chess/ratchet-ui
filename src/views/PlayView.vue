@@ -7,15 +7,19 @@ import Board from '../components/Board.vue';
 import Panel from '../components/Panel.vue';
 import { TIME_CONTROLS } from '../chess/clock.ts';
 import { usePlay, type Player } from '../play/usePlay.ts';
+import { useBooks } from '../stores/books.ts';
 import { useEngines } from '../stores/engines.ts';
 import { PLAYED } from '../stores/games.ts';
 
 const engines = useEngines();
+const books = useBooks();
+/** the book a new game draws its opening from; empty for chess's start */
+const book = ref('');
 const play = usePlay();
-const { game, phase, names, thinking, times, error, saved } = play;
+const { game, phase, names, thinking, times, error, saved, openingLabel } = play;
 
 onMounted(async () => {
-  await engines.load();
+  await Promise.all([engines.load(), books.load()]);
   // a first visit offers a game against the newest engine, with the person as White
   const newest = engines.list.at(-1);
   if (newest) play.players.black = { kind: 'engine', id: newest.id };
@@ -111,6 +115,19 @@ const sides = computed(() => {
   const bottom = orientation.value;
   return { top: opposite(bottom), bottom };
 });
+
+/** starts a game, from a random opening of the chosen book */
+async function newGame(): Promise<void> {
+  if (!book.value) {
+    await play.start();
+    return;
+  }
+  try {
+    await play.start(await books.randomOpening(book.value));
+  } catch (e) {
+    error.value = `No opening from ${book.value}: ${e instanceof Error ? e.message : String(e)}`;
+  }
+}
 
 /** the copy button's label for a moment after a click */
 const copyNote = ref('');
@@ -213,6 +230,21 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
             <option value="person">You</option>
             <option v-for="e in engines.list" :key="e.id" :value="e.id">{{ e.id }}</option>
           </select>
+          <span class="text-dim">opening</span>
+          <select
+            v-model="book"
+            :class="selectClass"
+            :disabled="phase === 'playing' || phase === 'starting'"
+          >
+            <option value="">start position</option>
+            <option
+              v-for="b in books.list.filter((x) => books.pulled.has(x.id))"
+              :key="b.id"
+              :value="b.id"
+            >
+              {{ b.id }}
+            </option>
+          </select>
           <span class="text-dim">time</span>
           <select
             v-model="controlLabel"
@@ -225,7 +257,7 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
           </select>
         </div>
         <div class="flex flex-wrap gap-1.5 border-t border-row px-3 py-2">
-          <button :class="buttonClass" :disabled="phase === 'starting'" @click="play.start()">
+          <button :class="buttonClass" :disabled="phase === 'starting'" @click="newGame">
             New game
           </button>
           <button :class="buttonClass" :disabled="phase !== 'playing'" @click="play.resign()">
@@ -245,6 +277,12 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
           <button :class="buttonClass" :disabled="game.san.length === 0" @click="savePgn">
             Download PGN
           </button>
+        </div>
+        <div
+          v-if="openingLabel && phase !== 'setup'"
+          class="num border-t border-row px-3 py-1.5 text-[12px] text-dim"
+        >
+          from {{ openingLabel }}
         </div>
         <div v-if="error" class="border-t border-row px-3 py-2 text-bad">{{ error }}</div>
         <div v-else-if="phase === 'starting'" class="border-t border-row px-3 py-2 text-dim">

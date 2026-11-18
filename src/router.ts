@@ -1,4 +1,5 @@
 import { createRouter, createWebHashHistory } from 'vue-router';
+import BooksView from './views/BooksView.vue';
 import EnginesView from './views/EnginesView.vue';
 import GamesView from './views/GamesView.vue';
 import JobsView from './views/JobsView.vue';
@@ -14,10 +15,11 @@ export const router = createRouter({
     { path: '/jobs', component: JobsView },
     { path: '/engines', component: EnginesView },
     { path: '/play', component: PlayView },
+    { path: '/books', component: BooksView },
     { path: '/games/:id?/:game?', component: GamesView },
     { path: '/settings', component: SettingsView },
     {
-      path: '/:section(tournaments|books|hosts|ratings)',
+      path: '/:section(tournaments|hosts|ratings)',
       component: LaterView,
       props: true,
     },
