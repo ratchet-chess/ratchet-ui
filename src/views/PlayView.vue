@@ -5,7 +5,7 @@ import { opposite } from 'chessops/util';
 import { computed, onMounted, ref, watch } from 'vue';
 import Board from '../components/Board.vue';
 import Panel from '../components/Panel.vue';
-import { TIME_CONTROLS } from '../chess/clock.ts';
+import { TIME_CONTROLS, pgnTimeControl } from '../chess/clock.ts';
 import { usePlay, type Player } from '../play/usePlay.ts';
 import { useEngines } from '../stores/engines.ts';
 
@@ -115,15 +115,12 @@ const sides = computed(() => {
 function pgnText(): string {
   const d = new Date();
   const date = `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
-  const tc = play.control.value;
-  const timeControl =
-    tc.kind === 'clock' ? `${tc.baseMs / 1000}+${tc.incMs / 1000}` : `1/${tc.ms / 1000}`;
   return game.value.pgn({
     Event: 'ratchet-ui game',
     Date: date,
     White: names.white,
     Black: names.black,
-    TimeControl: timeControl,
+    TimeControl: pgnTimeControl(play.control.value),
   });
 }
 

@@ -25,6 +25,9 @@ type Phase = 'setup' | 'starting' | 'playing' | 'over';
 
 const COLORS: Color[] = ['white', 'black'];
 
+/** how long an engine may take to answer a node budget before it loses */
+const NODES_WAIT_MS = 30_000;
+
 /** White's view of a score that an engine gave for the side it moves */
 function scoreFor(info: Info, mover: Color): string | null {
   const sign = mover === 'white' ? 1 : -1;
@@ -46,7 +49,7 @@ export function usePlay() {
     black: { kind: 'person' },
   });
   const control = ref<TimeControl>(
-    TIME_CONTROLS[2] ?? { kind: 'movetime', label: '1 s', ms: 1000 },
+    TIME_CONTROLS[2] ?? { kind: 'clock', label: '2+1', baseMs: 120_000, incMs: 1_000 },
   );
   const game = shallowRef(new Game());
   const phase = ref<Phase>('setup');
@@ -110,10 +113,12 @@ export function usePlay() {
 
   function limits(): string {
     const tc = control.value;
-    if (tc.kind === 'movetime' || !clock)
-      return `movetime ${tc.kind === 'movetime' ? tc.ms : 1000}`;
+    if (tc.kind === 'nodes' || !clock) return `nodes ${tc.kind === 'nodes' ? tc.nodes : 200_000}`;
     const w = Math.max(1, Math.round(clock.remaining('white')));
     const b = Math.max(1, Math.round(clock.remaining('black')));
+    if (tc.kind === 'moves') {
+      return `wtime ${w} btime ${b} movestogo ${clock.movesToGo(game.value.turn) ?? tc.moves}`;
+    }
     return `wtime ${w} btime ${b} winc ${tc.incMs} binc ${tc.incMs}`;
   }
 
@@ -131,6 +136,20 @@ export function usePlay() {
 
   async function think(color: Color, w: UciEngine): Promise<void> {
     const mine = token;
+    // No clock ends a search under a node budget, and an engine that does not take `go nodes`
+    // (Ratchet before 0.3.14) never answers it, so the game would wait forever.
+    const watchdog =
+      control.value.kind === 'nodes'
+        ? setTimeout(() => {
+            if (mine !== token) return;
+            game.value.forfeit(
+              color,
+              `${names[color]} gave no move in ${NODES_WAIT_MS / 1000} s under a node budget; it may not take go nodes`,
+              'rules infraction',
+            );
+            finish();
+          }, NODES_WAIT_MS)
+        : undefined;
     try {
       const best = await w.go(positionCommand(), limits(), (info) => {
         if (mine !== token || info.depth === undefined) return;
@@ -161,6 +180,8 @@ export function usePlay() {
         'rules infraction',
       );
       finish();
+    } finally {
+      clearTimeout(watchdog);
     }
   }
 
@@ -198,8 +219,11 @@ export function usePlay() {
     }
     if (mine !== token) return;
     const tc = control.value;
-    if (tc.kind === 'clock') {
-      clock = new Clock(tc.baseMs, tc.incMs);
+    if (tc.kind !== 'nodes') {
+      clock =
+        tc.kind === 'clock'
+          ? new Clock({ baseMs: tc.baseMs, incMs: tc.incMs })
+          : new Clock({ baseMs: tc.periodMs, moves: tc.moves });
       clock.start('white');
       ticker = setInterval(tick, 100);
       tick();
