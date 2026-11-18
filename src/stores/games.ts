@@ -6,8 +6,8 @@ import { parseCollection } from '../games/pgn.ts';
 export interface Collection {
   id: string;
   name: string;
-  /** `play` for the games played on this app's board; `file` for an opened PGN file */
-  source: 'play' | 'file';
+  /** `play` for the games played on this app's board; `file` for an opened PGN file; `match` for a match's games */
+  source: 'play' | 'file' | 'match';
   games: number;
   bytes: number;
   /** ISO time of the last change */
@@ -25,7 +25,7 @@ function isCollection(x: unknown): x is Collection {
   return (
     typeof id === 'string' &&
     typeof name === 'string' &&
-    (source === 'play' || source === 'file') &&
+    (source === 'play' || source === 'file' || source === 'match') &&
     typeof games === 'number' &&
     typeof bytes === 'number' &&
     typeof updated === 'string'
@@ -109,23 +109,49 @@ export const useGames = defineStore('games', () => {
     return id;
   }
 
-  /** adds one game to the collection of games played on this app's board */
-  async function savePlayed(pgn: string): Promise<void> {
-    await load();
-    const old = (await read(PLAYED)).trimEnd();
-    const text = old ? `${old}\n\n${pgn}` : pgn;
-    await writeText(`${PLAYED}.pgn`, text);
-    const prev = list.value.find((c) => c.id === PLAYED);
-    upsert({
-      id: PLAYED,
-      name: 'Played here',
-      source: 'play',
-      games: (prev?.games ?? 0) + 1,
-      bytes: new Blob([text]).size,
-      updated: new Date().toISOString(),
+  /** the collection writes, one at a time, so two games that end together never interleave */
+  let queue: Promise<unknown> = Promise.resolve();
+  function serial<T>(job: () => Promise<T>): Promise<T> {
+    const run = queue.then(job, job);
+    queue = run.catch(() => undefined);
+    return run;
+  }
+
+  /**
+   * Appends one game to a collection, and makes the collection if it is new. The game is written
+   * after the file's end, so a save costs the game's size, not the collection's.
+   */
+  function append(
+    id: string,
+    name: string,
+    source: Collection['source'],
+    pgn: string,
+  ): Promise<void> {
+    return serial(async () => {
+      await load();
+      const handle = await (await folder()).getFileHandle(`${id}.pgn`, { create: true });
+      const size = (await handle.getFile()).size;
+      const w = await handle.createWritable({ keepExistingData: true });
+      await w.seek(size);
+      await w.write(size > 0 ? `\n${pgn}` : pgn);
+      await w.close();
+      const prev = list.value.find((c) => c.id === id);
+      upsert({
+        id,
+        name,
+        source,
+        games: (prev?.games ?? 0) + 1,
+        bytes: (await handle.getFile()).size,
+        updated: new Date().toISOString(),
+      });
+      await saveIndex();
+      void navigator.storage.persist();
     });
-    await saveIndex();
-    void navigator.storage.persist();
+  }
+
+  /** adds one game to the collection of games played on this app's board */
+  function savePlayed(pgn: string): Promise<void> {
+    return append(PLAYED, 'Played here', 'play', pgn);
   }
 
   async function remove(id: string): Promise<void> {
@@ -134,5 +160,5 @@ export const useGames = defineStore('games', () => {
     await saveIndex();
   }
 
-  return { list, error, load, read, addFile, savePlayed, remove };
+  return { list, error, load, read, addFile, append, savePlayed, remove };
 });

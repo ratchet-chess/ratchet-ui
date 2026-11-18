@@ -68,6 +68,14 @@ describe('Game', () => {
     expect(g.uci).toEqual([]);
   });
 
+  it("writes each move's comment after it", () => {
+    const g = new Game();
+    playAll(g, 'e2e4');
+    g.annotate('+0.25/12 0.500s');
+    playAll(g, 'e7e5');
+    expect(g.pgn({}).split('\n').at(-2)).toBe('1. e4 {+0.25/12 0.500s} e5 *');
+  });
+
   it('writes PGN with the tag roster and the result', () => {
     const g = new Game();
     playAll(g, 'f2f3 e7e5 g2g4 d8h4');

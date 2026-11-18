@@ -1,12 +1,13 @@
 import type { Color } from 'chessops/types';
 import { opposite } from 'chessops/util';
 import { onBeforeUnmount, reactive, ref, shallowRef, triggerRef } from 'vue';
-import { Clock, TIME_CONTROLS, pgnTimeControl, type TimeControl } from '../chess/clock.ts';
+import { TIME_CONTROLS, pgnTimeControl, type Clock, type TimeControl } from '../chess/clock.ts';
 import { Game } from '../chess/game.ts';
 import type { ServedEngine } from '../engine/manifest.ts';
 import type { Opening } from '../books/opening.ts';
 import type { Info } from '../engine/info.ts';
 import { UciEngine } from '../engine/uci.ts';
+import { clockFor, engineTurn } from '../match/referee.ts';
 import { useEngines } from '../stores/engines.ts';
 import { useGames } from '../stores/games.ts';
 
@@ -26,9 +27,6 @@ export interface Thinking {
 type Phase = 'setup' | 'starting' | 'playing' | 'over';
 
 const COLORS: Color[] = ['white', 'black'];
-
-/** how long an engine may take to answer a node budget before it loses */
-const NODES_WAIT_MS = 30_000;
 
 /** White's view of a score that an engine gave for the side it moves */
 function scoreFor(info: Info, mover: Color): string | null {
@@ -138,23 +136,6 @@ export function usePlay() {
     }
   }
 
-  function positionCommand(): string {
-    const g = game.value;
-    const from = g.startFen === new Game().startFen ? 'startpos' : `fen ${g.startFen}`;
-    return g.uci.length > 0 ? `${from} moves ${g.uci.join(' ')}` : from;
-  }
-
-  function limits(): string {
-    const tc = control.value;
-    if (tc.kind === 'nodes' || !clock) return `nodes ${tc.kind === 'nodes' ? tc.nodes : 200_000}`;
-    const w = Math.max(1, Math.round(clock.remaining('white')));
-    const b = Math.max(1, Math.round(clock.remaining('black')));
-    if (tc.kind === 'moves') {
-      return `wtime ${w} btime ${b} movestogo ${clock.movesToGo(game.value.turn) ?? tc.moves}`;
-    }
-    return `wtime ${w} btime ${b} winc ${tc.incMs} binc ${tc.incMs}`;
-  }
-
   /** after each move: end the game, or let the side to move play */
   function next(): void {
     changed();
@@ -169,22 +150,15 @@ export function usePlay() {
 
   async function think(color: Color, w: UciEngine): Promise<void> {
     const mine = token;
-    // No clock ends a search under a node budget, and an engine that does not take `go nodes`
-    // (Ratchet before 0.3.14) never answers it, so the game would wait forever.
-    const watchdog =
-      control.value.kind === 'nodes'
-        ? setTimeout(() => {
-            if (mine !== token) return;
-            game.value.forfeit(
-              color,
-              `${names[color]} gave no move in ${NODES_WAIT_MS / 1000} s under a node budget; it may not take go nodes`,
-              'rules infraction',
-            );
-            finish();
-          }, NODES_WAIT_MS)
-        : undefined;
-    try {
-      const best = await w.go(positionCommand(), limits(), (info) => {
+    await engineTurn({
+      game: game.value,
+      color,
+      engine: w,
+      name: names[color],
+      control: control.value,
+      clock,
+      live: () => mine === token,
+      onInfo: (info) => {
         if (mine !== token || info.depth === undefined) return;
         const score = scoreFor(info, color);
         if (score === null) return;
@@ -195,27 +169,10 @@ export function usePlay() {
           nps: info.nps ?? 0,
           line: game.value.lineSan(info.pv ?? [], 8),
         };
-      });
-      if (mine !== token) return;
-      if (!game.value.play(best.move)) {
-        game.value.forfeit(
-          color,
-          `${names[color]} played an illegal move, ${best.move}`,
-          'rules infraction',
-        );
-      } else clock?.press();
-      next();
-    } catch (e) {
-      if (mine !== token) return;
-      game.value.forfeit(
-        color,
-        `${names[color]} failed: ${e instanceof Error ? e.message : String(e)}`,
-        'rules infraction',
-      );
-      finish();
-    } finally {
-      clearTimeout(watchdog);
-    }
+      },
+    });
+    if (mine !== token) return;
+    next();
   }
 
   /** starts a new game with the chosen players and time control, from an opening if one is given */
@@ -255,11 +212,8 @@ export function usePlay() {
     }
     if (mine !== token) return;
     const tc = control.value;
-    if (tc.kind !== 'nodes') {
-      clock =
-        tc.kind === 'clock'
-          ? new Clock({ baseMs: tc.baseMs, incMs: tc.incMs })
-          : new Clock({ baseMs: tc.periodMs, moves: tc.moves });
+    clock = clockFor(tc);
+    if (clock) {
       clock.start(game.value.turn);
       ticker = setInterval(tick, 100);
       tick();

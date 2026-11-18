@@ -27,6 +27,8 @@ export class Game {
   /** the moves in UCI as engines write them: castling is the king's move to its target square */
   readonly uci: string[] = [];
   readonly san: string[] = [];
+  /** each move's PGN comment, such as an engine's score, depth and time; empty for none */
+  readonly comments: string[] = [];
   outcome: Outcome | null = null;
   /** how often each position has occurred, keyed as the repetition rule compares positions */
   private readonly seen = new Map<string, number>();
@@ -78,8 +80,14 @@ export class Game {
     const standard = this.standardUci(move);
     this.san.push(makeSanAndPlay(this.pos, move));
     this.uci.push(standard);
+    this.comments.push('');
     this.settle();
     return true;
+  }
+
+  /** sets the last move's PGN comment */
+  annotate(text: string): void {
+    if (this.comments.length > 0) this.comments[this.comments.length - 1] = text;
   }
 
   /** ends the game against `color`, for a fallen flag; a draw if the other side cannot mate */
@@ -148,6 +156,8 @@ export class Game {
       if (white) words.push(`${n}.`);
       else if (i === 0) words.push(`${n}...`);
       words.push(san);
+      const comment = this.comments[i] ?? '';
+      if (comment) words.push(`{${comment}}`);
       if (!white) n++;
       white = !white;
     });
