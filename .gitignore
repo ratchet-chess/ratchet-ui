@@ -12,3 +12,8 @@ public/engines/
 !.claude/CLAUDE.md
 !.claude/rules/
 !.claude/skills/
+
+# builds on this machine, for development; scripts/engines.ts add-local writes it
+engines.local.json
+# written by scripts/engines.ts from engines.json and engines.local.json
+public/engines.json

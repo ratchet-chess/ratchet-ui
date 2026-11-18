@@ -5,5 +5,5 @@
   "trailingComma": "all",
   "printWidth": 100,
   "sortPackageJson": false,
-  "ignorePatterns": ["dist/", "node_modules/", "public/engines/", "bun.lock"]
+  "ignorePatterns": ["dist/", "node_modules/", "public/engines/", "bun.lock", "vendor/"]
 }

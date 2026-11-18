@@ -11,7 +11,7 @@
   "env": {
     "builtin": true
   },
-  "ignorePatterns": ["**/dist/**", "**/node_modules/**", "public/engines/**"],
+  "ignorePatterns": ["**/dist/**", "**/node_modules/**", "public/engines/**", "vendor/**"],
   "rules": {
     "constructor-super": "off",
     "eqeqeq": [

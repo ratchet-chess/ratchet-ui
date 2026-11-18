@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue';
 import Panel from '../components/Panel.vue';
-import type { EngineEntry } from '../engine/manifest.ts';
+import type { ServedEngine } from '../engine/manifest.ts';
 import type { Info } from '../engine/info.ts';
 import { UciEngine, inputMode } from '../engine/uci.ts';
-import { enginesBase, useEngines } from '../stores/engines.ts';
+import { useEngines } from '../stores/engines.ts';
 
 const engines = useEngines();
 const mode = inputMode();
@@ -23,7 +23,7 @@ interface Trial {
 const trials = reactive(new Map<string, Trial>());
 const live = new Map<string, UciEngine>();
 
-async function tryEngine(e: EngineEntry): Promise<void> {
+async function tryEngine(e: ServedEngine): Promise<void> {
   live.get(e.id)?.terminate();
   const t: Trial = reactive({
     state: 'starting',
@@ -35,7 +35,7 @@ async function tryEngine(e: EngineEntry): Promise<void> {
   });
   trials.set(e.id, t);
   const t0 = performance.now();
-  const engine = new UciEngine(enginesBase + e.worker);
+  const engine = new UciEngine(engines.workerUrl(e));
   live.set(e.id, engine);
   try {
     t.idName = (await engine.identify()).name;
@@ -102,7 +102,7 @@ onUnmounted(() => {
         <thead>
           <tr class="text-left text-[11.5px] text-dim">
             <th class="border-b border-line px-2 py-1 font-medium">engine</th>
-            <th class="border-b border-line px-2 py-1 font-medium">kind</th>
+            <th class="border-b border-line px-2 py-1 font-medium">source</th>
             <th class="border-b border-line px-2 py-1 font-medium">wasm sha256</th>
             <th class="border-b border-line px-2 py-1 font-medium">trial</th>
             <th class="border-b border-line px-2 py-1" />
@@ -112,13 +112,13 @@ onUnmounted(() => {
           <tr v-for="{ e, t } in rows" :key="e.id" class="border-b border-row last:border-0">
             <td class="num px-2 py-1.5 whitespace-nowrap">{{ e.id }}</td>
             <td class="px-2 py-1.5">
-              <span class="num rounded border border-line px-1.5 text-[10.5px] text-dim">{{
-                e.kind
-              }}</span>
+              <span
+                class="num rounded border border-line px-1.5 text-[10.5px] whitespace-nowrap text-dim"
+                :title="e.license ?? ''"
+                >{{ e.source }}</span
+              >
             </td>
-            <td class="num px-2 py-1.5 text-[11.5px] text-dim">
-              {{ (e.sha256[e.wasm] ?? '').slice(0, 12) }}…
-            </td>
+            <td class="num px-2 py-1.5 text-[11.5px] text-dim">{{ e.sha256.slice(0, 12) }}…</td>
             <td class="num px-2 py-1.5 text-[12px]">
               <template v-if="t">
                 <span v-if="t.state === 'failed'" class="text-bad"

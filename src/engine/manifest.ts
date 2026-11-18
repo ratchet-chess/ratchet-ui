@@ -1,44 +1,50 @@
-/** One engine the app can run in a Worker: a WASI build and the Worker script that hosts it. */
-export interface EngineEntry {
-  /** the package's name, such as ratchet-0.3.14; also the stem of both files */
+/** One engine the app serves: a WASI build that speaks UCI, run in the app's own host. */
+export interface ServedEngine {
+  /** the build's file name without .wasm, such as ratchet-0.3.14 */
   id: string;
   name: string;
-  /** Ratchet's own version; null for a release, whose name says it */
   version: string | null;
-  kind: 'own engine' | 'release';
-  /** the Worker script, with stockfish.js's interface; it loads `wasm` beside it */
-  worker: string;
+  /** the build's file, in public/engines/ */
   wasm: string;
-  /** each file's sha256, by file name, as its package's SHA256SUMS states it */
-  sha256: Record<string, string>;
+  sha256: string;
+  /** `<owner/repo> <tag>` for a GitHub release; `local` for a build on this machine */
+  source: string;
+  /** SPDX identifier; null for a local build */
+  license: string | null;
 }
 
-export interface Manifest {
-  engines: EngineEntry[];
+/** public/engines.json, which scripts/engines.ts writes from engines.json and engines.local.json */
+export interface Served {
+  /** the host's Worker script, in public/engines/; it runs the build its URL's hash names */
+  host: string;
+  engines: ServedEngine[];
 }
 
 const isRecord = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null;
+const isText = (x: unknown): x is string => typeof x === 'string';
+const isTextOrNull = (x: unknown) => x === null || typeof x === 'string';
 
-function isEntry(x: unknown): x is EngineEntry {
+function isEngine(x: unknown): x is ServedEngine {
   if (!isRecord(x)) return false;
-  const { id, name, version, kind, worker, wasm, sha256 } = x;
+  const { id, name, version, wasm, sha256, source, license } = x;
   return (
-    typeof id === 'string' &&
-    typeof name === 'string' &&
-    (version === null || typeof version === 'string') &&
-    (kind === 'own engine' || kind === 'release') &&
-    typeof worker === 'string' &&
-    typeof wasm === 'string' &&
-    isRecord(sha256) &&
-    Object.values(sha256).every((v) => typeof v === 'string')
+    isText(id) &&
+    isText(name) &&
+    isTextOrNull(version) &&
+    isText(wasm) &&
+    isText(sha256) &&
+    isText(source) &&
+    isTextOrNull(license)
   );
 }
 
-/** Reads engines.json's text; throws when it is not a manifest. */
-export function parseManifest(text: string): Manifest {
+/** Reads public/engines.json's text; throws when it is not such a list. */
+export function parseServed(text: string): Served {
   const x: unknown = JSON.parse(text);
-  if (!isRecord(x) || !Array.isArray(x.engines) || !x.engines.every(isEntry)) {
-    throw new Error('engines.json is not a manifest of engines');
+  if (!isRecord(x)) throw new Error('engines.json is not a list of engines');
+  const { host, engines } = x;
+  if (!isText(host) || !Array.isArray(engines) || !engines.every(isEngine)) {
+    throw new Error('engines.json is not a list of engines');
   }
-  return { engines: x.engines };
+  return { host, engines };
 }

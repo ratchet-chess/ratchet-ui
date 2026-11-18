@@ -15,7 +15,7 @@ export interface BestMove {
 
 /**
  * A UCI engine that runs in a Worker with stockfish.js's interface: one UCI line per message, in
- * each direction. Ratchet's packages ship such a Worker for every WASI build.
+ * each direction. The app's host (vendor/ratchet-wasi-host/) is such a Worker for any WASI build.
  */
 export class UciEngine {
   private readonly worker: Worker;
@@ -28,6 +28,11 @@ export class UciEngine {
   constructor(workerUrl: string) {
     this.worker = new Worker(workerUrl);
     this.worker.onmessage = (e: MessageEvent<string>) => {
+      // the host's report that the build did not load or run; the Worker closes after it
+      if (e.data.startsWith('info string error:')) {
+        this.fail(new Error(e.data.slice('info string error:'.length).trim()));
+        return;
+      }
       for (const listen of this.listeners) listen(e.data);
     };
     // A script that is missing or does not load raises an error event and no message,

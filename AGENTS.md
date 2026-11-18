@@ -14,16 +14,19 @@ The rows for **release**, **own engine**, **WASI build** and **condition** quote
 | **job**          | the queue's unit of submitted work, as `tools/queue.ts status` lists it                                                                  |                                     |
 | **condition**    | a host's one word in the queue's `status` (open, closed, allocated, retiring, drained, silent), with its reason                          | state                               |
 | **package**      | one WASI build's distribution files from Ratchet's `tools/package.ts`: the WASI build, its browser Worker and `SHA256SUMS`               |                                     |
-| **manifest**     | `public/engines.json`: the packages the app serves, with each file's sha256                                                              |                                     |
+| **manifest**     | `engines.json`: the maintained list of engines, each a WASI build from a GitHub release, pinned by sha256                                |                                     |
 | **manager view** | the sections that read a ratchet-bench manager: Jobs, Hosts and Ratings                                                                  |                                     |
 
 ## Rules
 
 - **Every section except the manager view works with no manager,** because the same build is also a static site.
 - **The manager view only reads.** Control of the manager comes later, through an HTTP API with a token.
-- **Engines come in as packages, pinned by sha256.** `bun run engines` copies them and checks each file.
-- **Commit the manifest, never the engine files.** `public/engines/` is not committed.
-- **Run every engine through its package's Worker.** The Worker and its WASI host are Ratchet's code, so fix them in Ratchet.
+- **The app runs only WASI builds that speak UCI.** No engine brings its own JavaScript.
+- **Add an engine to the manifest with `bun run engines add`.** It checks the file against GitHub's published sha256.
+- **A build on this machine goes in `engines.local.json`,** which is not committed. `bun run engines add-local` adds a package.
+- **Never commit engine files.** `bun run engines` downloads or copies them into `public/engines/` and checks each pin.
+- **Every engine runs in one host, `vendor/ratchet-wasi-host/`.** It is a copy of Ratchet's code, so fix it in Ratchet.
+- **After a fix in Ratchet, refresh the copy** with `bun scripts/vendor-host.ts <ratchet checkout>`.
 - **Keep games and books in OPFS or IndexedDB.** localStorage holds about 5 MB, so it keeps only settings.
 - **Serve the app cross-origin isolated where the host allows it.** Without isolation, the Worker uses a slower input mode.
 - **This repo is public.** Commit no machine path, host name, address or task reference, in files or in commit messages.
