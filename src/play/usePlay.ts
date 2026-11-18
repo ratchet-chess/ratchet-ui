@@ -1,12 +1,13 @@
 import type { Color } from 'chessops/types';
 import { opposite } from 'chessops/util';
 import { onBeforeUnmount, reactive, ref, shallowRef, triggerRef } from 'vue';
-import { Clock, TIME_CONTROLS, type TimeControl } from '../chess/clock.ts';
+import { Clock, TIME_CONTROLS, pgnTimeControl, type TimeControl } from '../chess/clock.ts';
 import { Game } from '../chess/game.ts';
 import type { ServedEngine } from '../engine/manifest.ts';
 import type { Info } from '../engine/info.ts';
 import { UciEngine } from '../engine/uci.ts';
 import { useEngines } from '../stores/engines.ts';
+import { useGames } from '../stores/games.ts';
 
 /** who plays one side: a person at this board, or an engine by its id */
 export type Player = { kind: 'person' } | { kind: 'engine'; id: string };
@@ -43,6 +44,7 @@ function scoreFor(info: Info, mover: Color): string | null {
  */
 export function usePlay() {
   const engines = useEngines();
+  const games = useGames();
 
   const players = reactive<Record<Color, Player>>({
     white: { kind: 'person' },
@@ -58,6 +60,8 @@ export function usePlay() {
   /** milliseconds left to each side, refreshed while a clock runs; null without a clock */
   const times = reactive<Record<Color, number | null>>({ white: null, black: null });
   const error = ref('');
+  /** whether this game is in Games: a finished game goes there by itself, an aborted one on request */
+  const saved = ref(false);
 
   let clock: Clock | null = null;
   let workers: Partial<Record<Color, UciEngine>> = {};
@@ -103,6 +107,32 @@ export function usePlay() {
     shutDown();
     phase.value = 'over';
     changed();
+    if (game.value.outcome) void save();
+  }
+
+  /** the game in PGN, with today's date, the players and the time control */
+  function pgn(): string {
+    const d = new Date();
+    const date = `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+    return game.value.pgn({
+      Event: 'ratchet-ui game',
+      Date: date,
+      White: names.white,
+      Black: names.black,
+      TimeControl: pgnTimeControl(control.value),
+    });
+  }
+
+  /** adds the game to Games' collection of games played here, once */
+  async function save(): Promise<void> {
+    if (saved.value || game.value.san.length === 0) return;
+    saved.value = true;
+    try {
+      await games.savePlayed(pgn());
+    } catch (e) {
+      saved.value = false;
+      error.value = `The game was not saved: ${e instanceof Error ? e.message : String(e)}`;
+    }
   }
 
   function positionCommand(): string {
@@ -192,6 +222,7 @@ export function usePlay() {
     shutDown();
     clock = null;
     error.value = '';
+    saved.value = false;
     game.value = new Game();
     thinking.white = thinking.black = null;
     times.white = times.black = null;
@@ -280,6 +311,9 @@ export function usePlay() {
     thinking,
     times,
     error,
+    saved,
+    pgn,
+    save,
     personToMove,
     start,
     move,

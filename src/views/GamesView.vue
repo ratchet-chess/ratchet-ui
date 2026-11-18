@@ -1,0 +1,202 @@
+<script setup lang="ts">
+import { computed, onMounted, ref, shallowRef, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { Download, Trash2 } from '@lucide/vue';
+import GameViewer from '../components/GameViewer.vue';
+import Panel from '../components/Panel.vue';
+import { parseCollection, type Parsed } from '../games/pgn.ts';
+import { PLAYED, useGames, type Collection } from '../stores/games.ts';
+
+const games = useGames();
+const route = useRoute();
+const router = useRouter();
+
+/** the open collection and game, from the route: /games/<collection>/<game> */
+const openId = computed(() => (typeof route.params['id'] === 'string' ? route.params['id'] : ''));
+const gameIndex = computed(() => {
+  const g = route.params['game'];
+  return typeof g === 'string' && /^\d+$/.test(g) ? Number(g) : null;
+});
+
+const parsed = shallowRef<Parsed | null>(null);
+const busy = ref('');
+
+async function openCollection(id: string): Promise<void> {
+  parsed.value = null;
+  if (!id) return;
+  busy.value = 'Reading the collection…';
+  // give the page a frame to show that before a large file's parse
+  await new Promise<void>((r) => {
+    requestAnimationFrame(() => r());
+  });
+  parsed.value = parseCollection(await games.read(id));
+  busy.value = '';
+}
+
+onMounted(async () => {
+  await games.load();
+  await openCollection(openId.value);
+});
+watch(openId, (id) => void openCollection(id));
+
+const open = computed(() => games.list.find((c) => c.id === openId.value));
+const game = computed(() =>
+  gameIndex.value === null ? undefined : parsed.value?.games[gameIndex.value],
+);
+
+/** newest first, with the games played here at the top */
+const collections = computed(() =>
+  games.list.toSorted((a, b) =>
+    a.id === PLAYED ? -1 : b.id === PLAYED ? 1 : b.updated.localeCompare(a.updated),
+  ),
+);
+
+const PAGE = 100;
+const page = ref(0);
+watch(openId, () => (page.value = 0));
+const pages = computed(() => Math.max(1, Math.ceil((parsed.value?.summaries.length ?? 0) / PAGE)));
+const shown = computed(
+  () => parsed.value?.summaries.slice(page.value * PAGE, (page.value + 1) * PAGE) ?? [],
+);
+
+const fileInput = ref<HTMLInputElement | null>(null);
+async function onFiles(e: Event): Promise<void> {
+  const input = e.target as HTMLInputElement;
+  let last = '';
+  for (const f of Array.from(input.files ?? [])) {
+    busy.value = `Keeping ${f.name}…`;
+    last = await games.addFile(f.name.replace(/\.pgn$/i, ''), await f.text());
+  }
+  input.value = '';
+  busy.value = '';
+  if (last) await router.push(`/games/${last}`);
+}
+
+async function download(c: Collection): Promise<void> {
+  const url = URL.createObjectURL(
+    new Blob([await games.read(c.id)], { type: 'application/x-chess-pgn' }),
+  );
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${c.name}.pgn`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function remove(c: Collection): Promise<void> {
+  if (!confirm(`Delete ${c.name} and its ${c.games} games from this browser?`)) return;
+  await games.remove(c.id);
+  if (openId.value === c.id) await router.push('/games');
+}
+
+const size = (b: number) =>
+  b >= 1e6 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`;
+const day = (iso: string) => iso.slice(0, 10);
+const th = 'border-b border-line px-2 py-1 font-medium';
+const buttonClass = 'rounded border border-line bg-panel2 px-1.5 py-1 align-middle text-xs';
+</script>
+
+<template>
+  <div class="mb-2.5 flex flex-wrap items-baseline gap-2.5">
+    <h1 class="text-[15px] font-semibold">Games</h1>
+    <span class="text-xs text-dim">PGN collections kept in this browser</span>
+    <span class="flex-1" />
+    <button :class="buttonClass" @click="fileInput?.click()">Open PGN files…</button>
+    <input
+      ref="fileInput"
+      type="file"
+      accept=".pgn,application/x-chess-pgn"
+      multiple
+      class="hidden"
+      @change="onFiles"
+    />
+  </div>
+  <div v-if="games.error" class="mb-3 text-bad">{{ games.error }}</div>
+  <div v-if="busy" class="mb-3 text-dim">{{ busy }}</div>
+
+  <div class="grid gap-3.5" :class="game ? 'wide:grid-cols-[minmax(340px,440px)_1fr]' : ''">
+    <div :class="game ? 'hidden wide:block' : ''">
+      <Panel title="Collections">
+        <table class="w-full border-collapse text-[13px]">
+          <tbody>
+            <tr
+              v-for="c in collections"
+              :key="c.id"
+              class="cursor-pointer border-b border-row last:border-0 hover:bg-[#1c2128]"
+              :class="c.id === openId ? 'bg-[#1d2631]' : ''"
+              @click="router.push(`/games/${c.id}`)"
+            >
+              <td class="w-full max-w-0 truncate px-2 py-1.5" :title="c.name">{{ c.name }}</td>
+              <td class="num px-2 py-1.5 text-right">{{ c.games }}</td>
+              <td class="num px-2 py-1.5 text-right whitespace-nowrap text-dim">
+                {{ size(c.bytes) }}
+              </td>
+              <td class="num px-2 py-1.5 whitespace-nowrap text-dim">{{ day(c.updated) }}</td>
+              <td class="px-2 py-1.5 text-right whitespace-nowrap" @click.stop>
+                <button :class="buttonClass" title="Download as PGN" @click="download(c)">
+                  <Download :size="13" />
+                </button>
+                <button :class="buttonClass" class="ml-1" title="Delete" @click="remove(c)">
+                  <Trash2 :size="13" />
+                </button>
+              </td>
+            </tr>
+            <tr v-if="collections.length === 0">
+              <td class="px-3 py-3 text-dim">No games yet. Play one, or open a PGN file.</td>
+            </tr>
+          </tbody>
+        </table>
+      </Panel>
+
+      <Panel v-if="open && parsed" :title="open.name" :note="`${parsed.summaries.length} games`">
+        <div class="overflow-x-auto">
+          <table class="w-full border-collapse text-[12.5px]">
+            <thead>
+              <tr class="text-left text-[11.5px] text-dim">
+                <th :class="th">#</th>
+                <th :class="th">White</th>
+                <th :class="th">Black</th>
+                <th :class="th">result</th>
+                <th :class="th" class="text-right">plies</th>
+                <th :class="th">date</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="s in shown"
+                :key="s.index"
+                class="cursor-pointer border-b border-row last:border-0 hover:bg-[#1c2128]"
+                :class="s.index === gameIndex ? 'bg-[#1d2631]' : ''"
+                @click="router.push(`/games/${openId}/${s.index}`)"
+              >
+                <td class="num px-2 py-1 text-faint">{{ s.index + 1 }}</td>
+                <td class="px-2 py-1 whitespace-nowrap">{{ s.tags['White'] ?? '?' }}</td>
+                <td class="px-2 py-1 whitespace-nowrap">{{ s.tags['Black'] ?? '?' }}</td>
+                <td class="num px-2 py-1 whitespace-nowrap">{{ s.tags['Result'] ?? '*' }}</td>
+                <td class="num px-2 py-1 text-right text-dim">{{ s.plies }}</td>
+                <td class="num px-2 py-1 whitespace-nowrap text-dim">{{ s.tags['Date'] ?? '' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div
+          v-if="pages > 1"
+          class="flex items-center gap-2 border-t border-row px-3 py-1.5 text-xs text-dim"
+        >
+          <button :class="buttonClass" :disabled="page === 0" @click="page--">‹</button>
+          page {{ page + 1 }} of {{ pages }}
+          <button :class="buttonClass" :disabled="page + 1 >= pages" @click="page++">›</button>
+        </div>
+      </Panel>
+    </div>
+
+    <div v-if="game">
+      <RouterLink
+        :to="`/games/${openId}`"
+        class="mb-2 inline-block text-[12.5px] text-accent wide:hidden"
+        >‹ {{ open?.name }}</RouterLink
+      >
+      <GameViewer :game="game" />
+    </div>
+  </div>
+</template>

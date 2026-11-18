@@ -5,13 +5,14 @@ import { opposite } from 'chessops/util';
 import { computed, onMounted, ref, watch } from 'vue';
 import Board from '../components/Board.vue';
 import Panel from '../components/Panel.vue';
-import { TIME_CONTROLS, pgnTimeControl } from '../chess/clock.ts';
+import { TIME_CONTROLS } from '../chess/clock.ts';
 import { usePlay, type Player } from '../play/usePlay.ts';
 import { useEngines } from '../stores/engines.ts';
+import { PLAYED } from '../stores/games.ts';
 
 const engines = useEngines();
 const play = usePlay();
-const { game, phase, names, thinking, times, error } = play;
+const { game, phase, names, thinking, times, error, saved } = play;
 
 onMounted(async () => {
   await engines.load();
@@ -111,34 +112,21 @@ const sides = computed(() => {
   return { top: opposite(bottom), bottom };
 });
 
-/** the game's PGN, with today's date, the players and the time control */
-function pgnText(): string {
-  const d = new Date();
-  const date = `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
-  return game.value.pgn({
-    Event: 'ratchet-ui game',
-    Date: date,
-    White: names.white,
-    Black: names.black,
-    TimeControl: pgnTimeControl(play.control.value),
-  });
-}
-
 /** the copy button's label for a moment after a click */
 const copyNote = ref('');
 async function copyPgn(): Promise<void> {
   try {
-    await navigator.clipboard.writeText(pgnText());
+    await navigator.clipboard.writeText(play.pgn());
     copyNote.value = 'Copied';
   } catch {
-    // a browser may deny the clipboard; Save PGN still works there
+    // a browser may deny the clipboard; Download PGN still works there
     copyNote.value = 'Copy denied';
   }
   setTimeout(() => (copyNote.value = ''), 1500);
 }
 
 function savePgn(): void {
-  const url = URL.createObjectURL(new Blob([pgnText()], { type: 'application/x-chess-pgn' }));
+  const url = URL.createObjectURL(new Blob([play.pgn()], { type: 'application/x-chess-pgn' }));
   const a = document.createElement('a');
   a.href = url;
   a.download = `${names.white} vs ${names.black}.pgn`.replaceAll(/[^\w .+-]/g, '_');
@@ -255,7 +243,7 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
             {{ copyNote || 'Copy PGN' }}
           </button>
           <button :class="buttonClass" :disabled="game.san.length === 0" @click="savePgn">
-            Save PGN
+            Download PGN
           </button>
         </div>
         <div v-if="error" class="border-t border-row px-3 py-2 text-bad">{{ error }}</div>
@@ -265,6 +253,17 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
         <div v-else-if="phase === 'over'" class="border-t border-row px-3 py-2">
           <span class="num mr-2 font-semibold">{{ game.outcome?.result ?? '*' }}</span>
           <span class="text-dim">{{ game.outcome?.reason ?? 'aborted' }}</span>
+          <RouterLink v-if="saved" :to="`/games/${PLAYED}`" class="ml-2 text-xs text-accent"
+            >in Games</RouterLink
+          >
+          <button
+            v-else-if="game.san.length > 0"
+            :class="buttonClass"
+            class="ml-2"
+            @click="play.save()"
+          >
+            Save to Games
+          </button>
         </div>
       </Panel>
 
