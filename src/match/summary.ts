@@ -36,6 +36,10 @@ export interface Standing {
   points: number;
   /** Swiss rounds sat out */
   byes: number;
+  /** Sonneborn-Berger: for each opponent, the points scored against it times its points */
+  sb: number;
+  /** Buchholz: the opponents' points, once per game played against each */
+  buchholz: number;
   /** the Elo difference to the field the game score implies; null at 0% or 100% */
   elo: number | null;
 }
@@ -54,7 +58,10 @@ export interface MatchStats {
 }
 
 export interface Summary {
-  /** by points, then by games won */
+  /**
+   * by points, then Buchholz in a Swiss, then Sonneborn-Berger; rows still tied by the points each
+   * scored against the others tied, then by games won. fastchess-gui's order.
+   */
   standings: Standing[];
   /** points[i][j]: i's points against j */
   points: number[][];
@@ -88,6 +95,8 @@ export function summarize(
     losses: 0,
     points: 0,
     byes: 0,
+    sb: 0,
+    buchholz: 0,
     elo: null,
   }));
   const byPair = new Map<number, GameRecord[]>();
@@ -149,8 +158,33 @@ export function summarize(
         value === null || !b ? null : value >= b.upper ? 'H1' : value <= b.lower ? 'H0' : null,
     };
   }
-  const standings = rows.toSorted((x, y) =>
-    y.points !== x.points ? y.points - x.points : y.wins - x.wins,
+  // a bye has no opponent, so it adds to neither tiebreak
+  for (const r of rows) {
+    for (let j = 0; j < entrants; j++) {
+      const total = rows[j]?.points ?? 0;
+      r.sb += (points[r.entrant]?.[j] ?? 0) * total;
+      r.buchholz += (played[r.entrant]?.[j] ?? 0) * total;
+    }
+  }
+  const swiss = format.kind === 'swiss';
+  const tied = (x: Standing, y: Standing) =>
+    x.points === y.points && (!swiss || x.buchholz === y.buchholz) && x.sb === y.sb;
+  /** the first of the differences that is not zero, as a sort's comparison */
+  const first = (...ds: number[]) => ds.find((d) => d !== 0) ?? 0;
+  const byKey = rows.toSorted((x, y) =>
+    first(y.points - x.points, swiss ? y.buchholz - x.buchholz : 0, y.sb - x.sb),
   );
+  // head to head is not transitive, so it orders only the rows still tied
+  const standings: Standing[] = [];
+  for (let start = 0; start < byKey.length;) {
+    const head = byKey[start];
+    let end = start + 1;
+    for (let next = byKey[end]; head && next && tied(head, next); next = byKey[end]) end++;
+    const group = byKey.slice(start, end);
+    const among = (r: Standing) =>
+      group.reduce((t, o) => t + (o === r ? 0 : (points[r.entrant]?.[o.entrant] ?? 0)), 0);
+    standings.push(...group.toSorted((x, y) => first(among(y) - among(x), y.wins - x.wins)));
+    start = end;
+  }
   return { standings, points, games: played, pairsDone: done.length, match };
 }

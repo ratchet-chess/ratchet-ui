@@ -154,11 +154,23 @@ export const useGames = defineStore('games', () => {
     return append(PLAYED, 'Played here', 'play', pgn);
   }
 
+  /** saves a collection as a .pgn file, through the browser's download */
+  async function download(id: string, name: string): Promise<void> {
+    const url = URL.createObjectURL(
+      new Blob([await read(id)], { type: 'application/x-chess-pgn' }),
+    );
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${name}.pgn`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   async function remove(id: string): Promise<void> {
     await (await folder()).removeEntry(`${id}.pgn`).catch(() => undefined);
     list.value = list.value.filter((c) => c.id !== id);
     await saveIndex();
   }
 
-  return { list, error, load, read, addFile, append, savePlayed, remove };
+  return { list, error, load, read, addFile, append, savePlayed, download, remove };
 });

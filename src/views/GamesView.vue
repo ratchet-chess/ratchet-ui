@@ -31,6 +31,18 @@ async function openCollection(id: string): Promise<void> {
   });
   parsed.value = parseCollection(await games.read(id));
   busy.value = '';
+  await openRound();
+}
+
+/**
+ * /games/<collection>?round=<Round tag> opens the game a tournament's page names by its PGN Round
+ * tag; the last such game, since a replayed game may be in the collection twice
+ */
+async function openRound(): Promise<void> {
+  const round = route.query['round'];
+  if (typeof round !== 'string' || !parsed.value) return;
+  const found = parsed.value.summaries.findLast((g) => g.tags['Round'] === round);
+  await router.replace(found ? `/games/${openId.value}/${found.index}` : `/games/${openId.value}`);
 }
 
 onMounted(async () => {
@@ -38,6 +50,10 @@ onMounted(async () => {
   await openCollection(openId.value);
 });
 watch(openId, (id) => void openCollection(id));
+watch(
+  () => route.query['round'],
+  () => void openRound(),
+);
 
 const open = computed(() => games.list.find((c) => c.id === openId.value));
 const game = computed(() =>
@@ -72,16 +88,7 @@ async function onFiles(e: Event): Promise<void> {
   if (last) await router.push(`/games/${last}`);
 }
 
-async function download(c: Collection): Promise<void> {
-  const url = URL.createObjectURL(
-    new Blob([await games.read(c.id)], { type: 'application/x-chess-pgn' }),
-  );
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${c.name}.pgn`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
+const download = (c: Collection) => games.download(c.id, c.name);
 
 async function remove(c: Collection): Promise<void> {
   if (!confirm(`Delete ${c.name} and its ${c.games} games from this browser?`)) return;

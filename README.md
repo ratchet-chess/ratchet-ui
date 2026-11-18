@@ -41,6 +41,12 @@ Its games' PGN goes to a collection in Games, which stays when the tournament is
 the games in play, and they do not count. Resume plays the unfinished games of the issued pairs, then continues. One
 tab at a time plays a tournament.
 
+A tournament's standings rank by points, then by Buchholz in a Swiss, then by Sonneborn-Berger, then by head to head
+among the engines still tied, as fastchess-gui does. A bye adds to neither tiebreak. A match's page charts its LLR
+and Elo over the pairs. Copy puts a match's statistics, in OpenBench's stat block, or a tournament's standings on
+the clipboard as text. PGN downloads the games played so far. A game in Last games opens in Games, found by its
+PGN `Round` tag.
+
 Every engine runs in `vendor/ratchet-wasi-host/`, a copy of Ratchet's browser host for WASI builds. Its `README.md`
 names the commit it came from.
 
