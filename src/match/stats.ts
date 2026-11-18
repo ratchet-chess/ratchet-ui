@@ -99,12 +99,17 @@ function moments(counts: Ptnml): { pairs: number; mean: number; sd: number } {
   return { pairs, mean, sd };
 }
 
-/** normalized Elo and its 95% half-interval: fastchess's normalized estimate */
+/**
+ * normalized Elo and its 95% half-interval: fastchess's normalized estimate. With every pair in
+ * one bucket the spread is 0: a score off one half is then infinitely many standard deviations
+ * off, and no interval is known.
+ */
 export function nelo(counts: Ptnml): { value: number; ci: number } {
   const { pairs, mean, sd } = moments(counts);
   if (pairs === 0) return { value: 0, ci: Infinity };
   const scale = NELO_SCALE / Math.SQRT2;
-  return { value: sd > 0 ? ((mean - 0.5) / sd) * scale : 0, ci: (1.96 * scale) / Math.sqrt(pairs) };
+  if (sd === 0) return { value: mean === 0.5 ? 0 : Math.sign(mean - 0.5) * Infinity, ci: Infinity };
+  return { value: ((mean - 0.5) / sd) * scale, ci: (1.96 * scale) / Math.sqrt(pairs) };
 }
 
 /** Elo and its 95% half-interval: the logistic of the mean score, the unit other engines report */
@@ -113,7 +118,10 @@ export function elo(counts: Ptnml): { value: number; ci: number } {
   if (pairs === 0) return { value: 0, ci: Infinity };
   const logistic = (x: number) => -400 * Math.log10(1 / Math.min(1, Math.max(0, x)) - 1);
   const half = (1.96 * sd) / Math.sqrt(pairs);
-  return { value: logistic(mean), ci: (logistic(mean + half) - logistic(mean - half)) / 2 };
+  const value = logistic(mean);
+  // with every pair in one bucket the spread is 0, so no interval is known
+  if (sd === 0) return { value, ci: Infinity };
+  return { value, ci: (logistic(mean + half) - logistic(mean - half)) / 2 };
 }
 
 /**

@@ -166,7 +166,9 @@ const statusClass = (s: string) =>
           ? 'text-warn border-[#7a5d24]'
           : 'text-dim border-line';
 
-const fmt = (v: number, d = 1) => `${v >= 0 ? '+' : ''}${v.toFixed(d)}`;
+/** a signed value; an unbounded one, as an all-or-nothing score gives, shows as ±∞ */
+const fmt = (v: number, d = 1) =>
+  Number.isFinite(v) ? `${v >= 0 ? '+' : ''}${v.toFixed(d)}` : v > 0 ? '+∞' : '−∞';
 const pct = (i: Item) => Math.min(100, (100 * i.state.games.length) / Math.max(1, plannedGames(i)));
 const llrAt = (v: number, lo: number, hi: number) =>
   (100 * (Math.min(hi, Math.max(lo, v)) - lo)) / (hi - lo);

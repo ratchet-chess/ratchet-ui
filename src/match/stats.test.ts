@@ -40,6 +40,16 @@ describe('the statistics match Ratchet’s', () => {
     });
   }
 
+  it('every pair in one bucket gives the limit, not a number', () => {
+    expect(nelo([0, 0, 0, 0, 9])).toEqual({ value: Infinity, ci: Infinity });
+    expect(nelo([9, 0, 0, 0, 0])).toEqual({ value: -Infinity, ci: Infinity });
+    expect(nelo([0, 0, 0, 9, 0])).toEqual({ value: Infinity, ci: Infinity });
+    expect(nelo([0, 0, 9, 0, 0])).toEqual({ value: 0, ci: Infinity });
+    expect(elo([0, 0, 0, 0, 9])).toEqual({ value: Infinity, ci: Infinity });
+    expect(elo([9, 0, 0, 0, 0])).toEqual({ value: -Infinity, ci: Infinity });
+    expect(elo([0, 0, 0, 9, 0]).ci).toBe(Infinity);
+  });
+
   it('bounds at alpha = beta = 0.05 are ±2.94', () => {
     const b = bounds();
     expect(b.lower).toBeCloseTo(-2.944439, 5);
