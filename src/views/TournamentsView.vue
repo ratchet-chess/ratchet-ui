@@ -54,8 +54,8 @@ const concurrencyEdited = ref(false);
 /** the bounds a match's SPRT offers; the first is the default */
 const SPRT_PRESETS = [
   { label: '[0, 5]', elo0: 0, elo1: 5 },
-  { label: 'gainer [0, 3]', elo0: 0, elo1: 3 },
-  { label: 'non-regression [-5, 0]', elo0: -5, elo1: 0 },
+  { label: '[0, 10]', elo0: 0, elo1: 10 },
+  { label: '[-10, 0]', elo0: -10, elo1: 0 },
 ] as const;
 const sprtPreset = computed({
   get: () =>
