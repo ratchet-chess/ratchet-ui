@@ -20,6 +20,6 @@
     "scripts/**/*.ts",
     "src/engine/manifest.ts",
     "src/books/list.ts",
-    "src/books/zip.ts"
+    "src/storage/zip.ts"
   ]
 }

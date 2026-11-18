@@ -9,8 +9,8 @@ import {
   openingAt as openingAt_,
   type Opening,
 } from '../books/opening.ts';
-import { unzipFirst } from '../books/zip.ts';
-import { readText, writeText } from '../storage/opfs.ts';
+import { readText, removeFile, writeStream, writeText } from '../storage/opfs.ts';
+import { unzipFirst } from '../storage/zip.ts';
 
 /** a pulled book, as this browser keeps it */
 export interface Pulled {
@@ -50,9 +50,11 @@ export interface Storage {
   quota: number;
 }
 
+/** the OPFS folder of pulled books, which a pull makes again, so no backup holds them */
+const PULLED = 'books';
 /** the OPFS folder of the user's books; it also holds their list */
-const USER = 'user-books';
-const USER_LIST = 'list.json';
+export const USER = 'user-books';
+export const USER_LIST = 'list.json';
 /** an index of a book holds 32-bit offsets */
 const MAX_BYTES = 2 ** 32;
 
@@ -63,7 +65,7 @@ const message = (e: unknown) =>
       ? e.message
       : String(e);
 
-function isUserBook(b: unknown): b is UserBook {
+export function isUserBook(b: unknown): b is UserBook {
   return (
     typeof b === 'object' &&
     b !== null &&
@@ -107,7 +109,7 @@ export const useBooks = defineStore('books', () => {
   async function folder(): Promise<FileSystemDirectoryHandle> {
     dir ??= await (
       await navigator.storage.getDirectory()
-    ).getDirectoryHandle('books', { create: true });
+    ).getDirectoryHandle(PULLED, { create: true });
     return dir;
   }
 
@@ -188,13 +190,11 @@ export const useBooks = defineStore('books', () => {
       if (sha !== book.sha256) throw new Error(`the archive hashes to ${sha}, not to its pin`);
 
       const { stream } = await unzipFirst(new Blob([zip]));
-      const handle = await (await folder()).getFileHandle(book.id, { create: true });
-      await stream.pipeTo(await handle.createWritable());
+      await writeStream([PULLED], book.id, stream);
       indexes.delete(book.id);
-      void navigator.storage.persist();
       await load();
     } catch (e) {
-      await (await folder()).removeEntry(book.id).catch(() => undefined);
+      await removeFile([PULLED], book.id).catch(() => undefined);
       error.value = `${book.id} was not pulled: ${message(e)}`;
     } finally {
       progress.delete(book.id);
@@ -203,7 +203,7 @@ export const useBooks = defineStore('books', () => {
   }
 
   async function remove(book: BookEntry): Promise<void> {
-    await (await folder()).removeEntry(book.id).catch(() => undefined);
+    await removeFile([PULLED], book.id).catch(() => undefined);
     indexes.delete(book.id);
     await load();
   }
@@ -244,10 +244,9 @@ export const useBooks = defineStore('books', () => {
       if (list.some((b) => b.id === id) || user.value.some((b) => b.id === id))
         throw new Error(`a book named ${id} is already here; rename the file to add it`);
 
-      const handle = await (await userFolder()).getFileHandle(id, { create: true });
       written = true;
-      await source.pipeTo(await handle.createWritable());
-      const book = await handle.getFile();
+      await writeStream([USER], id, source);
+      const book = await (await (await userFolder()).getFileHandle(id)).getFile();
       if (book.size >= MAX_BYTES) throw new Error('a book must be under 4 GB');
       const starts = await indexBook(book, format);
       if (starts.length === 0) {
@@ -272,9 +271,8 @@ export const useBooks = defineStore('books', () => {
       await writeText([USER], USER_LIST, JSON.stringify(next));
       user.value = next;
       indexes.set(id, Promise.resolve(starts));
-      void navigator.storage.persist();
     } catch (e) {
-      if (written) await (await userFolder()).removeEntry(id).catch(() => undefined);
+      if (written) await removeFile([USER], id).catch(() => undefined);
       error.value = `${id} was not added: ${message(e)}`;
     } finally {
       adding.value = null;
@@ -282,12 +280,27 @@ export const useBooks = defineStore('books', () => {
     }
   }
 
+  /** drops then adds entries of the user's books' list, as a merge from a backup asks */
+  async function mergeList(drop: readonly string[], put: readonly UserBook[]): Promise<void> {
+    const saved: unknown = JSON.parse((await readText([USER], USER_LIST)) ?? '[]');
+    const kept = (Array.isArray(saved) ? saved.filter(isUserBook) : []).filter(
+      (b) => !drop.includes(b.id) && !put.some((p) => p.id === b.id),
+    );
+    for (const b of put) indexes.delete(b.id);
+    await writeText(
+      [USER],
+      USER_LIST,
+      JSON.stringify([...kept, ...put].toSorted((a, b) => a.id.localeCompare(b.id))),
+    );
+    await load();
+  }
+
   /** deletes this browser's copy of a user's book; the user's own file is untouched */
   async function removeUser(id: string): Promise<void> {
     const next = user.value.filter((b) => b.id !== id);
     await writeText([USER], USER_LIST, JSON.stringify(next));
     user.value = next;
-    await (await userFolder()).removeEntry(id).catch(() => undefined);
+    await removeFile([USER], id).catch(() => undefined);
     indexes.delete(id);
     await estimate();
   }
@@ -337,6 +350,7 @@ export const useBooks = defineStore('books', () => {
     remove,
     add,
     removeUser,
+    mergeList,
     openingAt,
     randomOpening,
   };

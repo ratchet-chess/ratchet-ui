@@ -1,12 +1,13 @@
 <script setup lang="ts" generic="V extends string | number">
-/** One choice of a few, side by side; the chosen one underlined. */
-defineProps<{ options: readonly { value: V; label: string; title?: string }[] }>();
+/** One choice of a few, side by side; the chosen one underlined. `sm` fits a table's row. */
+defineProps<{ options: readonly { value: V; label: string; title?: string }[]; size?: 'sm' }>();
 const model = defineModel<V>({ required: true });
 </script>
 
 <template>
   <div
-    class="inline-flex w-fit flex-wrap overflow-hidden rounded-md border border-line bg-panel2"
+    class="inline-flex w-fit overflow-hidden rounded-md border border-line bg-panel2"
+    :class="size === 'sm' ? 'flex-nowrap' : 'flex-wrap'"
     role="radiogroup"
   >
     <button
@@ -16,12 +17,13 @@ const model = defineModel<V>({ required: true });
       role="radio"
       :aria-checked="model === o.value"
       :title="o.title"
-      class="border-r border-line px-2.5 py-[5px] text-dense last:border-r-0"
-      :class="
+      class="border-r border-line text-dense last:border-r-0"
+      :class="[
+        size === 'sm' ? 'px-2 py-px whitespace-nowrap' : 'px-2.5 py-[5px]',
         model === o.value
           ? 'bg-chosen text-text shadow-[inset_0_-2px_0_var(--color-accent)]'
-          : 'text-dim hover:text-text'
-      "
+          : 'text-dim hover:text-text',
+      ]"
       @click="model = o.value"
     >
       {{ o.label }}

@@ -126,6 +126,15 @@ const selected = ref(1);
               { value: 'c', label: 'a few' },
             ]"
           />
+          <Segmented
+            v-model="choice"
+            size="sm"
+            :options="[
+              { value: 'a', label: 'sm' },
+              { value: 'b', label: 'in a' },
+              { value: 'c', label: 'row' },
+            ]"
+          />
           <Tabs
             v-model="tab"
             :tabs="[

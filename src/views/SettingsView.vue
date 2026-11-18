@@ -1,29 +1,21 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { FolderOpen } from '@lucide/vue';
+import { computed, onMounted, ref } from 'vue';
+import HelpTip from '../components/HelpTip.vue';
 import PageHeader from '../components/PageHeader.vue';
 import Panel from '../components/Panel.vue';
 import Segmented from '../components/Segmented.vue';
 import { inputMode } from '../engine/uci.ts';
+import { useBackup } from '../stores/backup.ts';
+import { useBooks } from '../stores/books.ts';
 import { useSettings } from '../stores/settings.ts';
-import { bytes } from '../ui/format.ts';
+import { bytes, whenText } from '../ui/format.ts';
+import BackupReview from './settings/BackupReview.vue';
 
 const settings = useSettings();
+const backup = useBackup();
+const books = useBooks();
 const draft = ref(settings.managerUrl);
-
-const used = ref<number | null>(null);
-const quota = ref<number | null>(null);
-const persisted = ref<boolean | null>(null);
-
-async function readStorage(): Promise<void> {
-  const est = await navigator.storage.estimate();
-  used.value = est.usage ?? null;
-  quota.value = est.quota ?? null;
-  persisted.value = await navigator.storage.persisted();
-}
-
-async function askPersist(): Promise<void> {
-  persisted.value = await navigator.storage.persist();
-}
 
 const THEMES = [
   { value: 'system', label: 'system', title: 'As this computer is set' },
@@ -39,9 +31,22 @@ function disconnect(): void {
   draft.value = '';
 }
 
-const size = (b: number | null) => (b === null ? '—' : bytes(b));
+const archive = ref<HTMLInputElement | null>(null);
+function picked(e: Event): void {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (file) void backup.importArchive(file);
+  input.value = '';
+}
 
-onMounted(() => void readStorage());
+const userBytes = computed(() => books.user.reduce((n, b) => n + b.bytes, 0));
+const when = (ms: number | null) =>
+  ms === null ? 'never' : whenText(new Date(ms).toISOString(), Date.now());
+
+onMounted(() => {
+  void backup.readStorage();
+  void books.load();
+});
 </script>
 
 <template>
@@ -64,13 +69,8 @@ onMounted(() => void readStorage());
       @submit.prevent="settings.managerUrl = draft.trim()"
     >
       <input v-model="draft" placeholder="http://host:port" class="field num w-72" />
-      <button class="rounded border border-line bg-panel2 px-2.5 py-1 text-dense">Save</button>
-      <button
-        v-if="settings.managerUrl"
-        type="button"
-        class="rounded border border-line bg-panel2 px-2.5 py-1 text-dense"
-        @click="disconnect"
-      >
+      <button class="btn">Save</button>
+      <button v-if="settings.managerUrl" type="button" class="btn" @click="disconnect">
         Disconnect
       </button>
     </form>
@@ -78,24 +78,100 @@ onMounted(() => void readStorage());
 
   <Panel title="Storage in this browser">
     <div class="grid grid-cols-[max-content_1fr] gap-x-3.5 gap-y-1 px-3 py-2.5 text-dense">
-      <span class="text-dim">used</span
-      ><span class="num">{{ size(used) }} of {{ size(quota) }}</span>
+      <span class="text-dim">used</span>
+      <span class="num">
+        <template v-if="backup.usage">
+          {{ bytes(backup.usage.used) }} of {{ bytes(backup.usage.quota) }}
+        </template>
+        <template v-else>—</template>
+      </span>
       <span class="text-dim">persistent</span>
       <span>
-        <template v-if="persisted"
-          >yes <span class="text-dim">· the browser will not clear it</span></template
-        >
+        <template v-if="backup.persisted">
+          yes <span class="text-dim">· the browser will not clear it to free space</span>
+        </template>
         <template v-else>
-          no
-          <button
-            class="ml-2 rounded border border-line bg-panel2 px-2 py-0.5 text-dense"
-            @click="askPersist"
-          >
-            Ask
-          </button>
+          no <span class="text-dim">· the browser may clear it to free space</span>
+          <button class="btn-sm ml-2" @click="backup.askPersist()">Ask</button>
+          <HelpTip>
+            Chrome and Edge grant it to a site in use often, or installed; Firefox asks you. A
+            backup below keeps the data either way.
+          </HelpTip>
         </template>
       </span>
     </div>
+  </Panel>
+
+  <BackupReview v-if="backup.review" :review="backup.review" />
+
+  <Panel title="Backup" note="everything but pulled books, in this browser's own layout">
+    <div
+      class="grid grid-cols-[max-content_1fr] items-center gap-x-3.5 gap-y-2 px-3 py-2.5 text-dense"
+    >
+      <span class="text-dim">archive</span>
+      <span class="flex flex-wrap items-center gap-2">
+        <button class="btn-sm" :disabled="backup.busy !== ''" @click="backup.exportAll()">
+          Export
+        </button>
+        <input ref="archive" type="file" accept=".zip" class="hidden" @change="picked" />
+        <button class="btn-sm" :disabled="backup.busy !== ''" @click="archive?.click()">
+          Import…
+        </button>
+        <span class="text-dim">last export {{ when(backup.exportedAt) }}</span>
+        <HelpTip>
+          One zip file of the tournaments, games, settings and your books. An import adds what is
+          new and asks about each item both hold.
+        </HelpTip>
+      </span>
+
+      <span class="text-dim">folder</span>
+      <span class="flex flex-wrap items-center gap-2">
+        <template v-if="backup.mirror.state === 'unsupported'">
+          <span class="text-dim">Chrome and Edge can copy each change to a folder of yours</span>
+        </template>
+        <template v-else-if="backup.mirror.state === 'none'">
+          <button class="btn-sm" @click="backup.chooseFolder()">
+            <FolderOpen :size="13" /> Choose…
+          </button>
+          <span class="text-dim">each change is copied to it; best an empty one</span>
+        </template>
+        <template v-else>
+          <span class="num">{{ backup.mirror.folder }}</span>
+          <span v-if="backup.mirror.state === 'on'" class="text-good">
+            copied {{ when(backup.mirror.at) }}
+          </span>
+          <span v-else-if="backup.mirror.state === 'checking'" class="text-dim">comparing…</span>
+          <template v-else-if="backup.mirror.state === 'allow'">
+            <span class="text-warn">the browser asks again after a reload</span>
+            <button class="btn-sm" @click="backup.allowFolder()">Allow</button>
+          </template>
+          <template v-else-if="backup.mirror.state === 'review'">
+            <span class="text-warn">differs from this browser</span>
+            <button class="btn-sm" @click="backup.openFolderReview()">Review</button>
+          </template>
+          <template v-else-if="backup.mirror.state === 'failed'">
+            <span class="text-bad">{{ backup.mirror.error }}</span>
+            <button class="btn-sm" @click="backup.check()">Retry</button>
+          </template>
+          <button class="btn-sm" @click="backup.chooseFolder()">Change…</button>
+          <button class="btn-sm" @click="backup.stopMirror()">Stop</button>
+        </template>
+      </span>
+
+      <span class="text-dim">your books</span>
+      <label class="flex items-center gap-1.5">
+        <input v-model="settings.backupBooks" type="checkbox" class="accent-accent" />
+        in the backup
+        <span class="num text-dim">· {{ bytes(userBytes) }}</span>
+      </label>
+    </div>
+    <p
+      v-if="backup.note || backup.busy"
+      class="border-t border-row px-3 py-1.5 text-dense"
+      :class="backup.failed ? 'text-bad' : 'text-dim'"
+    >
+      {{ backup.busy || backup.note }}
+    </p>
   </Panel>
 
   <Panel title="This browser">

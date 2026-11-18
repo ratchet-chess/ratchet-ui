@@ -13,7 +13,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parseBooks, type BookEntry } from '../src/books/list.ts';
-import { unzipFirst } from '../src/books/zip.ts';
+import { unzipFirst } from '../src/storage/zip.ts';
 import {
   at,
   download,

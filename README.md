@@ -58,6 +58,20 @@ and Elo over the pairs. Copy puts a match's statistics, in OpenBench's stat bloc
 the clipboard as text. PGN downloads the games played so far. A game in Last games opens in Games, found by its
 PGN `Round` tag.
 
+The browser may delete its private file system: clearing site data or losing the profile loses it. The first write
+asks the browser to keep it, and Settings shows whether it agreed. Settings also backs the data up, in the file
+system's own layout plus a `settings.json`:
+
+- Export downloads one zip archive, stored without compression; Import merges one back.
+- In Chrome and Edge, a mirror folder the user picks receives a copy of each change.
+
+Both hold the tournaments, the collections of games, the settings and, unless Settings leaves them out, the user's
+books. Pulled books are left out, because a pull fetches them again. A merge adds what is new, and takes the copy
+with more games when one copy is the other with games added. It asks about every other difference: keep this
+browser's copy, replace it, or keep both. At startup, a mirror folder that holds nothing this browser lacks
+receives this browser's changes. Any other folder waits for the user to review it. After a reload the browser asks
+again for leave to write the folder.
+
 Settings sets the theme: light, dark, or as the system asks. The style page, `#/style`, shows the colors, the type
 scale and the shared pieces every page is drawn from. `src/style.css` holds them, and a test fails on a raw color or
 font size in a view.

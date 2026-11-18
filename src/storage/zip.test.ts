@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { unzipFirst } from './zip.ts';
+import { crc32, unzipAll, unzipFirst, zipStored } from './zip.ts';
 
 /** a zip archive, built as zip(1) lays it out, with a data descriptor's zero sizes in each local header */
 async function zipOf(files: [name: string, text: string][], method: 0 | 8): Promise<Blob> {
@@ -79,5 +79,38 @@ describe('unzipFirst', () => {
 
   it('refuses what is not a zip archive', async () => {
     await expect(unzipFirst(new Blob(['not a zip']))).rejects.toThrow('not a zip archive');
+  });
+});
+
+describe('zipStored', () => {
+  it('records the CRC-32 zip readers check', async () => {
+    expect(await crc32(new Blob(['123456789']))).toBe(0xcbf43926);
+    expect(await crc32(new Blob([]))).toBe(0);
+  });
+
+  it('writes an archive unzipAll reads back, names in UTF-8', async () => {
+    const files = [
+      { name: 'games/index.json', data: new Blob(['[]']), modified: Date.UTC(2026, 10, 18) },
+      { name: 'user-books/Ångström.pgn', data: new Blob(['[Event "x"]\n']), modified: 0 },
+      { name: 'tournaments/a/pairs.jsonl', data: new Blob(['']), modified: 0 },
+    ];
+    const back = await unzipAll(await zipStored(files));
+    expect([...back.keys()]).toEqual(files.map((f) => f.name));
+    expect(await back.get('user-books/Ångström.pgn')?.text()).toBe('[Event "x"]\n');
+    expect(back.get('tournaments/a/pairs.jsonl')?.size).toBe(0);
+  });
+
+  it('reads deflated files and skips folders and refused names', async () => {
+    const archive = await zipOf(
+      [
+        ['a/', ''],
+        ['a/b.txt', 'bee'],
+        ['c.txt', 'sea'],
+      ],
+      8,
+    );
+    const back = await unzipAll(archive, (n) => n !== 'c.txt');
+    expect([...back.keys()]).toEqual(['a/b.txt']);
+    expect(await back.get('a/b.txt')?.text()).toBe('bee');
   });
 });

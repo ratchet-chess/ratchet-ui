@@ -56,7 +56,11 @@ function pick(seed: number, pair: number): number {
 }
 
 /** the Web Lock a tab holds while it plays a tournament, so no other tab plays or deletes it */
-const lockOf = (id: string) => `ratchet-ui:tournament:${id}`;
+const LOCK_PREFIX = 'ratchet-ui:tournament:';
+const lockOf = (id: string) => `${LOCK_PREFIX}${id}`;
+/** the tournament a Web Lock is held for; null for another lock */
+const idOfLock = (name: string) =>
+  name.startsWith(LOCK_PREFIX) ? name.slice(LOCK_PREFIX.length) : null;
 
 /** the collection in Games that holds a tournament's games */
 export const collectionOf = (id: string) => `t-${id}`;
@@ -160,7 +164,9 @@ export const useTournaments = defineStore('tournaments', () => {
     const run = new Run(config, players, control, item.state, {
       opening: async (pair) =>
         config.book ? books.openingAt(config.book, pick(config.seed, pair)) : undefined,
-      savePair: (p) => appendText(path, 'pairs.jsonl', `${JSON.stringify(p)}\n`),
+      savePair: async (p) => {
+        await appendText(path, 'pairs.jsonl', `${JSON.stringify(p)}\n`);
+      },
       saveGame: async (record, pgn) => {
         await appendText(path, 'games.jsonl', `${JSON.stringify(record)}\n`);
         await games.append(collectionOf(config.id), config.name, 'match', pgn);
@@ -228,5 +234,5 @@ export const useTournaments = defineStore('tournaments', () => {
     items.value = items.value.filter((i) => i.config.id !== id);
   }
 
-  return { items, error, load, create, resume, stop, remove, running };
+  return { items, error, load, create, resume, stop, remove, running, lock, unlock, idOfLock };
 });
