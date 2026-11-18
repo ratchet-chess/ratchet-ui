@@ -44,7 +44,7 @@ const elo1 = ref(5);
 const cycles = ref(1);
 const seeds = ref(1);
 const rounds = ref(5);
-const meetingPairs = ref(1);
+const matchPairs = ref(1);
 const control = ref('10+0.1');
 const book = ref('');
 const adjudicationChoice = ref<'standard' | 'draw' | 'none'>('standard');
@@ -83,7 +83,7 @@ function reset(): void {
   cycles.value = 1;
   seeds.value = 1;
   rounds.value = 5;
-  meetingPairs.value = 1;
+  matchPairs.value = 1;
   control.value = '10+0.1';
   book.value = books.pulled.has('8moves_v3.pgn') ? '8moves_v3.pgn' : '';
   adjudicationChoice.value = 'standard';
@@ -149,7 +149,7 @@ const format = computed<Format>(() => {
     case 'swiss':
       return { kind: 'swiss', rounds: rounds.value };
     default:
-      return { kind: 'knockout', pairs: meetingPairs.value };
+      return { kind: 'knockout', pairs: matchPairs.value };
   }
 });
 const totalGames = computed(() => plannedGames(format.value, entrants.value.length));
@@ -205,7 +205,7 @@ function formatText(f: Format): string {
   if (f.kind === 'roundrobin') return `round robin, ${f.cycles} cycle${f.cycles > 1 ? 's' : ''}`;
   if (f.kind === 'swiss') return `Swiss, ${f.rounds} round${f.rounds > 1 ? 's' : ''}`;
   if (f.kind === 'knockout')
-    return `knockout, ${f.pairs} pair${f.pairs > 1 ? 's' : ''} a meeting, more while tied`;
+    return `knockout, ${f.pairs} pair${f.pairs > 1 ? 's' : ''} a match, more while tied`;
   return `gauntlet, ${f.seeds} seed${f.seeds > 1 ? 's' : ''}, ${f.cycles} cycle${f.cycles > 1 ? 's' : ''}`;
 }
 const planned = (i: Item) => plannedGames(i.config.format, i.config.entrants.length);
@@ -439,13 +439,13 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
               <span class="text-dim">pairs</span>
               <span
                 ><input
-                  v-model.number="meetingPairs"
+                  v-model.number="matchPairs"
                   type="number"
                   min="1"
                   :class="inputClass"
                   class="w-16"
                 /> <span class="text-dim"
-                  >a meeting; while tied, one more at a time up to 10, then the higher seed goes
+                  >a match; while tied, one more at a time up to 10, then the higher seed goes
                   through</span
                 ></span
               >
@@ -458,7 +458,7 @@ const buttonClass = 'rounded border border-line bg-panel2 px-2.5 py-1 text-xs di
                 min="1"
                 :class="inputClass"
                 class="w-16"
-              /> <span class="text-dim">each a pair per meeting</span></span
+              /> <span class="text-dim">each a pair per match</span></span
             >
           </template>
 

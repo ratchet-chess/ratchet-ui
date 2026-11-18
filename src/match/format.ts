@@ -10,7 +10,7 @@ export interface Sprt {
 
 /**
  * How a tournament's engines meet. Two engines meet in pairs, two games on one opening with colors
- * swapped: one pair a meeting, except a knockout's, which plays pairs until one engine leads.
+ * swapped: one pair a match, except a knockout's, which plays pairs until one engine leads.
  */
 export type Format =
   /** two engines; the first is tested against the second. Pairs, or an SPRT up to its pairs */
@@ -21,7 +21,7 @@ export type Format =
   | { kind: 'gauntlet'; seeds: number; cycles: number }
   /** `rounds` rounds of a pair each, between engines of about equal points, without a rematch where one can be avoided */
   | { kind: 'swiss'; rounds: number }
-  /** a seeded bracket; each meeting plays `pairs` pairs, then one more pair at a time while tied */
+  /** a seeded bracket; each match plays `pairs` pairs, then one more pair at a time while tied */
   | { kind: 'knockout'; pairs: number };
 
 /** the formats whose whole schedule is known before any game */
@@ -85,7 +85,7 @@ export function bergerRounds(n: number): [number, number][][] {
 
 /**
  * The games a format plays for a field of `entrants`: all of them, the most for an SPRT, and the
- * fewest for a knockout, whose tied meetings play more.
+ * fewest for a knockout, whose tied matches play more.
  */
 export function plannedGames(format: Format, entrants: number): number {
   const n = entrants;

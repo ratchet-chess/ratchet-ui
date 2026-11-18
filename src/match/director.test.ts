@@ -180,7 +180,7 @@ describe('knockout', () => {
     });
   });
 
-  it('plays a tied meeting on, one pair at a time, then sends the higher seed through', () => {
+  it('plays a tied match on, one pair at a time, then sends the higher seed through', () => {
     const { pairs } = playOut({ kind: 'knockout', pairs: 2 }, 2, () => ['1-0', '1-0']);
     expect(pairs.length).toBe(TIEBREAK_PAIRS);
     const final = bracket(
@@ -203,7 +203,7 @@ describe('knockout', () => {
     expect(out).toBe(5);
   });
 
-  it('issues a meeting’s planned pairs at once, but a tiebreak pair only after the last', () => {
+  it('issues a match’s planned pairs at once, but a tiebreak pair only after the last', () => {
     const director = directorOf({ kind: 'knockout', pairs: 2 }, 2);
     const p0: PairRecord = { pair: 0, a: 0, b: 1, round: 0, opening: '' };
     expect(director.next([p0], [])).toEqual({ a: 0, b: 1, round: 0 });

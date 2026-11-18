@@ -138,23 +138,23 @@ function swiss(rounds: number, entrants: number): Director {
 
 // ── knockout ───────────────────────────────────────────────────────────────
 
-/** the pairs a tied knockout meeting plays at most; after them the higher seed goes through */
+/** the pairs a tied knockout match plays at most; after them the higher seed goes through */
 export const TIEBREAK_PAIRS = 10;
 
-/** One meeting of a knockout bracket. */
-export interface KnockoutMeeting {
+/** One match of a knockout bracket. */
+export interface KnockoutMatch {
   round: number;
-  /** the higher seed, or null while the meeting before it is undecided */
+  /** the higher seed, or null while the match before it is undecided */
   a: number | null;
-  /** null for a bye in the first round, or while the meeting before it is undecided */
+  /** null for a bye in the first round, or while the match before it is undecided */
   b: number | null;
-  /** issued pairs of this meeting */
+  /** issued pairs of this match */
   pairs: PairRecord[];
   /** points of `a` and of `b` over the finished pairs */
   points: [number, number];
   /** pairs with both games finished */
   done: number;
-  /** null while the meeting is undecided */
+  /** null while the match is undecided */
   winner: number | null;
   /** how it was decided: on points, on seed after the tiebreak pairs, or by a bye */
   by: 'points' | 'seed' | 'bye' | null;
@@ -170,27 +170,27 @@ export function bracketOrder(size: number): number[] {
   return order;
 }
 
-/** a knockout's bracket as its records stand: each round's meetings, with their pairs and points */
+/** a knockout's bracket as its records stand: each round's matches, with their pairs and points */
 export function bracket(
   entrants: number,
-  pairsPerMeeting: number,
+  pairsPerMatch: number,
   pairs: readonly PairRecord[],
   games: readonly GameRecord[],
-): KnockoutMeeting[][] {
+): KnockoutMatch[][] {
   const played = gamesByPair(games);
   let size = 2;
   while (size < entrants) size *= 2;
   const order = bracketOrder(size).map((s) => (s < entrants ? s : null));
-  const limit = Math.max(pairsPerMeeting, TIEBREAK_PAIRS);
-  const rounds: KnockoutMeeting[][] = [];
+  const limit = Math.max(pairsPerMatch, TIEBREAK_PAIRS);
+  const rounds: KnockoutMatch[][] = [];
   let slots: (number | null)[] = order;
   for (let round = 0; slots.length >= 2; round++) {
-    const meetings: KnockoutMeeting[] = [];
+    const matches: KnockoutMatch[] = [];
     for (let k = 0; k + 1 < slots.length; k += 2) {
       const x = slots[k] ?? null;
       const y = slots[k + 1] ?? null;
       const [a, b] = x !== null && y !== null && y < x ? [y, x] : [x, y];
-      const meeting: KnockoutMeeting = {
+      const match: KnockoutMatch = {
         round,
         a,
         b,
@@ -200,44 +200,43 @@ export function bracket(
         winner: null,
         by: null,
       };
-      meetings.push(meeting);
+      matches.push(match);
       if (a === null || b === null) {
-        // a bye exists only in the first round; later a missing side is a meeting still to decide
+        // a bye exists only in the first round; later a missing side is a match still to decide
         const only = a ?? b;
-        if (round === 0 && only !== null) [meeting.winner, meeting.by] = [only, 'bye'];
+        if (round === 0 && only !== null) [match.winner, match.by] = [only, 'bye'];
         continue;
       }
-      meeting.pairs = pairs.filter((p) => p.round === round && met(p.a, p.b) === met(a, b));
-      for (const p of meeting.pairs) {
+      match.pairs = pairs.filter((p) => p.round === round && met(p.a, p.b) === met(a, b));
+      for (const p of match.pairs) {
         const gs = played.get(p.pair) ?? [];
         if (gs.length < 2) continue;
-        meeting.done++;
-        meeting.points[0] += scoreOf(gs, a);
-        meeting.points[1] += scoreOf(gs, b);
+        match.done++;
+        match.points[0] += scoreOf(gs, a);
+        match.points[1] += scoreOf(gs, b);
       }
-      if (meeting.done < meeting.pairs.length || meeting.done < pairsPerMeeting) continue;
-      const [pa, pb] = meeting.points;
-      if (pa !== pb) [meeting.winner, meeting.by] = [pa > pb ? a : b, 'points'];
-      else if (meeting.done >= limit) [meeting.winner, meeting.by] = [a, 'seed'];
+      if (match.done < match.pairs.length || match.done < pairsPerMatch) continue;
+      const [pa, pb] = match.points;
+      if (pa !== pb) [match.winner, match.by] = [pa > pb ? a : b, 'points'];
+      else if (match.done >= limit) [match.winner, match.by] = [a, 'seed'];
     }
-    rounds.push(meetings);
-    slots = meetings.map((t) => t.winner);
-    if (meetings.length === 1) break;
+    rounds.push(matches);
+    slots = matches.map((t) => t.winner);
+    if (matches.length === 1) break;
   }
   return rounds;
 }
 
-function knockout(pairsPerMeeting: number, entrants: number): Director {
+function knockout(pairsPerMatch: number, entrants: number): Director {
   return {
     next(pairs, games) {
-      const rounds = bracket(entrants, pairsPerMeeting, pairs, games);
-      for (const meetings of rounds) {
-        for (const t of meetings) {
+      const rounds = bracket(entrants, pairsPerMatch, pairs, games);
+      for (const matches of rounds) {
+        for (const t of matches) {
           if (t.a === null || t.b === null || t.winner !== null) continue;
           const playing = t.done < t.pairs.length;
-          // the first `pairsPerMeeting` pairs may play at once; a tiebreak pair waits for the last
-          if (t.pairs.length < pairsPerMeeting || !playing)
-            return { a: t.a, b: t.b, round: t.round };
+          // the first `pairsPerMatch` pairs may play at once; a tiebreak pair waits for the last
+          if (t.pairs.length < pairsPerMatch || !playing) return { a: t.a, b: t.b, round: t.round };
         }
       }
       return rounds.at(-1)?.[0]?.winner == null ? 'wait' : 'done';

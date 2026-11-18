@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { bergerRounds, schedule } from './format.ts';
 
-/** each unordered meeting, as "x-y" with x < y */
+/** each unordered match, as "x-y" with x < y */
 const key = (x: number, y: number) => (x < y ? `${x}-${y}` : `${y}-${x}`);
 
 describe('bergerRounds', () => {
