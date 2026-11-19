@@ -30,8 +30,8 @@ The rows for **release**, **own engine**, **WASI build** and **condition** quote
 - **Add an engine to the manifest with `bun run engines add`.** It checks the file against GitHub's published sha256.
 - **A build on this machine goes in `engines.local.json`,** which is not committed. `bun run engines add-local` adds a package.
 - **Never commit engine files.** `bun run engines` downloads or copies them into `public/engines/` and checks each pin.
-- **Every engine runs in one host, `vendor/ratchet-wasi-host/`.** It is a copy of Ratchet's code, so fix it in Ratchet.
-- **After a fix in Ratchet, refresh the copy** with `bun scripts/vendor-host.ts <ratchet checkout>`.
+- **Every engine runs in one host, `vendor/uci-over-wasi/`.** It is a copy of uci-over-wasi's host, so fix it in uci-over-wasi.
+- **After a fix in uci-over-wasi, refresh the copy** with the command that the copy's `README.md` states.
 - **Add a book to `books.json` with `bun run books add`.** It checks the book against its repo's own record where one exists.
 - **The browser pulls each book from its repo at the pinned commit.** The app serves no copy of a book.
 - **Keep games and books in OPFS or IndexedDB.** localStorage holds about 5 MB, so it keeps only settings.

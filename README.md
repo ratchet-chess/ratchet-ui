@@ -76,8 +76,8 @@ Settings sets the theme: light, dark, or as the system asks. The style page, `#/
 scale and the shared pieces every page is drawn from. `src/style.css` holds them, and a test fails on a raw color or
 font size in a view.
 
-Every engine runs in `vendor/ratchet-wasi-host/`, a copy of Ratchet's browser host for WASI builds. Its `README.md`
-names the commit it came from.
+Every engine runs in `vendor/uci-over-wasi/`, a copy of uci-over-wasi's browser host for WASI builds. Its `README.md`
+names the commit it came from. `scripts/engines.ts` bundles its `browser.ts` into `public/engines/wasi-host.js`.
 
 Checks, which the pre-commit hook runs: `bun run typecheck`, `bun run lint`, `bun run knip`, `bun run test` and
 `bun run format:check`.

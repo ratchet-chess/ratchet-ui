@@ -1,6 +1,6 @@
 /**
  * Puts the app's engines in public/engines/. An engine is a WASI build that speaks UCI, and every
- * one runs in the app's own host, vendor/ratchet-wasi-host/. The builds come from two lists:
+ * one runs in the app's own host, vendor/uci-over-wasi/. The builds come from two lists:
  *
  * - engines.json, committed: GitHub release assets, each pinned by its tag's commit and its sha256;
  * - engines.local.json, not committed: builds on this machine, for development.
@@ -235,7 +235,7 @@ async function sync(): Promise<void> {
 
   mkdirSync(outDir, { recursive: true });
   for (const [name, bytes] of files) writeFileSync(join(outDir, name), bytes);
-  const bundle = ['build', 'vendor/ratchet-wasi-host/browser.ts', '--outfile', join(outDir, HOST)];
+  const bundle = ['build', 'vendor/uci-over-wasi/browser.ts', '--outfile', join(outDir, HOST)];
   execFileSync('bun', [...bundle, '--format', 'iife', '--target', 'browser'], {
     cwd: root,
     stdio: ['ignore', 'ignore', 'inherit'],

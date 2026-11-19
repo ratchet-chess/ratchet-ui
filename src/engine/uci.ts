@@ -15,7 +15,7 @@ export interface BestMove {
 
 /**
  * A UCI engine that runs in a Worker with stockfish.js's interface: one UCI line per message, in
- * each direction. The app's host (vendor/ratchet-wasi-host/) is such a Worker for any WASI build.
+ * each direction. The app's host (vendor/uci-over-wasi/) is such a Worker for any WASI build.
  */
 export class UciEngine {
   private readonly worker: Worker;
@@ -139,7 +139,7 @@ export class UciEngine {
  */
 export function inputMode(): 'shared memory' | 'suspending' | 'fresh instance per go' {
   if (globalThis.crossOriginIsolated) return 'shared memory';
-  // the Worker's own test (Ratchet's host/wasi/wasi.ts canSuspend)
+  // the Worker's own test (canSuspend in vendor/uci-over-wasi/wasi.ts)
   if (
     typeof Reflect.get(WebAssembly, 'Suspending') === 'function' &&
     typeof Reflect.get(WebAssembly, 'promising') === 'function'
