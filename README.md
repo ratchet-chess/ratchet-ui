@@ -80,7 +80,7 @@ Every engine runs in `vendor/uci-over-wasi/`, a copy of uci-over-wasi's browser 
 names the commit it came from. `scripts/engines.ts` bundles its `browser.ts` into `public/engines/wasi-host.js`.
 
 Checks, which the pre-commit hook runs: `bun run typecheck`, `bun run lint`, `bun run knip`, `bun run test` and
-`bun run format:check`.
+`bun run format:check`. CI runs the same checks and the build.
 
 ## License
 
