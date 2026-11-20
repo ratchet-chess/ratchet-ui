@@ -115,6 +115,16 @@ describe('the manager view, written for a reader', () => {
     ).toBe('alpha: outside its hours');
     expect(
       waitingText(
+        job({
+          waiting: {
+            alpha: 'hours: outside its hours',
+            beta: 'concurrency: its 5 running here fill its concurrency of 5',
+          },
+        }),
+      ),
+    ).toBe('alpha: outside its hours');
+    expect(
+      waitingText(
         job({ waiting: { alpha: 'concurrency: its 5 running here fill its concurrency of 5' } }),
       ),
     ).toBe('');

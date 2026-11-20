@@ -46,15 +46,21 @@ export function clockText(ms: number, now: number): string {
 export const endText = (j: Job, now: number): string =>
   j.endsAt === null ? '' : `${j.atMost ? 'by' : '≈'} ${clockText(j.endsAt, now)}`;
 
+/** the name of the manager's check that refused a unit, which begins its reason: `hours: outside its hours` */
+const FILTER_NAME = /^(hosts|requires|taints|hours|units|concurrency|kinds): /;
+
 /**
  * Why a job's queued units wait, in one line: the reason all its hosts share, or each host's own. A host says nothing
- * here when its units would start at its next claim, or when it already runs as many of them as it may.
+ * here when its units would start at its next claim, or when it already runs as many of them as it may. A reason
+ * is shown without the name of the check that gave it.
  */
 export function waitingText(j: Job): string {
   const all = Object.entries(j.waiting ?? {});
-  const rows = all.filter(
-    ([, why]) => why !== '' && !why.startsWith('starts at') && !why.startsWith('concurrency:'),
-  );
+  const rows = all
+    .filter(
+      ([, why]) => why !== '' && !why.startsWith('starts at') && !why.startsWith('concurrency:'),
+    )
+    .map(([host, why]): [string, string] => [host, why.replace(FILTER_NAME, '')]);
   const first = rows[0];
   if (first === undefined) return '';
   // a reason stands without a host's name only when every host waits for it
