@@ -1,0 +1,4 @@
+# the chess repos' shared hook, when this clone is beside it: it refuses a push whose new commits hold a
+# machine path, an address or a task ref
+hook="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")/../hooks/pre-push"
+[ ! -x "$hook" ] || "$hook" "$@"
