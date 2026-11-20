@@ -1,10 +1,20 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { sections } from '../sections.ts';
-import { useSettings } from '../stores/settings.ts';
+import { useManager } from '../stores/manager.ts';
 
-const settings = useSettings();
-const connected = computed(() => settings.managerUrl !== '');
+const manager = useManager();
+/** the manager's dot and word: green while its reads arrive, red when the last one failed */
+const dot = computed(() =>
+  manager.link === 'connected' ? 'bg-good' : manager.link === 'unreachable' ? 'bg-bad' : 'bg-faint',
+);
+const word = computed(() =>
+  manager.link === 'none'
+    ? 'no manager'
+    : manager.link === 'unreachable'
+      ? 'manager lost'
+      : 'manager',
+);
 </script>
 
 <!-- The app's sections: a row on top in a narrow window, a column at the side in a wide one. -->
@@ -33,10 +43,9 @@ const connected = computed(() => settings.managerUrl !== '');
       class="flex items-center gap-2.5 text-small whitespace-nowrap text-dim wide:flex-col wide:gap-1.5 wide:text-center wide:text-label wide:whitespace-normal"
     >
       <RouterLink to="/settings" title="Settings › Manager">
-        <span
-          class="mr-1 inline-block size-[7px] rounded-full align-[1px]"
-          :class="connected ? 'bg-good' : 'bg-faint'"
-        />{{ connected ? 'manager' : 'no manager' }}
+        <span class="mr-1 inline-block size-[7px] rounded-full align-[1px]" :class="dot" />{{
+          word
+        }}
       </RouterLink>
     </div>
   </nav>

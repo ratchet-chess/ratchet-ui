@@ -8,6 +8,7 @@ import Segmented from '../components/Segmented.vue';
 import { inputMode } from '../engine/uci.ts';
 import { useBackup } from '../stores/backup.ts';
 import { useBooks } from '../stores/books.ts';
+import { RELOAD_MS, useManager } from '../stores/manager.ts';
 import { useSettings } from '../stores/settings.ts';
 import { bytes, whenText } from '../ui/format.ts';
 import BackupReview from './settings/BackupReview.vue';
@@ -15,6 +16,12 @@ import BackupReview from './settings/BackupReview.vue';
 const settings = useSettings();
 const backup = useBackup();
 const books = useBooks();
+const manager = useManager();
+const readClock = computed(() =>
+  manager.readAt === null
+    ? ''
+    : new Date(manager.readAt).toLocaleTimeString('en-US', { hourCycle: 'h23' }),
+);
 const draft = ref(settings.managerUrl);
 
 const THEMES = [
@@ -74,6 +81,19 @@ onMounted(() => {
         Disconnect
       </button>
     </form>
+    <div v-if="manager.link !== 'none'" class="num border-t border-row px-3 py-1.5 text-dense">
+      <template v-if="manager.link === 'connected'">
+        <span class="text-good">connected</span>
+        <span class="text-dim"> · read {{ readClock }} · again every {{ RELOAD_MS / 1000 }} s</span>
+      </template>
+      <template v-else-if="manager.link === 'reading'">
+        <span class="text-dim">reading {{ manager.url }}…</span>
+      </template>
+      <template v-else>
+        <span class="text-bad">not connected</span>
+        <span class="text-dim"> · {{ manager.problem }}</span>
+      </template>
+    </div>
   </Panel>
 
   <Panel title="Storage in this browser">

@@ -8,7 +8,6 @@ const props = defineProps<{ section: string }>();
 
 /** what each section will hold, for the page it shows until it is built */
 const plans: Record<string, string> = {
-  hosts: "The manager's hosts: condition, reason, units and benchtop's health line.",
   ratings: "The manager's ratings, and each version's progress.",
 };
 
