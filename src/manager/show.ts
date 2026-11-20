@@ -55,10 +55,17 @@ const FILTER_NAME = /^(hosts|requires|taints|hours|units|concurrency|kinds): /;
  * is shown without the name of the check that gave it.
  */
 export function waitingText(j: Job): string {
+  // with no unit queued nothing waits, whatever each host says of the job
+  if ((j.units.queued ?? 0) === 0) return '';
   const all = Object.entries(j.waiting ?? {});
   const rows = all
     .filter(
-      ([, why]) => why !== '' && !why.startsWith('starts at') && !why.startsWith('concurrency:'),
+      ([, why]) =>
+        why !== '' &&
+        !why.startsWith('starts at') &&
+        !why.startsWith('concurrency:') &&
+        // the job's queued units are for other hosts, so this host holds none back
+        !why.startsWith('units: no unit'),
     )
     .map(([host, why]): [string, string] => [host, why.replace(FILTER_NAME, '')]);
   const first = rows[0];
@@ -147,6 +154,19 @@ export function unitTimeText(ms: number | null): string {
   const s = Math.max(1, Math.round(ms / 1000));
   if (s < 60) return `${s} s`;
   return s % 60 === 0 ? `${s / 60} min` : `${Math.floor(s / 60)} min ${s % 60} s`;
+}
+
+/**
+ * The line under a running job's units: that it is finishing, once every unit has started and only those in play
+ * are left; before that, why its queued units wait. A job of one unit says nothing of its last unit.
+ */
+export function unitsNote(j: Job): string {
+  const inPlay = j.units.running ?? 0;
+  if (j.state === 'running' && (j.units.queued ?? 0) === 0 && inPlay > 0 && unitsPlanned(j) > 1)
+    return inPlay === 1
+      ? 'its last unit is in play'
+      : `its last ${count(inPlay)} units are in play`;
+  return waitingText(j);
 }
 
 /** a host's units in play, by job: `931×12 924×18` */

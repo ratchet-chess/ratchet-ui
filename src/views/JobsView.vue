@@ -19,6 +19,7 @@ import {
   statusTag,
   testText,
   unitParts,
+  unitsNote,
   unitsText,
   verdictTag,
   waitingText,
@@ -108,12 +109,8 @@ const hostsOf = (j: Job) => j.hosts.join(' ');
           :text="outcomeText(j)"
           :ptnml="j.summary.line === '' ? j.summary.ptnml : null"
         />
-        <div
-          v-if="waitingText(j)"
-          class="mt-0.5 truncate text-small text-dim"
-          :title="waitingText(j)"
-        >
-          {{ waitingText(j) }}
+        <div v-if="unitsNote(j)" class="mt-0.5 truncate text-small text-dim" :title="unitsNote(j)">
+          {{ unitsNote(j) }}
         </div>
       </div>
     </Panel>

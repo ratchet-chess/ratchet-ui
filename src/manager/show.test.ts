@@ -21,6 +21,7 @@ import {
   statusTag,
   testText,
   unitParts,
+  unitsNote,
   unitsText,
   unitTimeText,
   unreachableText,
@@ -99,12 +100,18 @@ describe('the manager view, written for a reader', () => {
   });
 
   it('a wait is one reason when the hosts share it, and a host that starts next says nothing', () => {
-    expect(waitingText(job({ waiting: { alpha: 'behind job 926', beta: 'behind job 926' } }))).toBe(
-      'behind job 926',
-    );
     expect(
       waitingText(
         job({
+          units: { queued: 10 },
+          waiting: { alpha: 'behind job 926', beta: 'behind job 926' },
+        }),
+      ),
+    ).toBe('behind job 926');
+    expect(
+      waitingText(
+        job({
+          units: { queued: 10 },
           waiting: {
             alpha: 'behind job 926',
             beta: "starts at the host's next claim",
@@ -113,10 +120,11 @@ describe('the manager view, written for a reader', () => {
         }),
       ),
     ).toBe('alpha: behind job 926 · local: closed');
-    expect(waitingText(job({ waiting: null }))).toBe('');
+    expect(waitingText(job({ units: { queued: 10 }, waiting: null }))).toBe('');
     expect(
       waitingText(
         job({
+          units: { queued: 10 },
           waiting: {
             alpha: 'outside its hours',
             beta: 'concurrency: its 5 running here fill its concurrency of 5',
@@ -127,6 +135,7 @@ describe('the manager view, written for a reader', () => {
     expect(
       waitingText(
         job({
+          units: { queued: 10 },
           waiting: {
             alpha: 'hours: outside its hours',
             beta: 'concurrency: its 5 running here fill its concurrency of 5',
@@ -136,9 +145,31 @@ describe('the manager view, written for a reader', () => {
     ).toBe('alpha: outside its hours');
     expect(
       waitingText(
-        job({ waiting: { alpha: 'concurrency: its 5 running here fill its concurrency of 5' } }),
+        job({
+          units: { queued: 10 },
+          waiting: { alpha: 'concurrency: its 5 running here fill its concurrency of 5' },
+        }),
       ),
     ).toBe('');
+  });
+
+  it('a finishing job says so in one line, in place of what each host says', () => {
+    const waiting = {
+      alpha: 'hours: outside its hours',
+      beta: 'units: no unit of it is queued for this host',
+    };
+    const finishing = job({ units: { done: 85, running: 40 }, waiting });
+    expect(waitingText(finishing)).toBe('');
+    expect(unitsNote(finishing)).toBe('its last 40 units are in play');
+    expect(unitsNote(job({ units: { done: 124, running: 1 }, waiting }))).toBe(
+      'its last unit is in play',
+    );
+    // a job of one unit has no last unit to speak of
+    expect(unitsNote(job({ units: { running: 1 }, waiting }))).toBe('');
+    // units still queued: the hosts' reasons, less a host that the queued units are not for
+    expect(unitsNote(job({ units: { queued: 5, running: 40 }, waiting }))).toBe(
+      'alpha: outside its hours',
+    );
   });
 
   it('a notice names a silent host, a refusing host and a live job with failed units', () => {

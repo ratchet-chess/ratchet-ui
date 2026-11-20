@@ -19,8 +19,8 @@ import {
   unitParts,
   unitsText,
   statusTag,
+  unitsNote,
   unitTimeText,
-  waitingText,
 } from '../../manager/show.ts';
 import { count, signed } from '../../ui/format.ts';
 import MatchChart, { type ChartPoint } from '../tourneys/MatchChart.vue';
@@ -74,7 +74,7 @@ const hosts = computed(() =>
         <span v-if="job.state === 'running'">{{ endsText(job, now) }}</span>
         <span v-else-if="job.ended !== null">ended {{ clockText(job.ended, now) }}</span>
       </div>
-      <div v-if="waitingText(job)" class="mb-3 text-small text-dim">{{ waitingText(job) }}</div>
+      <div v-if="unitsNote(job)" class="mb-3 text-small text-dim">{{ unitsNote(job) }}</div>
     </template>
 
     <template v-if="s">
