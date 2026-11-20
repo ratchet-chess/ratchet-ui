@@ -1,5 +1,5 @@
 /** How the manager view writes a host and a job for a reader: shared by Jobs, Hosts and the header. */
-import type { Host, Job } from './api.ts';
+import type { Host, Job, Summary } from './api.ts';
 import { count, signed } from '../ui/format.ts';
 
 const DAY = 86_400_000;
@@ -105,6 +105,50 @@ export function verdictTag(j: Job): { text: string; tone: string } | null {
   return { text: v, tone };
 }
 
+/** a job's one word for a tag: its run's verdict, or else its state, with `stopped` for a job whose queued units were dropped */
+export function statusTag(j: Job): { text: string; tone: string } {
+  return (
+    verdictTag(j) ?? {
+      text: j.state === 'cancelled' ? 'stopped' : j.state,
+      tone: j.state === 'running' ? 'tone-accent' : 'tone-dim',
+    }
+  );
+}
+
+/** a run's setup in one line, from what its producer names: `nElo [0, 10] · 6+0.06 · Hash 2 · 8moves_v3.pgn · SPEED 0.998` */
+export const setupText = (s: Summary): string =>
+  [
+    s.test,
+    s.tc,
+    s.hash === '' ? '' : `Hash ${s.hash}`,
+    s.book,
+    s.speed === null ? '' : `SPEED ${s.speed}`,
+  ]
+    .filter((t) => t !== '')
+    .join(' · ');
+
+/**
+ * When a running job should end, for its page: by its SPRT's pace when its producer gives one, and by its units.
+ * `≈ 10:05 at the LLR's pace · by 13:40 at the latest`
+ */
+export function endsText(j: Job, now: number): string {
+  const pace = j.summary?.pace ?? null;
+  const byUnits = j.endsAt === null ? '' : endText(j, now);
+  if (j.state !== 'running') return byUnits;
+  const byPace = pace === null ? '' : `≈ ${clockText(pace.at, now)} at the LLR's pace`;
+  return [byPace, byUnits === '' || !j.atMost ? byUnits : `${byUnits} at the latest`]
+    .filter((t) => t !== '')
+    .join(' · ');
+}
+
+/** a unit's mean time on a host: `1 min 50 s`, `45 s`; a dash before the host has played one */
+export function unitTimeText(ms: number | null): string {
+  if (ms === null) return '—';
+  const s = Math.max(1, Math.round(ms / 1000));
+  if (s < 60) return `${s} s`;
+  return s % 60 === 0 ? `${s / 60} min` : `${Math.floor(s / 60)} min ${s % 60} s`;
+}
+
 /** a host's units in play, by job: `931×12 924×18` */
 export const runningText = (h: Host): string =>
   h.running.map((r) => `${r.job}×${r.units}`).join(' ');
@@ -128,6 +172,7 @@ export function notices(hosts: readonly Host[], jobs: readonly Job[]): Notice[] 
       out.push({
         severity: 'bad',
         where: `job ${j.id}`,
+        to: `/jobs/${j.id}`,
         text: `${count(failed)} unit${failed === 1 ? '' : 's'} failed`,
       });
   }

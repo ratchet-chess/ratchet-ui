@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router';
 import HelpTip from '../../components/HelpTip.vue';
 import Pager from '../../components/Pager.vue';
 import Panel from '../../components/Panel.vue';
+import MatchCards from '../../components/MatchCards.vue';
 import StatCard from '../../components/StatCard.vue';
 import { bracket } from '../../match/director.ts';
 import { BYE, gameNumber, gamesPerPair, plannedGames } from '../../match/format.ts';
@@ -27,10 +28,6 @@ const bracketRounds = computed(() => {
   if (i.config.format.kind !== 'knockout') return [];
   return bracket(i.config.entrants.length, i.config.format.pairs, i.state.pairs, i.state.games);
 });
-/** a 95% interval's half-width, or a dash while it is unbounded */
-const interval = (ci: number) => (Number.isFinite(ci) ? ci.toFixed(1) : '—');
-const llrAt = (v: number, lo: number, hi: number) =>
-  (100 * (Math.min(hi, Math.max(lo, v)) - lo)) / (hi - lo);
 /** a tournament this tab may play on or delete: not done, and not played by a tab */
 const idle = (i: Item) => !tournaments.running(i.config.id) && !i.elsewhere;
 
@@ -243,49 +240,19 @@ async function copy(): Promise<void> {
     <div v-if="item.state.error" class="mb-3 text-bad">{{ item.state.error }}</div>
 
     <template v-if="item.state.summary.match">
-      <div class="mb-3 grid grid-cols-2 gap-2 @4xl:grid-cols-5">
-        <StatCard
-          v-if="item.state.summary.match.llr !== null && item.state.summary.match.bounds"
-          label="LLR"
-          class="col-span-2"
-        >
-          <template #help>
-            <HelpTip
-              >The evidence so far: the SPRT accepts H1 at the upper bound and H0 at the lower. The
-              marker is where it sits between them.</HelpTip
-            >
-          </template>
-          {{ item.state.summary.match.llr.toFixed(2) }}
-          <span class="text-dense text-dim"
-            >of [{{ item.state.summary.match.bounds.lower.toFixed(2) }},
-            {{ item.state.summary.match.bounds.upper.toFixed(2) }}]</span
-          >
-          <template #below>
-            <div class="relative mt-1.5 h-2 rounded bg-track">
-              <div
-                class="absolute top-[-2px] h-3 w-1 -translate-x-1/2 rounded bg-accent"
-                :style="{
-                  left: `${llrAt(item.state.summary.match.llr, item.state.summary.match.bounds.lower, item.state.summary.match.bounds.upper)}%`,
-                }"
-              />
-              <div class="absolute top-0 left-1/2 h-2 w-px bg-faint" />
-            </div>
-          </template>
-        </StatCard>
-        <StatCard label="nElo">
-          <template #help>
-            <HelpTip
-              >Normalized Elo: the difference scaled by how much results vary, as fishtest and
-              OpenBench report it; the SPRT's bounds are in nElo. ± is the 95% interval.</HelpTip
-            >
-          </template>
-          {{ signed(item.state.summary.match.nelo.value) }}
-          <template #sub>± {{ interval(item.state.summary.match.nelo.ci) }}</template>
-        </StatCard>
-        <StatCard label="Elo">
-          {{ signed(item.state.summary.match.elo.value) }}
-          <template #sub>± {{ interval(item.state.summary.match.elo.ci) }}</template>
-        </StatCard>
+      <MatchCards
+        :llr="
+          item.state.summary.match.llr !== null && item.state.summary.match.bounds
+            ? {
+                value: item.state.summary.match.llr,
+                lower: item.state.summary.match.bounds.lower,
+                upper: item.state.summary.match.bounds.upper,
+              }
+            : null
+        "
+        :nelo="item.state.summary.match.nelo"
+        :elo="item.state.summary.match.elo"
+      >
         <StatCard :label="per === 2 ? 'W D L · pairs' : 'W D L'">
           <template v-if="per === 2" #help>
             <HelpTip side="left"
@@ -298,7 +265,7 @@ async function copy(): Promise<void> {
             item.state.summary.match.ptnml.join(' ')
           }}</template>
         </StatCard>
-      </div>
+      </MatchCards>
       <Panel
         v-if="eloPoints.length >= 2"
         :title="per === 2 ? 'Over the pairs' : 'Over the games'"

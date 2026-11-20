@@ -15,7 +15,7 @@ export const router = createRouter({
   history: createWebHashHistory(),
   routes: [
     { path: '/', redirect: '/jobs' },
-    { path: '/jobs', component: JobsView },
+    { path: '/jobs/:id?', component: JobsView },
     { path: '/engines', component: EnginesView },
     { path: '/play', component: PlayView },
     { path: '/books', component: BooksView },

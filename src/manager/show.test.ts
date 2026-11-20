@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   parseHosts,
+  parseJobDetail,
   parseJobs,
   parseSummary,
   managerBase,
@@ -10,14 +11,18 @@ import {
 } from './api.ts';
 import {
   endText,
+  endsText,
   headline,
   jobTitle,
   notices,
   outcomeText,
   runningText,
+  setupText,
+  statusTag,
   testText,
   unitParts,
   unitsText,
+  unitTimeText,
   unreachableText,
   verdictTag,
   waitingText,
@@ -49,9 +54,15 @@ const summary = (over: Partial<Summary>): Summary => ({
   games: 3692,
   ptnml: [61, 402, 902, 425, 56],
   nelo: { value: 3.1, ci: 4.2 },
+  elo: { value: 2.3, ci: 3.1 },
   llr: { value: 1.37, lower: -2.94, upper: 2.94 },
   verdict: 'running',
   line: '',
+  speed: 0.998,
+  hash: '2',
+  book: '8moves_v3.pgn 5835239f',
+  forfeits: '0',
+  pace: null,
   ...over,
 });
 const host = (over: Partial<Host>): Host => ({
@@ -300,5 +311,74 @@ describe("a job's outcome", () => {
       'tone-warn',
     );
     expect(verdictTag(job({ summary: summary({ verdict: 'fixed' }) }))?.tone).toBe('tone-dim');
+  });
+});
+
+describe("a job's page", () => {
+  it('reads one job, and leaves out a row or a point of the wrong shape', () => {
+    const j = parseJobDetail({
+      job: {
+        id: 7,
+        state: 'running',
+        summaryAt: 5,
+        byHost: [
+          { host: 'alpha', done: 3, running: 1, failed: 0, concurrency: 5, unitMs: 90500 },
+          4,
+        ],
+        failed: [{ seq: '12', host: 'alpha', exit: 137 }],
+        series: [
+          { pairs: 8, llr: 0.1, nelo: { value: 1, ci: 90 }, elo: { value: 1, ci: 40 } },
+          { pairs: 16, nelo: { value: 2, ci: 60 }, elo: { value: 1, ci: 30 } },
+          { pairs: 24, nelo: { value: 2 } },
+        ],
+      },
+    });
+    expect(j.id).toBe(7);
+    expect(j.summaryAt).toBe(5);
+    expect(j.byHost).toEqual([
+      { host: 'alpha', done: 3, running: 1, failed: 0, concurrency: 5, unitMs: 90500 },
+    ]);
+    expect(j.failed).toEqual([{ seq: '12', host: 'alpha', exit: 137 }]);
+    expect(j.series.map((p) => [p.pairs, p.llr])).toEqual([
+      [8, 0.1],
+      [16, null],
+    ]);
+    expect(() => parseJobDetail({ error: 'no route' })).toThrow('no job');
+  });
+
+  it('words the setup from what the producer names', () => {
+    expect(setupText(summary({}))).toBe(
+      'nElo [0, 10] · 6+0.06 · Hash 2 · 8moves_v3.pgn 5835239f · SPEED 0.998',
+    );
+    expect(setupText(summary({ hash: '', book: '', speed: null }))).toBe('nElo [0, 10] · 6+0.06');
+  });
+
+  it("says when a running job should end, by its SPRT's pace and by its units", () => {
+    const now = new Date(2026, 10, 20, 9, 0).getTime();
+    const at = (h: number, m: number) => new Date(2026, 10, 20, h, m).getTime();
+    const j = job({
+      endsAt: at(13, 40),
+      atMost: true,
+      summary: summary({ pace: { games: 4250, at: at(10, 5) } }),
+    });
+    expect(endsText(j, now)).toBe("≈ 10:05 at the LLR's pace · by 13:40 at the latest");
+    expect(endsText(job({ endsAt: at(9, 20), summary: summary({}) }), now)).toBe('≈ 09:20');
+    expect(endsText(job({ summary: null }), now)).toBe('');
+  });
+
+  it("writes a unit's mean time, and a dash before a host has played one", () => {
+    expect(unitTimeText(null)).toBe('—');
+    expect(unitTimeText(45_200)).toBe('45 s');
+    expect(unitTimeText(110_000)).toBe('1 min 50 s');
+    expect(unitTimeText(120_000)).toBe('2 min');
+  });
+
+  it("tags a job with its run's verdict, or else with its state", () => {
+    expect(statusTag(job({ summary: summary({ verdict: 'H0' }) }))).toEqual({
+      text: 'H0',
+      tone: 'tone-bad',
+    });
+    expect(statusTag(job({}))).toEqual({ text: 'running', tone: 'tone-accent' });
+    expect(statusTag(job({ state: 'cancelled' }))).toEqual({ text: 'stopped', tone: 'tone-dim' });
   });
 });

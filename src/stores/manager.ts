@@ -1,6 +1,13 @@
 import { defineStore } from 'pinia';
 import { computed, ref, shallowRef, watch } from 'vue';
-import { managerBase, readManager, type Host, type Job } from '../manager/api.ts';
+import {
+  managerBase,
+  readJob,
+  readManager,
+  type Host,
+  type Job,
+  type JobDetail,
+} from '../manager/api.ts';
 import { unreachableText } from '../manager/show.ts';
 import { useSettings } from './settings.ts';
 
@@ -12,7 +19,8 @@ export type Link = 'none' | 'reading' | 'connected' | 'unreachable';
 
 /**
  * The manager view's data: the hosts and the jobs of the manager whose address Settings keeps, read again every
- * RELOAD_MS while the page is visible. It only reads. A failed read keeps the last rows and says why it failed.
+ * RELOAD_MS while the page is visible, and with them the one job whose page is open. It only reads. A failed read
+ * keeps the last rows and says why it failed.
  */
 export const useManager = defineStore('manager', () => {
   const settings = useSettings();
@@ -24,6 +32,11 @@ export const useManager = defineStore('manager', () => {
   const readAt = ref<number | null>(null);
   /** why the last read failed; empty after a good one */
   const problem = ref('');
+  /** the job whose page is open, as its last read gave it; null before that read, and with no page open */
+  const opened = ref<number | null>(null);
+  const job = shallowRef<JobDetail | null>(null);
+  /** the manager has no job of the opened id */
+  const jobMissing = ref(false);
 
   let timer: ReturnType<typeof setTimeout> | undefined;
   let abort: AbortController | undefined;
@@ -35,10 +48,17 @@ export const useManager = defineStore('manager', () => {
     if (!at) return;
     const mine = (abort = new AbortController());
     try {
-      const s = await readManager(at, mine.signal);
+      const want = opened.value;
+      const [s, one] = await Promise.all([
+        readManager(at, mine.signal),
+        want === null ? null : readJob(at, want, mine.signal),
+      ]);
+      // an answer for a page the reader has left since is dropped: open() started a read of its own
       if (mine.signal.aborted) return;
       hosts.value = s.hosts;
       jobs.value = s.jobs;
+      job.value = one;
+      jobMissing.value = want !== null && one === null;
       readAt.value = Date.now();
       problem.value = '';
       link.value = 'connected';
@@ -61,6 +81,8 @@ export const useManager = defineStore('manager', () => {
       abort?.abort();
       hosts.value = [];
       jobs.value = [];
+      job.value = null;
+      jobMissing.value = false;
       readAt.value = null;
       problem.value = '';
       link.value = at ? 'reading' : 'none';
@@ -74,5 +96,14 @@ export const useManager = defineStore('manager', () => {
     if (!document.hidden && url.value) void read();
   });
 
-  return { url, link, hosts, jobs, readAt, problem, read };
+  /** opens a job's page, or closes it with null: the job is read at once, and then with every read */
+  function open(id: number | null): void {
+    if (id === opened.value) return;
+    opened.value = id;
+    job.value = null;
+    jobMissing.value = false;
+    if (url.value) void read();
+  }
+
+  return { url, link, hosts, jobs, readAt, problem, read, opened, job, jobMissing, open };
 });

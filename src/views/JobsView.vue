@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onBeforeUnmount, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import ManagerGate from '../components/ManagerGate.vue';
 import NoticeList from '../components/NoticeList.vue';
 import OutcomeLine from '../components/OutcomeLine.vue';
@@ -7,6 +8,7 @@ import PageHeader from '../components/PageHeader.vue';
 import Panel from '../components/Panel.vue';
 import ProgressBar from '../components/ProgressBar.vue';
 import type { Job } from '../manager/api.ts';
+import JobPage from './jobs/JobPage.vue';
 import {
   clockText,
   endText,
@@ -14,6 +16,7 @@ import {
   jobTitle,
   notices,
   outcomeText,
+  statusTag,
   testText,
   unitParts,
   unitsText,
@@ -24,6 +27,17 @@ import { useManager } from '../stores/manager.ts';
 import { count } from '../ui/format.ts';
 
 const manager = useManager();
+const route = useRoute();
+const router = useRouter();
+
+/** the job whose page is open, from the address; null for the list alone */
+const selected = computed(() => {
+  const id = route.params['id'];
+  return typeof id === 'string' && /^\d+$/.test(id) ? Number(id) : null;
+});
+watch(selected, (id) => manager.open(id), { immediate: true });
+onBeforeUnmount(() => manager.open(null));
+const open = (j: Job) => void router.push(`/jobs/${j.id}`);
 
 /** the last read's time stands for now, so a row's text changes only with a read */
 const now = computed(() => manager.readAt ?? 0);
@@ -43,6 +57,13 @@ const sub = computed(() =>
     : `${headline(manager.hosts, manager.jobs)} · read only`,
 );
 
+/** the list beside an open job: the same jobs, a row each */
+const groups = computed(() => [
+  { name: 'Running', jobs: running.value },
+  { name: 'Queued', jobs: queued.value },
+  { name: 'Done', jobs: ended.value },
+]);
+
 const line1 = 'flex items-baseline gap-2';
 const line2 = 'num mt-1 flex items-baseline gap-2 text-small text-dim';
 const hostsOf = (j: Job) => j.hosts.join(' ');
@@ -52,7 +73,7 @@ const hostsOf = (j: Job) => j.hosts.join(' ');
   <PageHeader title="Jobs" :sub="sub" />
   <ManagerGate />
 
-  <template v-if="manager.readAt !== null">
+  <template v-if="manager.readAt !== null && selected === null">
     <Panel v-if="notes.length > 0" title="Notices" :note="String(notes.length)">
       <NoticeList :notices="notes" />
     </Panel>
@@ -61,7 +82,7 @@ const hostsOf = (j: Job) => j.hosts.join(' ');
       <div v-if="running.length === 0" class="px-3 py-2 text-dense text-dim">
         Nothing is running.
       </div>
-      <div v-for="j in running" :key="j.id" class="border-b border-row px-3 py-2 last:border-b-0">
+      <div v-for="j in running" :key="j.id" class="row px-3 py-2" @click="open(j)">
         <div :class="line1">
           <span class="num shrink-0 text-dim">{{ j.id }}</span>
           <span class="min-w-0 flex-1 truncate font-medium" :title="j.name">{{ jobTitle(j) }}</span>
@@ -98,7 +119,7 @@ const hostsOf = (j: Job) => j.hosts.join(' ');
     </Panel>
 
     <Panel v-if="queued.length > 0" title="Queued" :note="String(queued.length)">
-      <div v-for="j in queued" :key="j.id" class="border-b border-row px-3 py-2 last:border-b-0">
+      <div v-for="j in queued" :key="j.id" class="row px-3 py-2" @click="open(j)">
         <div :class="line1">
           <span class="num shrink-0 text-dim">{{ j.id }}</span>
           <span class="min-w-0 flex-1 truncate font-medium" :title="j.name">{{ jobTitle(j) }}</span>
@@ -117,7 +138,7 @@ const hostsOf = (j: Job) => j.hosts.join(' ');
       <div v-if="ended.length === 0" class="px-3 py-2 text-dense text-dim">
         Nothing ended in the last day.
       </div>
-      <div v-for="j in ended" :key="j.id" class="border-b border-row px-3 py-1.5 last:border-b-0">
+      <div v-for="j in ended" :key="j.id" class="row px-3 py-1.5" @click="open(j)">
         <div :class="line1">
           <span class="num shrink-0 text-dim">{{ j.id }}</span>
           <span class="min-w-0 flex-1 truncate" :title="j.name">{{ jobTitle(j) }}</span>
@@ -151,4 +172,58 @@ const hostsOf = (j: Job) => j.hosts.join(' ');
       </div>
     </Panel>
   </template>
+
+  <div
+    v-else-if="manager.readAt !== null"
+    class="grid gap-3.5 wide:grid-cols-[minmax(300px,380px)_1fr]"
+  >
+    <div class="hidden wide:block">
+      <Panel>
+        <template v-for="g in groups" :key="g.name">
+          <div
+            v-if="g.jobs.length > 0"
+            class="border-b border-line bg-panel2 px-3 py-1 text-label tracking-widest text-dim uppercase"
+          >
+            {{ g.name }}
+            <span class="tracking-normal text-faint">{{ g.jobs.length }}</span>
+          </div>
+          <div
+            v-for="j in g.jobs"
+            :key="j.id"
+            class="row px-3 py-2"
+            :class="j.id === selected ? 'bg-selected' : ''"
+            @click="open(j)"
+          >
+            <div class="flex items-baseline gap-2">
+              <span class="num shrink-0 text-dim">{{ j.id }}</span>
+              <span class="min-w-0 flex-1 truncate" :title="j.name">{{ jobTitle(j) }}</span>
+              <span class="tag" :class="statusTag(j).tone">{{ statusTag(j).text }}</span>
+            </div>
+            <div class="num mt-0.5 flex gap-2 text-small text-dim">
+              <span class="min-w-0 flex-1 truncate">{{ testText(j) || j.kind }}</span>
+              <span v-if="!j.allocation" class="shrink-0">{{ unitsText(j) }}</span>
+            </div>
+            <ProgressBar
+              v-if="j.state === 'running' && !j.allocation"
+              class="mt-1"
+              :parts="unitParts(j)"
+            />
+          </div>
+        </template>
+        <div v-if="manager.jobs.length === 0" class="px-3 py-3 text-dim">No jobs.</div>
+      </Panel>
+    </div>
+
+    <JobPage v-if="manager.job" :key="manager.job.id" :job="manager.job" :now="now" />
+    <div v-else>
+      <RouterLink to="/jobs" class="mb-2 inline-block text-dense text-accent wide:hidden"
+        >‹ Jobs</RouterLink
+      >
+      <div class="text-dense text-dim">
+        {{
+          manager.jobMissing ? `The manager has no job ${selected}.` : `Reading job ${selected}…`
+        }}
+      </div>
+    </div>
+  </div>
 </template>

@@ -1,6 +1,6 @@
 /**
- * A ratchet-bench manager's read API, as this app reads it: `GET /hosts` and `GET /jobs`, plain JSON with no
- * token. The manager picks the fields; the app shows them and computes no outcome.
+ * A ratchet-bench manager's read API, as this app reads it: `GET /hosts`, `GET /jobs` and `GET /jobs/<id>`, plain
+ * JSON with no token. The manager picks the fields; the app shows them and computes no outcome.
  */
 
 /** a host's one word in the queue's status */
@@ -41,12 +41,49 @@ export interface Summary {
   /** pair counts, from two losses to two wins */
   ptnml: number[] | null;
   nelo: Estimate | null;
+  elo: Estimate | null;
   /** an SPRT's LLR and the two bounds that end it */
   llr: { value: number; lower: number; upper: number } | null;
   /** `running`, then the run's verdict */
   verdict: string;
   /** the outcome in one line, for a run whose outcome is not one match's counts */
   line: string;
+  /** the candidate's search speed over the base's, which scales its clock */
+  speed: number | null;
+  hash: string;
+  book: string;
+  /** games that ended by a fault, in the tool's words */
+  forfeits: string;
+  /** an SPRT's pace: the games left until the LLR reaches the bound its drift points at, and the time then */
+  pace: { games: number; at: number } | null;
+}
+
+/** a run's statistics after its first `pairs` finished pairs, one point of its charts */
+export interface SeriesPoint {
+  pairs: number;
+  /** null without an SPRT */
+  llr: number | null;
+  nelo: Estimate;
+  elo: Estimate;
+}
+
+/** one host's part of a job */
+export interface HostUnits {
+  host: string;
+  done: number;
+  running: number;
+  failed: number;
+  /** units of the job the host runs at once */
+  concurrency: number | null;
+  /** the host's mean time for one of the job's units, in ms */
+  unitMs: number | null;
+}
+
+/** a unit that failed on its last try */
+export interface FailedUnit {
+  seq: string;
+  host: string | null;
+  exit: number | null;
 }
 
 /** a job in a list: queued until its first unit starts, then running, then as the queue ended it */
@@ -74,6 +111,15 @@ export interface Job {
   atMost: boolean;
   /** its producer's latest summary; null for a job whose producer posts none */
   summary: Summary | null;
+}
+
+/** one job as its own page shows it: its row, and what only that page reads */
+export interface JobDetail extends Job {
+  /** when its producer last posted the summary, in ms */
+  summaryAt: number | null;
+  byHost: HostUnits[];
+  failed: FailedUnit[];
+  series: SeriesPoint[];
 }
 
 export interface Snapshot {
@@ -133,14 +179,17 @@ export function parseHosts(body: unknown): { at: number; hosts: Host[] } {
   };
 }
 
+const estimate = (e: unknown): Estimate | null => {
+  const value = isObject(e) ? number(e.value) : null;
+  const ci = isObject(e) ? number(e.ci) : null;
+  return value === null || ci === null ? null : { value, ci };
+};
+
 /** a job's summary as the manager returned it; a part of the wrong type reads as absent */
 export function parseSummary(v: unknown): Summary | null {
   if (!isObject(v)) return null;
-  const estimate = (e: unknown): Estimate | null => {
-    const value = isObject(e) ? number(e.value) : null;
-    const ci = isObject(e) ? number(e.ci) : null;
-    return value === null || ci === null ? null : { value, ci };
-  };
+  const paceGames = isObject(v.pace) ? number(v.pace.games) : null;
+  const paceAt = isObject(v.pace) ? number(v.pace.at) : null;
   const counts = Array.isArray(v.ptnml) ? v.ptnml.map(number) : [];
   const ptnml = counts.filter((n) => n !== null);
   const llr = isObject(v.llr)
@@ -154,45 +203,85 @@ export function parseSummary(v: unknown): Summary | null {
     games: number(v.games),
     ptnml: ptnml.length === 5 && counts.length === 5 ? ptnml : null,
     nelo: estimate(v.nelo),
+    elo: estimate(v.elo),
     llr:
       llr !== null && llr.value !== null && llr.lower !== null && llr.upper !== null
         ? { value: llr.value, lower: llr.lower, upper: llr.upper }
         : null,
     verdict: text(v.verdict),
     line: text(v.line),
+    speed: number(v.speed),
+    hash: text(v.hash),
+    book: text(v.book),
+    forfeits: text(v.forfeits),
+    pace: paceGames === null || paceAt === null ? null : { games: paceGames, at: paceAt },
+  };
+}
+
+/** a job's row; a value that is no job fails the read */
+function parseJob(j: unknown): Job {
+  const id = isObject(j) ? number(j.id) : null;
+  if (!isObject(j) || id === null || !isJobState(j.state)) fail('a row that is no job');
+  const units: Record<string, number> = {};
+  if (isObject(j.units)) for (const [k, v] of Object.entries(j.units)) units[k] = number(v) ?? 0;
+  const waiting: Record<string, string> = {};
+  if (isObject(j.waiting)) for (const [k, v] of Object.entries(j.waiting)) waiting[k] = text(v);
+  return {
+    id,
+    name: text(j.name),
+    label: text(j.label) || null,
+    kind: text(j.kind),
+    priority: number(j.priority) ?? 0,
+    allocation: j.allocation === true,
+    state: j.state,
+    hosts: texts(j.hosts),
+    units,
+    created: number(j.created) ?? 0,
+    ended: number(j.ended),
+    waiting: isObject(j.waiting) ? waiting : null,
+    endsAt: number(j.endsAt),
+    atMost: j.atMost === true,
+    summary: parseSummary(j.summary),
   };
 }
 
 /** the jobs of a `GET /jobs` answer */
 export function parseJobs(body: unknown): { at: number; jobs: Job[] } {
   if (!isObject(body) || !Array.isArray(body.jobs)) fail('no jobs');
+  return { at: number(body.at) ?? Date.now(), jobs: body.jobs.map(parseJob) };
+}
+
+/** the job of a `GET /jobs/<id>` answer; a row or a point of the wrong shape is left out */
+export function parseJobDetail(body: unknown): JobDetail {
+  if (!isObject(body) || !isObject(body.job)) fail('no job');
+  const j = body.job;
+  const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
   return {
-    at: number(body.at) ?? Date.now(),
-    jobs: body.jobs.map((j: unknown): Job => {
-      const id = isObject(j) ? number(j.id) : null;
-      if (!isObject(j) || id === null || !isJobState(j.state)) fail('a row that is no job');
-      const units: Record<string, number> = {};
-      if (isObject(j.units))
-        for (const [k, v] of Object.entries(j.units)) units[k] = number(v) ?? 0;
-      const waiting: Record<string, string> = {};
-      if (isObject(j.waiting)) for (const [k, v] of Object.entries(j.waiting)) waiting[k] = text(v);
-      return {
-        id,
-        name: text(j.name),
-        label: text(j.label) || null,
-        kind: text(j.kind),
-        priority: number(j.priority) ?? 0,
-        allocation: j.allocation === true,
-        state: j.state,
-        hosts: texts(j.hosts),
-        units,
-        created: number(j.created) ?? 0,
-        ended: number(j.ended),
-        waiting: isObject(j.waiting) ? waiting : null,
-        endsAt: number(j.endsAt),
-        atMost: j.atMost === true,
-        summary: parseSummary(j.summary),
-      };
+    ...parseJob(j),
+    summaryAt: number(j.summaryAt),
+    byHost: list(j.byHost).flatMap((h): HostUnits[] =>
+      isObject(h) && text(h.host) !== ''
+        ? [
+            {
+              host: text(h.host),
+              done: number(h.done) ?? 0,
+              running: number(h.running) ?? 0,
+              failed: number(h.failed) ?? 0,
+              concurrency: number(h.concurrency),
+              unitMs: number(h.unitMs),
+            },
+          ]
+        : [],
+    ),
+    failed: list(j.failed).flatMap((f): FailedUnit[] =>
+      isObject(f) ? [{ seq: text(f.seq), host: text(f.host) || null, exit: number(f.exit) }] : [],
+    ),
+    series: list(j.series).flatMap((p): SeriesPoint[] => {
+      const pairs = isObject(p) ? number(p.pairs) : null;
+      const nelo = isObject(p) ? estimate(p.nelo) : null;
+      const elo = isObject(p) ? estimate(p.elo) : null;
+      if (!isObject(p) || pairs === null || nelo === null || elo === null) return [];
+      return [{ pairs, llr: number(p.llr), nelo, elo }];
     }),
   };
 }
@@ -213,4 +302,16 @@ export async function readManager(url: string, signal?: AbortSignal): Promise<Sn
   const [h, j] = await Promise.all([get('/hosts'), get('/jobs')]);
   const hosts = parseHosts(h);
   return { at: hosts.at, hosts: hosts.hosts, jobs: parseJobs(j).jobs };
+}
+
+/** one read of one job; null when the manager has no such job */
+export async function readJob(
+  url: string,
+  id: number,
+  signal?: AbortSignal,
+): Promise<JobDetail | null> {
+  const r = await fetch(`${url}/jobs/${id}`, { signal, cache: 'no-store' });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(`the manager answered ${r.status} for job ${id}`);
+  return parseJobDetail(await (r.json() as Promise<unknown>));
 }
