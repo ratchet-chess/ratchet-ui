@@ -21,6 +21,34 @@ export interface Host {
   running: { job: number; units: number }[];
 }
 
+/** a number with its 95% half-interval */
+export interface Estimate {
+  value: number;
+  ci: number;
+}
+
+/**
+ * A producer's summary of its job's run. The manager stores it as its producer posted it and reads nothing in
+ * it, so every part may be absent: a text is then empty and a number null.
+ */
+export interface Summary {
+  base: string;
+  candidate: string;
+  /** the test in its producer's words: an SPRT's bounds, or a number of games */
+  test: string;
+  tc: string;
+  games: number | null;
+  /** pair counts, from two losses to two wins */
+  ptnml: number[] | null;
+  nelo: Estimate | null;
+  /** an SPRT's LLR and the two bounds that end it */
+  llr: { value: number; lower: number; upper: number } | null;
+  /** `running`, then the run's verdict */
+  verdict: string;
+  /** the outcome in one line, for a run whose outcome is not one match's counts */
+  line: string;
+}
+
 /** a job in a list: queued until its first unit starts, then running, then as the queue ended it */
 export type JobState = 'queued' | 'running' | 'done' | 'cancelled';
 
@@ -44,6 +72,8 @@ export interface Job {
   endsAt: number | null;
   /** the unit count is a ceiling, so the job may end sooner */
   atMost: boolean;
+  /** its producer's latest summary; null for a job whose producer posts none */
+  summary: Summary | null;
 }
 
 export interface Snapshot {
@@ -103,6 +133,36 @@ export function parseHosts(body: unknown): { at: number; hosts: Host[] } {
   };
 }
 
+/** a job's summary as the manager returned it; a part of the wrong type reads as absent */
+export function parseSummary(v: unknown): Summary | null {
+  if (!isObject(v)) return null;
+  const estimate = (e: unknown): Estimate | null => {
+    const value = isObject(e) ? number(e.value) : null;
+    const ci = isObject(e) ? number(e.ci) : null;
+    return value === null || ci === null ? null : { value, ci };
+  };
+  const counts = Array.isArray(v.ptnml) ? v.ptnml.map(number) : [];
+  const ptnml = counts.filter((n) => n !== null);
+  const llr = isObject(v.llr)
+    ? { value: number(v.llr.value), lower: number(v.llr.lower), upper: number(v.llr.upper) }
+    : null;
+  return {
+    base: text(v.base),
+    candidate: text(v.candidate),
+    test: text(v.test),
+    tc: text(v.tc),
+    games: number(v.games),
+    ptnml: ptnml.length === 5 && counts.length === 5 ? ptnml : null,
+    nelo: estimate(v.nelo),
+    llr:
+      llr !== null && llr.value !== null && llr.lower !== null && llr.upper !== null
+        ? { value: llr.value, lower: llr.lower, upper: llr.upper }
+        : null,
+    verdict: text(v.verdict),
+    line: text(v.line),
+  };
+}
+
 /** the jobs of a `GET /jobs` answer */
 export function parseJobs(body: unknown): { at: number; jobs: Job[] } {
   if (!isObject(body) || !Array.isArray(body.jobs)) fail('no jobs');
@@ -131,6 +191,7 @@ export function parseJobs(body: unknown): { at: number; jobs: Job[] } {
         waiting: isObject(j.waiting) ? waiting : null,
         endsAt: number(j.endsAt),
         atMost: j.atMost === true,
+        summary: parseSummary(j.summary),
       };
     }),
   };

@@ -1,13 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { parseHosts, parseJobs, managerBase, type Host, type Job } from './api.ts';
+import {
+  parseHosts,
+  parseJobs,
+  parseSummary,
+  managerBase,
+  type Host,
+  type Job,
+  type Summary,
+} from './api.ts';
 import {
   endText,
   headline,
+  jobTitle,
   notices,
+  outcomeText,
   runningText,
+  testText,
   unitParts,
   unitsText,
   unreachableText,
+  verdictTag,
   waitingText,
 } from './show.ts';
 
@@ -26,6 +38,20 @@ const job = (over: Partial<Job>): Job => ({
   waiting: null,
   endsAt: null,
   atMost: false,
+  summary: null,
+  ...over,
+});
+const summary = (over: Partial<Summary>): Summary => ({
+  base: 'b.engine',
+  candidate: 'a.engine',
+  test: 'nElo [0, 10]',
+  tc: '6+0.06',
+  games: 3692,
+  ptnml: [61, 402, 902, 425, 56],
+  nelo: { value: 3.1, ci: 4.2 },
+  llr: { value: 1.37, lower: -2.94, upper: 2.94 },
+  verdict: 'running',
+  line: '',
   ...over,
 });
 const host = (over: Partial<Host>): Host => ({
@@ -77,6 +103,16 @@ describe('the manager view, written for a reader', () => {
       ),
     ).toBe('alpha: behind job 926 · local: closed');
     expect(waitingText(job({ waiting: null }))).toBe('');
+    expect(
+      waitingText(
+        job({
+          waiting: {
+            alpha: 'outside its hours',
+            beta: 'concurrency: its 5 running here fill its concurrency of 5',
+          },
+        }),
+      ),
+    ).toBe('alpha: outside its hours');
     expect(
       waitingText(
         job({ waiting: { alpha: 'concurrency: its 5 running here fill its concurrency of 5' } }),
@@ -182,8 +218,77 @@ describe("the manager's answers", () => {
     expect(() => parseJobs({ jobs: [{ id: 'x', state: 'done' }] })).toThrow('no job');
   });
 
+  it('reads a summary, and a part of the wrong type as absent', () => {
+    const s = parseSummary({
+      base: 'b',
+      candidate: 'a',
+      games: 8,
+      ptnml: [0, 1, 2, 1, 0],
+      nelo: { value: 1.5, ci: 90 },
+      llr: { value: 0.1, lower: -2.94 },
+      verdict: 'running',
+    });
+    expect(s).toMatchObject({
+      base: 'b',
+      games: 8,
+      ptnml: [0, 1, 2, 1, 0],
+      nelo: { value: 1.5, ci: 90 },
+      llr: null,
+      test: '',
+      line: '',
+    });
+    expect(parseSummary({ ptnml: [1, 2, 'x', 4, 5], nelo: { value: 1 } })).toMatchObject({
+      ptnml: null,
+      nelo: null,
+      games: null,
+    });
+    expect(parseSummary(null)).toBeNull();
+    expect(parseJobs({ jobs: [{ id: 7, state: 'done', summary: 'text' }] }).jobs[0]?.summary).toBe(
+      null,
+    );
+  });
+
   it('takes an http address and drops a slash at its end', () => {
     expect(managerBase(' http://host:7420/ ')).toBe('http://host:7420');
     expect(managerBase('host:7420')).toBe('');
+  });
+});
+
+describe("a job's outcome", () => {
+  it('names a match by its two sides, and any other job by its name', () => {
+    expect(jobTitle(job({ summary: summary({}) }))).toBe('a.engine vs b.engine');
+    expect(jobTitle(job({ summary: summary({ candidate: '' }) }))).toBe('pool-nodeclock-a-vs-b');
+    expect(jobTitle(job({}))).toBe('pool-nodeclock-a-vs-b');
+  });
+
+  it("words the test, and the standing from the producer's numbers", () => {
+    const j = job({ summary: summary({}) });
+    expect(testText(j)).toBe('nElo [0, 10] · 6+0.06');
+    expect(outcomeText(j)).toBe('nElo +3.1 ± 4.2 · 3,692 games');
+    expect(testText(job({}))).toBe('');
+    expect(outcomeText(job({}))).toBe('');
+  });
+
+  it("says nothing before the first game, and shows a producer's own line as it is", () => {
+    expect(outcomeText(job({ summary: summary({ games: 0, nelo: null }) }))).toBe('');
+    expect(outcomeText(job({ summary: summary({ line: 'x 80g 1.0+/-9.0' }) }))).toBe(
+      'x 80g 1.0+/-9.0',
+    );
+  });
+
+  it('tags an ended run with its verdict, and a running one with none', () => {
+    expect(verdictTag(job({ summary: summary({}) }))).toBeNull();
+    expect(verdictTag(job({}))).toBeNull();
+    expect(verdictTag(job({ summary: summary({ verdict: 'H1' }) }))).toEqual({
+      text: 'H1',
+      tone: 'tone-good',
+    });
+    expect(verdictTag(job({ summary: summary({ verdict: 'rejected by loss' }) }))?.tone).toBe(
+      'tone-bad',
+    );
+    expect(verdictTag(job({ summary: summary({ verdict: 'interrupted' }) }))?.tone).toBe(
+      'tone-warn',
+    );
+    expect(verdictTag(job({ summary: summary({ verdict: 'fixed' }) }))?.tone).toBe('tone-dim');
   });
 });

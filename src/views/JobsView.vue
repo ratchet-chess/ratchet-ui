@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import ManagerGate from '../components/ManagerGate.vue';
 import NoticeList from '../components/NoticeList.vue';
+import OutcomeLine from '../components/OutcomeLine.vue';
 import PageHeader from '../components/PageHeader.vue';
 import Panel from '../components/Panel.vue';
 import ProgressBar from '../components/ProgressBar.vue';
@@ -10,9 +11,13 @@ import {
   clockText,
   endText,
   headline,
+  jobTitle,
   notices,
+  outcomeText,
+  testText,
   unitParts,
   unitsText,
+  verdictTag,
   waitingText,
 } from '../manager/show.ts';
 import { useManager } from '../stores/manager.ts';
@@ -59,14 +64,14 @@ const hostsOf = (j: Job) => j.hosts.join(' ');
       <div v-for="j in running" :key="j.id" class="border-b border-row px-3 py-2 last:border-b-0">
         <div :class="line1">
           <span class="num shrink-0 text-dim">{{ j.id }}</span>
-          <span class="min-w-0 flex-1 truncate font-medium">{{ j.name }}</span>
+          <span class="min-w-0 flex-1 truncate font-medium" :title="j.name">{{ jobTitle(j) }}</span>
           <span v-if="j.allocation" class="tag tone-dim">allocation</span>
           <span v-if="j.priority !== 0" class="tag tone-warn">priority {{ j.priority }}</span>
           <span class="num shrink-0 text-small text-dim">{{ endText(j, now) }}</span>
         </div>
         <ProgressBar v-if="!j.allocation" class="mt-1.5" :parts="unitParts(j)" />
         <div :class="line2">
-          <span class="min-w-0 truncate">{{ j.kind }} · {{ hostsOf(j) }}</span>
+          <span class="min-w-0 truncate">{{ testText(j) || `${j.kind} · ${hostsOf(j)}` }}</span>
           <span class="flex-1" />
           <span v-if="(j.units.failed ?? 0) > 0" class="shrink-0 text-bad"
             >{{ count(j.units.failed ?? 0) }} failed</span
@@ -76,6 +81,12 @@ const hostsOf = (j: Job) => j.hosts.join(' ');
           >
           <span v-if="!j.allocation" class="shrink-0">{{ unitsText(j) }}</span>
         </div>
+        <OutcomeLine
+          v-if="j.summary && outcomeText(j)"
+          :llr="j.summary.llr"
+          :text="outcomeText(j)"
+          :ptnml="j.summary.line === '' ? j.summary.ptnml : null"
+        />
         <div
           v-if="waitingText(j)"
           class="mt-0.5 truncate text-small text-dim"
@@ -90,7 +101,7 @@ const hostsOf = (j: Job) => j.hosts.join(' ');
       <div v-for="j in queued" :key="j.id" class="border-b border-row px-3 py-2 last:border-b-0">
         <div :class="line1">
           <span class="num shrink-0 text-dim">{{ j.id }}</span>
-          <span class="min-w-0 flex-1 truncate font-medium">{{ j.name }}</span>
+          <span class="min-w-0 flex-1 truncate font-medium" :title="j.name">{{ jobTitle(j) }}</span>
           <span v-if="j.priority !== 0" class="tag tone-warn">priority {{ j.priority }}</span>
           <span class="tag tone-dim">{{ j.kind }}</span>
         </div>
@@ -109,11 +120,15 @@ const hostsOf = (j: Job) => j.hosts.join(' ');
       <div v-for="j in ended" :key="j.id" class="border-b border-row px-3 py-1.5 last:border-b-0">
         <div :class="line1">
           <span class="num shrink-0 text-dim">{{ j.id }}</span>
-          <span class="min-w-0 flex-1 truncate">{{ j.name }}</span>
+          <span class="min-w-0 flex-1 truncate" :title="j.name">{{ jobTitle(j) }}</span>
           <span v-if="(j.units.failed ?? 0) > 0" class="tag tone-bad"
             >{{ count(j.units.failed ?? 0) }} failed</span
           >
+          <span v-if="verdictTag(j)" class="tag" :class="verdictTag(j)?.tone">{{
+            verdictTag(j)?.text
+          }}</span>
           <span
+            v-else
             class="tag tone-dim"
             :title="
               j.state === 'cancelled'
@@ -125,6 +140,13 @@ const hostsOf = (j: Job) => j.hosts.join(' ');
           <span class="num w-28 shrink-0 text-right text-small text-dim">{{
             j.ended === null ? '' : clockText(j.ended, now)
           }}</span>
+        </div>
+        <div
+          v-if="outcomeText(j)"
+          class="num mt-0.5 truncate text-small text-dim"
+          :title="outcomeText(j)"
+        >
+          {{ [testText(j), outcomeText(j)].filter((t) => t !== '').join(' · ') }}
         </div>
       </div>
     </Panel>

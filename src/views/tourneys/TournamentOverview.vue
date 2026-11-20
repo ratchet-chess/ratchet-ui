@@ -7,6 +7,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import NoticeList from '../../components/NoticeList.vue';
+import OutcomeLine from '../../components/OutcomeLine.vue';
 import Pager from '../../components/Pager.vue';
 import Panel from '../../components/Panel.vue';
 import ProgressBar from '../../components/ProgressBar.vue';
@@ -132,14 +133,11 @@ function bar(i: Item) {
     { share: i.elsewhere ? 0 : share(i.state.live.length), tone: 'live' },
   ] as const;
 }
-const llrAt = (v: number, lo: number, hi: number) =>
-  (100 * (Math.min(hi, Math.max(lo, v)) - lo)) / (hi - lo);
-const PTNML = ['LL', 'LD', 'DD', 'WD', 'WW'];
-/** a pentanomial's bars' heights in pixels, of 14 */
-const ptnmlBars = (p: readonly number[]) => {
-  const top = Math.max(1, ...p);
-  return p.map((x) => Math.max(x > 0 ? 2 : 1, Math.round((14 * x) / top)));
-};
+/** a match's LLR with its bounds, for its row's line; null for a match with no SPRT */
+const llrOf = (m: { llr: number | null; bounds: { lower: number; upper: number } | null }) =>
+  m.llr !== null && m.bounds
+    ? { value: m.llr, lower: m.bounds.lower, upper: m.bounds.upper }
+    : null;
 const blocked = (i: Item) => {
   const l = lacking(i, served.value);
   return l.engines.length > 0 || l.book !== '';
@@ -215,46 +213,15 @@ const rowLine = 'num mt-0.5 flex gap-2 text-small text-dim';
             >
             <span class="shrink-0">{{ progressShort(i) }}</span>
           </div>
-          <div
+          <OutcomeLine
             v-if="i.state.summary.match && i.state.games.length > 0"
-            class="num mt-1.5 flex items-center gap-2.5 text-small text-dim"
-          >
-            <template v-if="i.state.summary.match.llr !== null && i.state.summary.match.bounds">
-              <span
-                class="relative h-2.5 w-24 shrink-0"
-                :title="`LLR between its bounds ${i.state.summary.match.bounds.lower.toFixed(2)} and ${i.state.summary.match.bounds.upper.toFixed(2)}`"
-              >
-                <span class="absolute inset-x-0 top-1 h-0.5 bg-line-strong" />
-                <span class="absolute top-px left-1/2 h-2 w-px bg-faint" />
-                <span
-                  class="absolute top-0 h-2.5 w-1 -translate-x-1/2 rounded-sm bg-accent"
-                  :style="{
-                    left: `${llrAt(i.state.summary.match.llr, i.state.summary.match.bounds.lower, i.state.summary.match.bounds.upper)}%`,
-                  }"
-                />
-              </span>
-              <span class="shrink-0 text-text">LLR {{ i.state.summary.match.llr.toFixed(2) }}</span>
-            </template>
-            <span class="min-w-0 truncate">{{ standingText(i) }}</span>
-            <span class="flex-1" />
-            <span
-              v-if="i.state.summary.match.model === 'pentanomial'"
-              class="inline-flex h-3.5 shrink-0 items-end gap-px"
-              :title="
-                PTNML.map((k, n) => `${k} ${count(i.state.summary.match!.ptnml[n] ?? 0)}`).join(
-                  ' · ',
-                )
-              "
-            >
-              <span
-                v-for="(h, n) in ptnmlBars(i.state.summary.match.ptnml)"
-                :key="n"
-                class="w-1.5 rounded-[1px] bg-dim"
-                :style="{ height: `${h}px` }"
-              />
-            </span>
-            <span v-else class="shrink-0">W D L {{ i.state.summary.match.wdl.join(' ') }}</span>
-          </div>
+            :llr="llrOf(i.state.summary.match)"
+            :text="standingText(i)"
+            :ptnml="
+              i.state.summary.match.model === 'pentanomial' ? i.state.summary.match.ptnml : null
+            "
+            :tail="`W D L ${i.state.summary.match.wdl.join(' ')}`"
+          />
           <div v-else-if="standingText(i)" class="num mt-1.5 truncate text-small text-dim">
             {{ standingText(i) }}
           </div>

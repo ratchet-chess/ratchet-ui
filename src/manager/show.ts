@@ -1,6 +1,6 @@
 /** How the manager view writes a host and a job for a reader: shared by Jobs, Hosts and the header. */
 import type { Host, Job } from './api.ts';
-import { count } from '../ui/format.ts';
+import { count, signed } from '../ui/format.ts';
 
 const DAY = 86_400_000;
 
@@ -47,17 +47,56 @@ export const endText = (j: Job, now: number): string =>
   j.endsAt === null ? '' : `${j.atMost ? 'by' : '≈'} ${clockText(j.endsAt, now)}`;
 
 /**
- * Why a job's queued units wait, in one line: the reason its hosts share, or each host's own. A host says nothing
+ * Why a job's queued units wait, in one line: the reason all its hosts share, or each host's own. A host says nothing
  * here when its units would start at its next claim, or when it already runs as many of them as it may.
  */
 export function waitingText(j: Job): string {
-  const rows = Object.entries(j.waiting ?? {}).filter(
+  const all = Object.entries(j.waiting ?? {});
+  const rows = all.filter(
     ([, why]) => why !== '' && !why.startsWith('starts at') && !why.startsWith('concurrency:'),
   );
   const first = rows[0];
   if (first === undefined) return '';
-  if (rows.every(([, why]) => why === first[1])) return first[1];
+  // a reason stands without a host's name only when every host waits for it
+  if (rows.length === all.length && rows.every(([, why]) => why === first[1])) return first[1];
   return rows.map(([host, why]) => `${host}: ${why}`).join(' · ');
+}
+
+/** what a job plays, as its producer names the two sides: `candidate vs base`; any other job keeps its name */
+export const jobTitle = (j: Job): string =>
+  j.summary !== null && j.summary.candidate !== '' && j.summary.base !== ''
+    ? `${j.summary.candidate} vs ${j.summary.base}`
+    : j.name;
+
+/** a job's test and clock in its producer's words: `nElo [0, 10] · 6+0.06`; '' when it names neither */
+export const testText = (j: Job): string =>
+  [j.summary?.test ?? '', j.summary?.tc ?? ''].filter((t) => t !== '').join(' · ');
+
+/** where a job's run stands: its producer's own line, or `nElo +3.1 ± 4.2 · 3,692 games`; '' before its first game */
+export function outcomeText(j: Job): string {
+  const s = j.summary;
+  if (s === null) return '';
+  if (s.line !== '') return s.line;
+  if (s.games === null || s.games === 0) return '';
+  const games = `${count(s.games)} game${s.games === 1 ? '' : 's'}`;
+  return s.nelo === null
+    ? games
+    : `nElo ${signed(s.nelo.value)} ± ${s.nelo.ci.toFixed(1)} · ${games}`;
+}
+
+/** an ended run's verdict in its producer's word, with its tag's tone; null while it runs, and with no summary */
+export function verdictTag(j: Job): { text: string; tone: string } | null {
+  const v = j.summary?.verdict ?? '';
+  if (v === '' || v === 'running') return null;
+  const tone =
+    v === 'H1' || v.startsWith('admitted')
+      ? 'tone-good'
+      : v === 'H0' || v.startsWith('rejected')
+        ? 'tone-bad'
+        : v === 'interrupted'
+          ? 'tone-warn'
+          : 'tone-dim';
+  return { text: v, tone };
 }
 
 /** a host's units in play, by job: `931×12 924×18` */
