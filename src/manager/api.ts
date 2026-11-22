@@ -88,6 +88,24 @@ export interface FailedUnit {
   exit: number | null;
 }
 
+/**
+ * Why a job's queued units do not start on a host, as the manager's next claim there would decide it. `text` is
+ * the manager's sentence; the rest is the same in parts.
+ */
+export type Wait = { text: string } &
+  /** the host takes no unit of any job: silent, drained, or closed by its agent */
+  (
+    | { by: 'host'; condition: string }
+    /** a check of the manager passes the job by on this host, such as its hours */
+    | { by: 'filter'; filter: string; reason: string }
+    /** a job ahead takes the host first; `waits` when that job itself waits for the host */
+    | { by: 'ahead'; job: number; waits: boolean }
+    /** the job is first in line here and waits for room; `full` when the host runs as many units as it may */
+    | { by: 'heads'; full: { runs: number; cap: number } | null }
+    /** its next unit starts at the host's next claim */
+    | { by: 'start' }
+  );
+
 /** a job in a list: queued until its first unit starts, then running, then as the queue ended it */
 export type JobState = 'queued' | 'running' | 'done' | 'cancelled';
 
@@ -106,7 +124,7 @@ export interface Job {
   created: number;
   ended: number | null;
   /** for a job with queued units: why they do not start, by host */
-  waiting: Record<string, string> | null;
+  waiting: Record<string, Wait> | null;
   /** when the job should end if nothing interrupts it, in ms */
   endsAt: number | null;
   /** the unit count is a ceiling, so the job may end sooner */
@@ -227,14 +245,44 @@ export function parseSummary(v: unknown): Summary | null {
   };
 }
 
+/** a host's wait; null for a value of no known shape */
+function parseWait(v: unknown): Wait | null {
+  if (!isObject(v)) return null;
+  const t = text(v.text);
+  switch (v.by) {
+    case 'host':
+      return { by: 'host', condition: text(v.condition), text: t };
+    case 'filter':
+      return { by: 'filter', filter: text(v.filter), reason: text(v.reason), text: t };
+    case 'ahead': {
+      const job = number(v.job);
+      return job === null ? null : { by: 'ahead', job, waits: v.waits === true, text: t };
+    }
+    case 'heads': {
+      const f = isObject(v.full) ? v.full : null;
+      const runs = number(f?.runs);
+      const cap = number(f?.cap);
+      return { by: 'heads', full: runs === null || cap === null ? null : { runs, cap }, text: t };
+    }
+    case 'start':
+      return { by: 'start', text: t };
+    default:
+      return null;
+  }
+}
+
 /** a job's row; a value that is no job fails the read */
 function parseJob(j: unknown): Job {
   const id = isObject(j) ? number(j.id) : null;
   if (!isObject(j) || id === null || !isJobState(j.state)) fail('a row that is no job');
   const units: Record<string, number> = {};
   if (isObject(j.units)) for (const [k, v] of Object.entries(j.units)) units[k] = number(v) ?? 0;
-  const waiting: Record<string, string> = {};
-  if (isObject(j.waiting)) for (const [k, v] of Object.entries(j.waiting)) waiting[k] = text(v);
+  const waiting: Record<string, Wait> = {};
+  if (isObject(j.waiting))
+    for (const [k, v] of Object.entries(j.waiting)) {
+      const w = parseWait(v);
+      if (w !== null) waiting[k] = w;
+    }
   return {
     id,
     name: text(j.name),

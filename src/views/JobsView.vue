@@ -12,6 +12,7 @@ import JobPage from './jobs/JobPage.vue';
 import {
   clockText,
   endText,
+  finishingText,
   headline,
   jobTitle,
   notices,
@@ -23,6 +24,7 @@ import {
   unitsText,
   verdictLlr,
   verdictTag,
+  waitingDetail,
   waitingText,
 } from '../manager/show.ts';
 import { useManager } from '../stores/manager.ts';
@@ -110,7 +112,11 @@ const hostsOf = (j: Job) => j.hosts.join(' ');
           :text="outcomeText(j)"
           :ptnml="j.summary.line === '' ? j.summary.ptnml : null"
         />
-        <div v-if="unitsNote(j)" class="mt-0.5 truncate text-small text-dim" :title="unitsNote(j)">
+        <div
+          v-if="unitsNote(j)"
+          class="mt-0.5 truncate text-small text-dim"
+          :title="finishingText(j) || waitingDetail(j)"
+        >
           {{ unitsNote(j) }}
         </div>
       </div>
@@ -127,7 +133,7 @@ const hostsOf = (j: Job) => j.hosts.join(' ');
         <div :class="line2">
           <span class="shrink-0">{{ hostsOf(j) }}</span>
           <span class="flex-1" />
-          <span class="min-w-0 truncate" :title="waitingText(j)">{{ waitingText(j) }}</span>
+          <span class="min-w-0 truncate" :title="waitingDetail(j)">{{ waitingText(j) }}</span>
         </div>
       </div>
     </Panel>

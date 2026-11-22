@@ -15,14 +15,15 @@ import {
   clockText,
   decisionText,
   endsText,
+  finishingText,
   jobTitle,
   setupText,
   unitParts,
   unitsText,
   statusTag,
-  unitsNote,
   unitTimeText,
   verdictLlr,
+  waitCell,
 } from '../../manager/show.ts';
 import { count, signed } from '../../ui/format.ts';
 import MatchChart, { type ChartPoint } from '../tourneys/MatchChart.vue';
@@ -52,10 +53,25 @@ const eloPoints = computed<ChartPoint[]>(() =>
     note: `nElo ${signed(p.nelo.value)}`,
   })),
 );
-/** the hosts that have a part in the job so far, or may get one */
-const hosts = computed(() =>
-  props.job.byHost.filter((h) => h.done + h.running + h.failed > 0 || (h.concurrency ?? 0) > 0),
+/** each host's wait for the job's queued units, in a few words; empty once none is queued */
+const waits = computed(
+  () =>
+    new Map(
+      (props.job.units.queued ?? 0) === 0
+        ? []
+        : props.job.byHost.map((h) => [h.host, waitCell(props.job.waiting?.[h.host])]),
+    ),
 );
+/** the hosts that have a part in the job so far, may get one, or hold its queued units back */
+const hosts = computed(() =>
+  props.job.byHost.filter(
+    (h) =>
+      h.done + h.running + h.failed > 0 ||
+      (h.concurrency ?? 0) > 0 ||
+      (waits.value.get(h.host) ?? '') !== '',
+  ),
+);
+const showWaits = computed(() => hosts.value.some((h) => (waits.value.get(h.host) ?? '') !== ''));
 </script>
 
 <template>
@@ -86,7 +102,7 @@ const hosts = computed(() =>
         <span v-if="job.state === 'running'">{{ endsText(job, now) }}</span>
         <span v-else-if="job.ended !== null">ended {{ clockText(job.ended, now) }}</span>
       </div>
-      <div v-if="unitsNote(job)" class="mb-3 text-small text-dim">{{ unitsNote(job) }}</div>
+      <div v-if="finishingText(job)" class="mb-3 text-small text-dim">{{ finishingText(job) }}</div>
     </template>
 
     <template v-if="s">
@@ -139,7 +155,8 @@ const hosts = computed(() =>
               <th class="th text-right">in play</th>
               <th class="th text-right">failed</th>
               <th class="th text-right">at once</th>
-              <th class="th pr-3 text-right">mean unit</th>
+              <th class="th text-right" :class="{ 'pr-3': !showWaits }">mean unit</th>
+              <th v-if="showWaits" class="th pr-3">waits</th>
             </tr>
           </thead>
           <tbody>
@@ -153,7 +170,16 @@ const hosts = computed(() =>
                 {{ count(h.failed) }}
               </td>
               <td class="num px-2 py-1 text-right text-dim">{{ h.concurrency ?? '—' }}</td>
-              <td class="num px-2 py-1 pr-3 text-right text-dim">{{ unitTimeText(h.unitMs) }}</td>
+              <td class="num px-2 py-1 text-right text-dim" :class="{ 'pr-3': !showWaits }">
+                {{ unitTimeText(h.unitMs) }}
+              </td>
+              <td
+                v-if="showWaits"
+                class="num px-2 py-1 pr-3 whitespace-nowrap text-dim"
+                :title="job.waiting?.[h.host]?.text"
+              >
+                {{ waits.get(h.host) }}
+              </td>
             </tr>
           </tbody>
         </table>
@@ -173,7 +199,7 @@ const hosts = computed(() =>
     </Panel>
 
     <div v-if="job.summaryAt !== null" class="num text-small text-faint">
-      its tool posted this summary at {{ clockText(job.summaryAt, now) }}
+      summary as of {{ clockText(job.summaryAt, now) }}
     </div>
   </div>
 </template>

@@ -1,5 +1,5 @@
 /** How the manager view writes a host and a job for a reader: shared by Jobs, Hosts and the header. */
-import type { Host, Job, Summary } from './api.ts';
+import type { Host, Job, Summary, Wait } from './api.ts';
 import { count, signed } from '../ui/format.ts';
 
 const DAY = 86_400_000;
@@ -46,33 +46,58 @@ export function clockText(ms: number, now: number): string {
 export const endText = (j: Job, now: number): string =>
   j.endsAt === null ? '' : `${j.atMost ? 'by' : '≈'} ${clockText(j.endsAt, now)}`;
 
-/** the name of the manager's check that refused a unit, which begins its reason: `hours: outside its hours` */
-const FILTER_NAME = /^(hosts|requires|taints|hours|units|concurrency|kinds): /;
+/**
+ * A host's wait in a few words, as a job's line groups the hosts by it: `behind 1087`, `full`. '' when nothing
+ * but the job's own units holds it: its next unit starts at the host's next claim, or it runs all it may there.
+ */
+function waitWords(w: Wait): string {
+  switch (w.by) {
+    case 'host':
+      return w.condition;
+    case 'filter':
+      return w.filter === 'concurrency' ? '' : w.reason;
+    case 'ahead':
+      return `behind ${w.job}`;
+    case 'heads':
+      return w.full === null ? 'busy' : 'full';
+    case 'start':
+      return '';
+  }
+}
+
+/** a host's wait as the job page's host table shows it: its few words, and a full host's units against its cap */
+export const waitCell = (w: Wait | undefined): string =>
+  w === undefined
+    ? ''
+    : w.by === 'heads' && w.full !== null
+      ? `full ${w.full.runs}/${w.full.cap}`
+      : waitWords(w);
+
+/** the hosts' waits for a job's queued units, one line per host in the manager's words, for a tooltip */
+export const waitingDetail = (j: Job): string =>
+  (j.units.queued ?? 0) === 0
+    ? ''
+    : Object.entries(j.waiting ?? {})
+        .map(([host, w]) => `${host}: ${w.text}`)
+        .join('\n');
 
 /**
- * Why a job's queued units wait, in one line: the reason all its hosts share, or each host's own. A host says nothing
- * here when its units would start at its next claim, or when it already runs as many of them as it may. A reason
- * is shown without the name of the check that gave it.
+ * Why a job's queued units wait, in one line: each reason with how many hosts give it, `behind 1087 on 6 hosts`,
+ * or the host's name when one does.
  */
 export function waitingText(j: Job): string {
   // with no unit queued nothing waits, whatever each host says of the job
   if ((j.units.queued ?? 0) === 0) return '';
-  const all = Object.entries(j.waiting ?? {});
-  const rows = all
-    .filter(
-      ([, why]) =>
-        why !== '' &&
-        !why.startsWith('starts at') &&
-        !why.startsWith('concurrency:') &&
-        // the job's queued units are for other hosts, so this host holds none back
-        !why.startsWith('units: no unit'),
+  const by = new Map<string, string[]>();
+  for (const [host, w] of Object.entries(j.waiting ?? {})) {
+    const words = waitWords(w);
+    if (words !== '') by.set(words, [...(by.get(words) ?? []), host]);
+  }
+  return [...by]
+    .map(
+      ([words, hosts]) => `${words} on ${hosts.length === 1 ? hosts[0] : `${hosts.length} hosts`}`,
     )
-    .map(([host, why]): [string, string] => [host, why.replace(FILTER_NAME, '')]);
-  const first = rows[0];
-  if (first === undefined) return '';
-  // a reason stands without a host's name only when every host waits for it
-  if (rows.length === all.length && rows.every(([, why]) => why === first[1])) return first[1];
-  return rows.map(([host, why]) => `${host}: ${why}`).join(' · ');
+    .join(' · ');
 }
 
 /** what a job plays, as its producer names the two sides: `candidate vs base`; any other job keeps its name */
@@ -171,17 +196,20 @@ export function unitTimeText(ms: number | null): string {
 }
 
 /**
- * The line under a running job's units: that it is finishing, once every unit has started and only those in play
- * are left; before that, why its queued units wait. A job of one unit says nothing of its last unit.
+ * That a running job is finishing, once every unit has started and only those in play are left; else ''. A job of
+ * one unit says nothing of its last unit.
  */
-export function unitsNote(j: Job): string {
+export function finishingText(j: Job): string {
   const inPlay = j.units.running ?? 0;
   if (j.state === 'running' && (j.units.queued ?? 0) === 0 && inPlay > 0 && unitsPlanned(j) > 1)
     return inPlay === 1
       ? 'its last unit is in play'
       : `its last ${count(inPlay)} units are in play`;
-  return waitingText(j);
+  return '';
 }
+
+/** the line under a running job's units in a list: that it is finishing, else why its queued units wait */
+export const unitsNote = (j: Job): string => finishingText(j) || waitingText(j);
 
 /** a host's units in play, by job: `931×12 924×18` */
 export const runningText = (h: Host): string =>

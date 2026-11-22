@@ -8,6 +8,7 @@ import {
   type Host,
   type Job,
   type Summary,
+  type Wait,
 } from './api.ts';
 import {
   decisionText,
@@ -28,6 +29,7 @@ import {
   unreachableText,
   verdictLlr,
   verdictTag,
+  waitCell,
   waitingText,
 } from './show.ts';
 
@@ -102,65 +104,66 @@ describe('the manager view, written for a reader', () => {
     expect(endText(job({}), now)).toBe('');
   });
 
-  it('a wait is one reason when the hosts share it, and a host that starts next says nothing', () => {
+  const ahead = (id: number, waits: boolean): Wait => ({
+    by: 'ahead',
+    job: id,
+    waits,
+    text: `behind job ${id}`,
+  });
+  const hours: Wait = { by: 'filter', filter: 'hours', reason: 'outside its hours', text: 'hours' };
+  const own: Wait = {
+    by: 'filter',
+    filter: 'concurrency',
+    reason: 'its 5 fill',
+    text: 'concurrency',
+  };
+  const full = (runs: number, cap: number): Wait => ({
+    by: 'heads',
+    full: { runs, cap },
+    text: 'kinds',
+  });
+
+  it("a job's wait counts the hosts by reason, and names a host that gives a reason alone", () => {
     expect(
       waitingText(
         job({
           units: { queued: 10 },
-          waiting: { alpha: 'behind job 926', beta: 'behind job 926' },
+          waiting: { a: ahead(926, true), b: ahead(926, false), c: ahead(926, true), d: own },
         }),
       ),
-    ).toBe('behind job 926');
+    ).toBe('behind 926 on 3 hosts');
     expect(
       waitingText(
         job({
           units: { queued: 10 },
           waiting: {
-            alpha: 'behind job 926',
-            beta: "starts at the host's next claim",
-            local: 'closed',
+            alpha: ahead(926, true),
+            beta: { by: 'start', text: 'starts' },
+            local: { by: 'host', condition: 'closed', text: 'closed' },
           },
         }),
       ),
-    ).toBe('alpha: behind job 926 · local: closed');
+    ).toBe('behind 926 on alpha · closed on local');
+    expect(
+      waitingText(
+        job({ units: { queued: 10 }, waiting: { a: full(30, 30), b: full(5, 5), c: hours } }),
+      ),
+    ).toBe('full on 2 hosts · outside its hours on c');
     expect(waitingText(job({ units: { queued: 10 }, waiting: null }))).toBe('');
-    expect(
-      waitingText(
-        job({
-          units: { queued: 10 },
-          waiting: {
-            alpha: 'outside its hours',
-            beta: 'concurrency: its 5 running here fill its concurrency of 5',
-          },
-        }),
-      ),
-    ).toBe('alpha: outside its hours');
-    expect(
-      waitingText(
-        job({
-          units: { queued: 10 },
-          waiting: {
-            alpha: 'hours: outside its hours',
-            beta: 'concurrency: its 5 running here fill its concurrency of 5',
-          },
-        }),
-      ),
-    ).toBe('alpha: outside its hours');
-    expect(
-      waitingText(
-        job({
-          units: { queued: 10 },
-          waiting: { alpha: 'concurrency: its 5 running here fill its concurrency of 5' },
-        }),
-      ),
-    ).toBe('');
+    expect(waitingText(job({ units: { queued: 10 }, waiting: { alpha: own } }))).toBe('');
+    expect(waitingText(job({ units: { running: 10 }, waiting: { alpha: hours } }))).toBe('');
+  });
+
+  it("a host's cell is its few words, and a full host's units against its cap", () => {
+    expect(waitCell(full(30, 30))).toBe('full 30/30');
+    expect(waitCell({ by: 'heads', full: null, text: 'kinds' })).toBe('busy');
+    expect(waitCell(ahead(1087, false))).toBe('behind 1087');
+    expect(waitCell(own)).toBe('');
+    expect(waitCell(undefined)).toBe('');
   });
 
   it('a finishing job says so in one line, in place of what each host says', () => {
-    const waiting = {
-      alpha: 'hours: outside its hours',
-      beta: 'units: no unit of it is queued for this host',
-    };
+    const waiting = { alpha: hours };
     const finishing = job({ units: { done: 85, running: 40 }, waiting });
     expect(waitingText(finishing)).toBe('');
     expect(unitsNote(finishing)).toBe('its last 40 units are in play');
@@ -169,9 +172,8 @@ describe('the manager view, written for a reader', () => {
     );
     // a job of one unit has no last unit to speak of
     expect(unitsNote(job({ units: { running: 1 }, waiting }))).toBe('');
-    // units still queued: the hosts' reasons, less a host that the queued units are not for
     expect(unitsNote(job({ units: { queued: 5, running: 40 }, waiting }))).toBe(
-      'alpha: outside its hours',
+      'outside its hours on alpha',
     );
   });
 
@@ -253,7 +255,11 @@ describe("the manager's answers", () => {
           state: 'queued',
           hosts: ['w'],
           units: { queued: 3 },
-          waiting: { w: 'closed' },
+          waiting: {
+            w: { by: 'host', condition: 'closed', text: 'the host is closed' },
+            x: { by: 'heads', full: { runs: 5, cap: 5 }, text: 'kinds' },
+            y: 'a sentence from an older manager',
+          },
         },
       ],
     });
@@ -261,10 +267,15 @@ describe("the manager's answers", () => {
       id: 7,
       state: 'queued',
       units: { queued: 3 },
-      waiting: { w: 'closed' },
+      waiting: {
+        w: { by: 'host', condition: 'closed', text: 'the host is closed' },
+        x: { by: 'heads', full: { runs: 5, cap: 5 }, text: 'kinds' },
+      },
       endsAt: null,
       atMost: false,
     });
+    // a wait of no known shape is left out
+    expect(Object.keys(j.jobs[0]?.waiting ?? {})).toEqual(['w', 'x']);
   });
 
   it('refuses an answer that is no manager', () => {
