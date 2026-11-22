@@ -13,6 +13,7 @@ import StatCard from '../../components/StatCard.vue';
 import type { JobDetail } from '../../manager/api.ts';
 import {
   clockText,
+  decisionText,
   endsText,
   jobTitle,
   setupText,
@@ -21,6 +22,7 @@ import {
   statusTag,
   unitsNote,
   unitTimeText,
+  verdictLlr,
 } from '../../manager/show.ts';
 import { count, signed } from '../../ui/format.ts';
 import MatchChart, { type ChartPoint } from '../tourneys/MatchChart.vue';
@@ -29,9 +31,19 @@ const props = defineProps<{ job: JobDetail; now: number }>();
 
 const s = computed(() => props.job.summary);
 const tag = computed(() => statusTag(props.job));
-const llrPoints = computed<ChartPoint[]>(() =>
-  props.job.series.flatMap((p) => (p.llr === null ? [] : [{ pairs: p.pairs, value: p.llr }])),
+/** where the verdict was decided, when the final counts hold more pairs; the charts mark it */
+const decidedAt = computed(() =>
+  s.value && decisionText(s.value) ? (s.value.decision?.pairs ?? null) : null,
 );
+/** the LLR over the pairs, with the decision's own point, which the series may have thinned out */
+const llrPoints = computed<ChartPoint[]>(() => {
+  const points = props.job.series.flatMap((p) =>
+    p.llr === null ? [] : [{ pairs: p.pairs, value: p.llr }],
+  );
+  const d = s.value?.decision;
+  if (!d || points.some((p) => p.pairs === d.pairs)) return points;
+  return [...points, { pairs: d.pairs, value: d.llr }].toSorted((a, b) => a.pairs - b.pairs);
+});
 const eloPoints = computed<ChartPoint[]>(() =>
   props.job.series.map((p) => ({
     pairs: p.pairs,
@@ -78,7 +90,8 @@ const hosts = computed(() =>
     </template>
 
     <template v-if="s">
-      <MatchCards v-if="s.nelo" :llr="s.llr" :nelo="s.nelo" :elo="s.elo">
+      <MatchCards v-if="s.nelo" :llr="verdictLlr(s)" :nelo="s.nelo" :elo="s.elo">
+        <template v-if="decisionText(s)" #llr>{{ decisionText(s) }}</template>
         <StatCard label="games · pairs">
           <template #help>
             <HelpTip side="left"
@@ -104,9 +117,15 @@ const hosts = computed(() =>
           unit="pairs"
           :points="llrPoints"
           :marks="[s.llr.lower, s.llr.upper]"
+          :at="decidedAt"
           :digits="2"
         />
-        <MatchChart title="Elo, with its 95% interval" unit="pairs" :points="eloPoints" />
+        <MatchChart
+          title="Elo, with its 95% interval"
+          unit="pairs"
+          :points="eloPoints"
+          :at="decidedAt"
+        />
       </div>
     </Panel>
 

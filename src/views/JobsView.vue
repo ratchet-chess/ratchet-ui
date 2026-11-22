@@ -21,6 +21,7 @@ import {
   unitParts,
   unitsNote,
   unitsText,
+  verdictLlr,
   verdictTag,
   waitingText,
 } from '../manager/show.ts';
@@ -105,7 +106,7 @@ const hostsOf = (j: Job) => j.hosts.join(' ');
         </div>
         <OutcomeLine
           v-if="j.summary && outcomeText(j)"
-          :llr="j.summary.llr"
+          :llr="verdictLlr(j.summary)"
           :text="outcomeText(j)"
           :ptnml="j.summary.line === '' ? j.summary.ptnml : null"
         />

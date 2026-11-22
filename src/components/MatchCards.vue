@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
  * A match's statistics as cards: the LLR between its bounds, nElo and Elo with their 95% intervals,
- * and a last card that its page fills with the match's counts.
+ * and a last card that its page fills with the match's counts. A page may put a line under the LLR
+ * in the `llr` slot.
  */
 import HelpTip from './HelpTip.vue';
 import StatCard from './StatCard.vue';
@@ -34,6 +35,7 @@ const markAt = (v: number, lo: number, hi: number) =>
       <span class="text-dense text-dim"
         >of [{{ llr.lower.toFixed(2) }}, {{ llr.upper.toFixed(2) }}]</span
       >
+      <template v-if="$slots.llr" #sub><slot name="llr" /></template>
       <template #below>
         <div class="relative mt-1.5 h-2 rounded bg-track">
           <div

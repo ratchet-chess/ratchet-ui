@@ -122,6 +122,20 @@ export function statusTag(j: Job): { text: string; tone: string } {
   );
 }
 
+/** an SPRT's LLR as its verdict reads it: at the decision once there is one, so it stays past the bound it crossed */
+export function verdictLlr(s: Summary): Summary['llr'] {
+  return s.llr && s.decision ? { ...s.llr, value: s.decision.llr } : s.llr;
+}
+
+/**
+ * The LLR card's line once units that ended after the decision added pairs: where the decision was, and the LLR over
+ * every pair. `at 798 pairs · 2.70 over all`; '' when the final counts are the decision's.
+ */
+export function decisionText(s: Summary): string {
+  if (!s.llr || !s.decision || s.games === null || s.games / 2 <= s.decision.pairs) return '';
+  return `at ${count(s.decision.pairs)} pairs · ${s.llr.value.toFixed(2)} over all`;
+}
+
 /** a run's setup in one line, from what its producer names: `nElo [0, 10] · 6+0.06 · Hash 2 · 8moves_v3.pgn · SPEED 0.998` */
 export const setupText = (s: Summary): string =>
   [

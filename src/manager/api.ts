@@ -44,6 +44,8 @@ export interface Summary {
   elo: Estimate | null;
   /** an SPRT's LLR and the two bounds that end it */
   llr: { value: number; lower: number; upper: number } | null;
+  /** the pairs and LLR an SPRT's verdict rests on; the final counts may hold a few more pairs */
+  decision: { pairs: number; llr: number } | null;
   /** `running`, then the run's verdict */
   verdict: string;
   /** the outcome in one line, for a run whose outcome is not one match's counts */
@@ -195,6 +197,9 @@ export function parseSummary(v: unknown): Summary | null {
   const llr = isObject(v.llr)
     ? { value: number(v.llr.value), lower: number(v.llr.lower), upper: number(v.llr.upper) }
     : null;
+  const decided = isObject(v.decision)
+    ? { pairs: number(v.decision.pairs), llr: number(v.decision.llr) }
+    : null;
   return {
     base: text(v.base),
     candidate: text(v.candidate),
@@ -207,6 +212,10 @@ export function parseSummary(v: unknown): Summary | null {
     llr:
       llr !== null && llr.value !== null && llr.lower !== null && llr.upper !== null
         ? { value: llr.value, lower: llr.lower, upper: llr.upper }
+        : null,
+    decision:
+      decided !== null && decided.pairs !== null && decided.llr !== null
+        ? { pairs: decided.pairs, llr: decided.llr }
         : null,
     verdict: text(v.verdict),
     line: text(v.line),

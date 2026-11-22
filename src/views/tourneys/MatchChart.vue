@@ -19,6 +19,8 @@ const props = defineProps<{
   points: ChartPoint[];
   /** dashed lines across the chart, such as an SPRT's bounds */
   marks?: number[];
+  /** a dashed line down the chart at this many pairs, such as where an SPRT decided */
+  at?: number | null;
   /** how a value is written, in the axis and the tooltip */
   digits?: number;
   /** what the x axis counts: pairs, or games when each opening is one game */
@@ -154,6 +156,16 @@ const hoverLeft = computed(() => (hover.value ? (100 * x(hover.value.pairs)) / W
             :x2="W"
             :y1="y(m)"
             :y2="y(m)"
+            class="stroke-faint"
+            stroke-dasharray="4 4"
+            vector-effect="non-scaling-stroke"
+          />
+          <line
+            v-if="at !== undefined && at !== null"
+            :x1="x(at)"
+            :x2="x(at)"
+            :y1="0"
+            :y2="H"
             class="stroke-faint"
             stroke-dasharray="4 4"
             vector-effect="non-scaling-stroke"

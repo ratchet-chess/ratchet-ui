@@ -10,6 +10,7 @@ import {
   type Summary,
 } from './api.ts';
 import {
+  decisionText,
   endText,
   endsText,
   headline,
@@ -25,6 +26,7 @@ import {
   unitsText,
   unitTimeText,
   unreachableText,
+  verdictLlr,
   verdictTag,
   waitingText,
 } from './show.ts';
@@ -64,6 +66,7 @@ const summary = (over: Partial<Summary>): Summary => ({
   book: '8moves_v3.pgn 5835239f',
   forfeits: '0',
   pace: null,
+  decision: null,
   ...over,
 });
 const host = (over: Partial<Host>): Host => ({
@@ -294,6 +297,11 @@ describe("the manager's answers", () => {
       nelo: null,
       games: null,
     });
+    expect(parseSummary({ decision: { pairs: 797, llr: 3.31 } })?.decision).toEqual({
+      pairs: 797,
+      llr: 3.31,
+    });
+    expect(parseSummary({ decision: { pairs: 797 } })?.decision).toBeNull();
     expect(parseSummary(null)).toBeNull();
     expect(parseJobs({ jobs: [{ id: 7, state: 'done', summary: 'text' }] }).jobs[0]?.summary).toBe(
       null,
@@ -411,5 +419,26 @@ describe("a job's page", () => {
     });
     expect(statusTag(job({}))).toEqual({ text: 'running', tone: 'tone-accent' });
     expect(statusTag(job({ state: 'cancelled' }))).toEqual({ text: 'stopped', tone: 'tone-dim' });
+  });
+});
+
+describe('the LLR at the decision', () => {
+  const ended = summary({
+    verdict: 'H1',
+    games: 2136,
+    llr: { value: 2.7, lower: -2.94, upper: 2.94 },
+    decision: { pairs: 797, llr: 3.31 },
+  });
+
+  it('reads the verdict from the decision, which stays past its bound', () => {
+    expect(verdictLlr(ended)).toEqual({ value: 3.31, lower: -2.94, upper: 2.94 });
+    expect(verdictLlr(summary({}))).toEqual({ value: 1.37, lower: -2.94, upper: 2.94 });
+    expect(verdictLlr(summary({ llr: null, decision: { pairs: 5, llr: 1 } }))).toBeNull();
+  });
+
+  it('says where the decision was only when later units added pairs', () => {
+    expect(decisionText(ended)).toBe('at 797 pairs · 2.70 over all');
+    expect(decisionText(summary({ games: 1594, decision: { pairs: 797, llr: 3.31 } }))).toBe('');
+    expect(decisionText(summary({}))).toBe('');
   });
 });
