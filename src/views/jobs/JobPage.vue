@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
  * One job of the manager: its setup, its units, its match's statistics and their course over the
- * pairs, each host's part, and the units that failed. Every number is the manager's or the job's
- * own tool's; the page computes none.
+ * pairs, or its tune's values, each host's part, and the units that failed. Every statistic is the
+ * manager's or the job's own tool's; the page derives none.
  */
 import { computed } from 'vue';
 import HelpTip from '../../components/HelpTip.vue';
@@ -27,6 +27,7 @@ import {
 } from '../../manager/show.ts';
 import { count, signed } from '../../ui/format.ts';
 import MatchChart, { type ChartPoint } from '../tourneys/MatchChart.vue';
+import TuneValues from './TuneValues.vue';
 
 const props = defineProps<{ job: JobDetail; now: number }>();
 
@@ -119,11 +120,35 @@ const showWaits = computed(() => hosts.value.some((h) => (waits.value.get(h.host
           <template v-if="s.ptnml" #sub>{{ s.ptnml.join(' ') }}</template>
         </StatCard>
       </MatchCards>
+      <div v-else-if="s.values" class="mb-3 grid grid-cols-2 gap-2 @4xl:grid-cols-5">
+        <StatCard label="games · pairs">
+          <template #help>
+            <HelpTip
+              >The games played; under them the pairs by the score of the side moved up, 0, ½, 1, 1½
+              and 2 points (pentanomial).</HelpTip
+            >
+          </template>
+          <span class="text-title">{{ count(s.games ?? 0) }}</span>
+          <template v-if="s.ptnml" #sub>{{ s.ptnml.join(' ') }}</template>
+        </StatCard>
+        <StatCard label="resolution">
+          <template #help>
+            <HelpTip
+              >The 95% interval of a head-to-head over all the games so far. Every game reads every
+              value, so an effect inside it is noise.</HelpTip
+            >
+          </template>
+          {{ s.resolution === null ? '—' : `± ${s.resolution.toFixed(1)}` }}
+          <template #sub>nElo</template>
+        </StatCard>
+      </div>
       <div v-if="s.line" class="num mb-3 text-dense break-words">{{ s.line }}</div>
       <div v-if="s.forfeits !== '' && s.forfeits !== '0'" class="num mb-3 text-dense text-bad">
         forfeits {{ s.forfeits }}
       </div>
     </template>
+
+    <TuneValues v-if="s?.values" :values="s.values" :path="job.path" />
 
     <Panel v-if="eloPoints.length >= 2" title="Over the pairs" note="hover for the values">
       <div class="grid gap-4 px-3 py-2.5 @3xl:grid-cols-2">

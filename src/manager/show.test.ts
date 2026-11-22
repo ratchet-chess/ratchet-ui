@@ -8,6 +8,7 @@ import {
   type Host,
   type Job,
   type Summary,
+  type TunedValue,
   type Wait,
 } from './api.ts';
 import {
@@ -29,6 +30,9 @@ import {
   unreachableText,
   verdictLlr,
   verdictTag,
+  moveText,
+  tunedText,
+  tuneOrder,
   waitCell,
   waitingText,
 } from './show.ts';
@@ -69,6 +73,8 @@ const summary = (over: Partial<Summary>): Summary => ({
   forfeits: '0',
   pace: null,
   decision: null,
+  values: null,
+  resolution: null,
   ...over,
 });
 const host = (over: Partial<Host>): Host => ({
@@ -430,6 +436,62 @@ describe("a job's page", () => {
     });
     expect(statusTag(job({}))).toEqual({ text: 'running', tone: 'tone-accent' });
     expect(statusTag(job({ state: 'cancelled' }))).toEqual({ text: 'stopped', tone: 'tone-dim' });
+  });
+});
+
+describe("a tune's page", () => {
+  const value = (over: Partial<TunedValue>): TunedValue => ({
+    name: 'V',
+    start: 100,
+    now: 100,
+    min: 0,
+    max: 200,
+    effect: null,
+    ...over,
+  });
+
+  it("reads a tune's values and path, and leaves out a value or a point of the wrong shape", () => {
+    const j = parseJobDetail({
+      job: {
+        id: 1,
+        state: 'running',
+        summary: {
+          verdict: 'running',
+          values: [
+            { name: 'A', start: 10, now: 12.5, min: 0, max: 20, effect: 1.5 },
+            { name: 'B', start: 5, now: 5, min: 0, max: 10, effect: null },
+            { name: 'C', start: 'x' },
+          ],
+          resolution: 2.5,
+        },
+        series: [
+          { pairs: 0, values: [10, 5] },
+          { pairs: 8, values: [11, null] },
+          { pairs: 16, nelo: { value: 1, ci: 2 }, elo: { value: 1, ci: 2 } },
+        ],
+      },
+    });
+    expect(j.summary?.values).toEqual([
+      { name: 'A', start: 10, now: 12.5, min: 0, max: 20, effect: 1.5 },
+      { name: 'B', start: 5, now: 5, min: 0, max: 10, effect: null },
+    ]);
+    expect(j.summary?.resolution).toBe(2.5);
+    expect(j.path).toEqual([{ pairs: 0, values: [10, 5] }]);
+    expect(j.series.map((p) => p.pairs)).toEqual([16]);
+  });
+
+  it('orders the values by their move in their range, or by the size of their effect', () => {
+    const values = [
+      value({ name: 'small', now: 110, effect: -3 }),
+      value({ name: 'wide', now: 150, max: 2000, effect: 1 }),
+      value({ name: 'far', now: 160, effect: null }),
+    ];
+    expect(tuneOrder(values, 'move')).toEqual([2, 0, 1]);
+    expect(tuneOrder(values, 'effect')).toEqual([0, 1, 2]);
+    expect(moveText(value({ now: 270 }))).toBe('+170');
+    expect(moveText(value({ now: 87.6 }))).toBe('-12.4');
+    expect(tunedText(1114.3)).toBe('1114.3');
+    expect(tunedText(61)).toBe('61');
   });
 });
 

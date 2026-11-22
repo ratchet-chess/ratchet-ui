@@ -58,6 +58,27 @@ export interface Summary {
   forfeits: string;
   /** an SPRT's pace: the games left until the LLR reaches the bound its drift points at, and the time then */
   pace: { games: number; at: number } | null;
+  /** an SPSA tune's values, in its tunables' order; null for any other run */
+  values: TunedValue[] | null;
+  /** a tune's resolution: the 95% half-interval in nElo of a head-to-head over all its games */
+  resolution: number | null;
+}
+
+/** one value of an SPSA tune */
+export interface TunedValue {
+  name: string;
+  start: number;
+  now: number;
+  min: number;
+  max: number;
+  /** the side moved up against the side moved down so far, in nElo: a slope along the path, not a gain */
+  effect: number | null;
+}
+
+/** a tune's values after its first `pairs` pairs, in the order of its summary's values */
+export interface PathPoint {
+  pairs: number;
+  values: number[];
 }
 
 /** a run's statistics after its first `pairs` finished pairs, one point of its charts */
@@ -140,6 +161,8 @@ export interface JobDetail extends Job {
   byHost: HostUnits[];
   failed: FailedUnit[];
   series: SeriesPoint[];
+  /** a tune's values over its run, thinned by its producer */
+  path: PathPoint[];
 }
 
 export interface Snapshot {
@@ -242,7 +265,18 @@ export function parseSummary(v: unknown): Summary | null {
     book: text(v.book),
     forfeits: text(v.forfeits),
     pace: paceGames === null || paceAt === null ? null : { games: paceGames, at: paceAt },
+    values: Array.isArray(v.values) ? v.values.flatMap(tunedValue) : null,
+    resolution: number(v.resolution),
   };
+}
+
+/** a tune's value, or none for an entry of the wrong shape */
+function tunedValue(v: unknown): TunedValue[] {
+  if (!isObject(v)) return [];
+  const [start, now, min, max] = [number(v.start), number(v.now), number(v.min), number(v.max)];
+  if (text(v.name) === '' || start === null || now === null || min === null || max === null)
+    return [];
+  return [{ name: text(v.name), start, now, min, max, effect: number(v.effect) }];
 }
 
 /** a host's wait; null for a value of no known shape */
@@ -339,6 +373,12 @@ export function parseJobDetail(body: unknown): JobDetail {
       const elo = isObject(p) ? estimate(p.elo) : null;
       if (!isObject(p) || pairs === null || nelo === null || elo === null) return [];
       return [{ pairs, llr: number(p.llr), nelo, elo }];
+    }),
+    path: list(j.series).flatMap((p): PathPoint[] => {
+      const pairs = isObject(p) ? number(p.pairs) : null;
+      const values = isObject(p) && Array.isArray(p.values) ? p.values.map(number) : [];
+      if (pairs === null || values.length === 0 || values.some((x) => x === null)) return [];
+      return [{ pairs, values: values.filter((x) => x !== null) }];
     }),
   };
 }

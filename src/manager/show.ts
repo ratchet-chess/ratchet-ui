@@ -1,5 +1,5 @@
 /** How the manager view writes a host and a job for a reader: shared by Jobs, Hosts and the header. */
-import type { Host, Job, Summary, Wait } from './api.ts';
+import type { Host, Job, Summary, TunedValue, Wait } from './api.ts';
 import { count, signed } from '../ui/format.ts';
 
 const DAY = 86_400_000;
@@ -272,4 +272,34 @@ export function unreachableText(url: string, pageProtocol: string, error: string
   if (pageProtocol === 'https:' && url.startsWith('http://'))
     return 'This page is served over HTTPS, and a browser lets such a page read no http address. Open the app from this network over http.';
   return error.startsWith('the manager') ? error : `no answer from ${url}`;
+}
+
+/** where a number sits between two bounds, in percent, held to the track */
+export const placeAt = (x: number, lo: number, hi: number): number =>
+  hi > lo ? (100 * (Math.min(hi, Math.max(lo, x)) - lo)) / (hi - lo) : 50;
+
+/** a tune's value as its table shows it: whole, or to a tenth while it sits between two */
+export const tunedText = (x: number): string => (Number.isInteger(x) ? String(x) : x.toFixed(1));
+
+/** how far a tune's value has moved from its start: `+170`, `-12.4` */
+export function moveText(v: TunedValue): string {
+  const d = Math.round((v.now - v.start) * 10) / 10;
+  return signed(d, Number.isInteger(d) ? 0 : 1);
+}
+
+/**
+ * The indexes of a tune's values in the order its table lists them: by how far each has moved as a share of its
+ * range, or by the size of its effect, the largest first. A value without an effect goes last.
+ */
+export function tuneOrder(values: TunedValue[], by: 'move' | 'effect'): number[] {
+  const key = (v: TunedValue) =>
+    by === 'move'
+      ? v.max > v.min
+        ? Math.abs(v.now - v.start) / (v.max - v.min)
+        : 0
+      : v.effect === null
+        ? -1
+        : Math.abs(v.effect);
+  const keys = values.map(key);
+  return keys.map((_, i) => i).toSorted((a, b) => (keys[b] ?? 0) - (keys[a] ?? 0));
 }
