@@ -7,6 +7,7 @@ import type { Info } from '../engine/info.ts';
 import { UciEngine, inputMode } from '../engine/uci.ts';
 import { useEngines } from '../stores/engines.ts';
 import { thousands } from '../ui/format.ts';
+import WasiChecker from './engines/WasiChecker.vue';
 
 const engines = useEngines();
 const mode = inputMode();
@@ -153,4 +154,6 @@ onUnmounted(() => {
       </table>
     </div>
   </Panel>
+
+  <WasiChecker />
 </template>
