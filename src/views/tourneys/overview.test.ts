@@ -149,11 +149,11 @@ describe('the overview', () => {
       storage: { usage: 95, quota: 100 },
     });
     expect(notices.map((n) => [n.severity, n.id, n.text])).toEqual([
-      ['bad', 's', 'cannot resume: gone-1 is not served'],
-      ['bad', 's', 'cannot resume: the book b is not in Books'],
+      ['bad', 's', 'Cannot resume: missing engine gone-1'],
+      ['bad', 's', 'Cannot resume: missing book b'],
       ['bad', 's', '1 engine failure'],
-      ['warn', 's', 'interrupted: its tab closed during the run'],
-      ['warn', '', "95% of the browser's quota used"],
+      ['warn', 's', 'Interrupted (tab closed)'],
+      ['warn', '', 'Storage 95% full'],
     ]);
   });
 

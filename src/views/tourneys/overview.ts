@@ -81,7 +81,7 @@ export function problemsOf(games: readonly GameRecord[]): Map<Problem, number> {
 const PROBLEM_WORDS: Record<Problem, [string, string]> = {
   time: ['time loss', 'time losses'],
   illegal: ['illegal move', 'illegal moves'],
-  'no move': ['game with no move given', 'games with no move given'],
+  'no move': ['no-move forfeit', 'no-move forfeits'],
   failed: ['engine failure', 'engine failures'],
 };
 
@@ -178,14 +178,14 @@ export function noticesOf(items: readonly Item[], served: Served): Notice[] {
       out.push({ severity, id, where: name, text });
     if (i.state.error) note('bad', i.state.error);
     if (group === 'stopped') {
-      if (i.ended === null) note('warn', 'interrupted: its tab closed during the run');
+      if (i.ended === null) note('warn', 'Interrupted (tab closed)');
       const { engines, book } = lacking(i, served);
       if (engines.length > 0)
         note(
           'bad',
-          `cannot resume: ${engines.join(', ')} ${engines.length === 1 ? 'is' : 'are'} not served`,
+          `Cannot resume: missing ${engines.length === 1 ? 'engine' : 'engines'} ${engines.join(', ')}`,
         );
-      if (book) note('bad', `cannot resume: the book ${book} is not in Books`);
+      if (book) note('bad', `Cannot resume: missing book ${book}`);
     }
     for (const [p, n] of problemsOf(i.state.games))
       note(p === 'time' ? 'warn' : 'bad', problemText(p, n));
@@ -196,7 +196,7 @@ export function noticesOf(items: readonly Item[], served: Served): Notice[] {
       severity: 'warn',
       id: '',
       where: 'storage',
-      text: `${Math.round((100 * s.usage) / s.quota)}% of the browser's quota used`,
+      text: `Storage ${Math.round((100 * s.usage) / s.quota)}% full`,
     });
   return out.toSorted((a, b) => (a.severity === b.severity ? 0 : a.severity === 'bad' ? -1 : 1));
 }

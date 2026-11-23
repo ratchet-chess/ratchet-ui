@@ -112,8 +112,8 @@ const showWaits = computed(() => hosts.value.some((h) => (waits.value.get(h.host
         <StatCard label="games · pairs">
           <template #help>
             <HelpTip side="left"
-              >The games played; under them the pairs by the candidate's score, 0, ½, 1, 1½ and 2
-              points (pentanomial).</HelpTip
+              >Games played. Below: pentanomial pair counts (0, ½, 1, 1½, 2 pts for
+              candidate).</HelpTip
             >
           </template>
           <span class="text-title">{{ count(s.games ?? 0) }}</span>
@@ -124,8 +124,8 @@ const showWaits = computed(() => hosts.value.some((h) => (waits.value.get(h.host
         <StatCard label="games · pairs">
           <template #help>
             <HelpTip
-              >The games played; under them the pairs by the score of the side moved up, 0, ½, 1, 1½
-              and 2 points (pentanomial).</HelpTip
+              >Games played. Below: pentanomial pair counts (0, ½, 1, 1½, 2 pts for the
+              upward-perturbed side).</HelpTip
             >
           </template>
           <span class="text-title">{{ count(s.games ?? 0) }}</span>
@@ -134,8 +134,8 @@ const showWaits = computed(() => hosts.value.some((h) => (waits.value.get(h.host
         <StatCard label="resolution">
           <template #help>
             <HelpTip
-              >The 95% interval of a head-to-head over all the games so far. Every game reads every
-              value, so an effect inside it is noise.</HelpTip
+              >95% confidence interval for a head-to-head over all games so far. Effects smaller
+              than this are noise.</HelpTip
             >
           </template>
           {{ s.resolution === null ? '—' : `± ${s.resolution.toFixed(1)}` }}
@@ -150,7 +150,7 @@ const showWaits = computed(() => hosts.value.some((h) => (waits.value.get(h.host
 
     <TuneValues v-if="s?.values" :values="s.values" :path="job.path" />
 
-    <Panel v-if="eloPoints.length >= 2" title="Over the pairs" note="hover for the values">
+    <Panel v-if="eloPoints.length >= 2" title="Over pairs" note="hover for values">
       <div class="grid gap-4 px-3 py-2.5 @3xl:grid-cols-2">
         <MatchChart
           v-if="llrPoints.length >= 2 && s?.llr"
@@ -179,7 +179,7 @@ const showWaits = computed(() => hosts.value.some((h) => (waits.value.get(h.host
               <th class="th text-right">done</th>
               <th class="th text-right">in play</th>
               <th class="th text-right">failed</th>
-              <th class="th text-right">at once</th>
+              <th class="th text-right">concurrent</th>
               <th class="th text-right" :class="{ 'pr-3': !showWaits }">mean unit</th>
               <th v-if="showWaits" class="th pr-3">waits</th>
             </tr>
@@ -224,7 +224,7 @@ const showWaits = computed(() => hosts.value.some((h) => (waits.value.get(h.host
     </Panel>
 
     <div v-if="job.summaryAt !== null" class="num text-small text-faint">
-      summary as of {{ clockText(job.summaryAt, now) }}
+      updated {{ clockText(job.summaryAt, now) }}
     </div>
   </div>
 </template>

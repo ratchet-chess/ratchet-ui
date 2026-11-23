@@ -59,7 +59,7 @@ const chipClass = (label: string) =>
         {{ c }}
         <button
           class="hidden text-faint group-hover:inline hover:text-text"
-          title="Forget this control"
+          title="Remove saved control"
           @click.stop="forget(c)"
         >
           ✕
@@ -69,11 +69,11 @@ const chipClass = (label: string) =>
         :class="[chip, typing ? 'border-accent text-text' : 'border-line bg-panel2 text-dim']"
         @click="typing = !typing"
       >
-        custom…
+        Custom…
       </button>
     </div>
     <div class="mt-1 text-dense text-dim">
-      {{ current ? describeControl(current) : `${value} is not a control this app reads` }}
+      {{ current ? describeControl(current) : `Invalid time control: ${value}` }}
     </div>
     <div v-if="typing" class="mt-2 flex flex-wrap items-center gap-2">
       <input
@@ -89,10 +89,10 @@ const chipClass = (label: string) =>
         :disabled="!typed"
         @click="keep"
       >
-        Keep
+        Save
       </button>
       <span class="text-dense" :class="typed ? 'text-dim' : 'text-faint'">{{
-        text.trim() ? (typed ? describeControl(typed) : 'not a control this app reads') : ''
+        text.trim() ? (typed ? describeControl(typed) : 'Invalid time control') : ''
       }}</span>
     </div>
   </div>

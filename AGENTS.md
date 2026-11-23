@@ -22,6 +22,20 @@ The rows for **release**, **own engine**, **WASI build** and **condition** quote
 | **bye**          | a Swiss round an engine sits out; it scores one point                                                                                                          |                                     |
 | **template**     | a setup saved under a name in this browser; a New may start from one                                                                                           |                                     |
 
+### UI wording and casing
+
+- **Verbosity:** On-page text (rows, panel notes, inline labels) is terse, flexible by context and density. Tooltips, notices, and `?` help notes use plain technical prose.
+- **Casing:** Sentence case (uppercase first letter) on labels, buttons, and segmented options. Lowercase on table headers, keeping proper nouns and standard chess abbreviations (`W`, `D`, `L`, `Elo`, `White`, `Black`).
+- **Standard words:**
+
+| Concept                | Use                                       | Avoid                                  |
+| ---------------------- | ----------------------------------------- | -------------------------------------- |
+| Browser storage        | `in browser`, `browser storage`           | `here`, `kept in this browser`         |
+| User-uploaded books    | `local books`                             | `Yours`, `a book of yours`             |
+| Parallel games / slots | `concurrent`                              | `at once`                              |
+| Loading / polling      | `Loading…`, `Retry`, `Refresh`, `Updated` | `Reading…`, `Read again`, `read HH:MM` |
+| Saving / validation    | `Saving…`, `Invalid …`                    | `Keeping…`, `does not read`            |
+
 ## Rules
 
 - **Every section except the manager view works with no manager,** because the same build is also a static site.

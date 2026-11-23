@@ -172,9 +172,9 @@ describe('the manager view, written for a reader', () => {
     const waiting = { alpha: hours };
     const finishing = job({ units: { done: 85, running: 40 }, waiting });
     expect(waitingText(finishing)).toBe('');
-    expect(unitsNote(finishing)).toBe('its last 40 units are in play');
+    expect(unitsNote(finishing)).toBe('finishing · 40 units left');
     expect(unitsNote(job({ units: { done: 124, running: 1 }, waiting }))).toBe(
-      'its last unit is in play',
+      'finishing · 1 unit left',
     );
     // a job of one unit has no last unit to speak of
     expect(unitsNote(job({ units: { running: 1 }, waiting }))).toBe('');
@@ -417,7 +417,7 @@ describe("a job's page", () => {
       atMost: true,
       summary: summary({ pace: { games: 4250, at: at(10, 5) } }),
     });
-    expect(endsText(j, now)).toBe("≈ 10:05 at the LLR's pace · by 13:40 at the latest");
+    expect(endsText(j, now)).toBe('≈ 10:05 (LLR pace) · max 13:40');
     expect(endsText(job({ endsAt: at(9, 20), summary: summary({}) }), now)).toBe('≈ 09:20');
     expect(endsText(job({ summary: null }), now)).toBe('');
   });

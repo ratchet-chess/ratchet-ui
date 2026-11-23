@@ -16,8 +16,8 @@ const props = defineProps<{ values: TunedValue[]; path: PathPoint[] }>();
 
 const by = ref<'move' | 'effect'>('move');
 const SORTS = [
-  { value: 'move', label: 'by move', title: 'how far each value moved, as a share of its range' },
-  { value: 'effect', label: 'by effect', title: 'the size of each value’s effect' },
+  { value: 'move', label: 'By move', title: 'Sort by move size relative to bounds' },
+  { value: 'effect', label: 'By effect', title: 'Sort by effect magnitude' },
 ] as const;
 /** the rows in the chosen order: each value, with its path; a path shows once it has two points */
 const rows = computed(() =>
@@ -48,19 +48,15 @@ const rows = computed(() =>
             <th class="th text-right">move</th>
             <th class="th">
               <span class="inline-flex items-center gap-1.5"
-                >range
-                <HelpTip
-                  >The value's bounds in the map. The faint tick is its start; the mark is where it
-                  is now.</HelpTip
-                ></span
+                >range <HelpTip>Map bounds. Faint tick: start; bar: current value.</HelpTip></span
               >
             </th>
             <th class="th text-right">
               <span class="inline-flex items-center gap-1.5"
                 >effect
                 <HelpTip side="left"
-                  >The side moved up against the side moved down, in nElo, over every game so far.
-                  It is a slope along the tune's path, not a gain over the start.</HelpTip
+                  >nElo difference between upward- and downward-perturbed sides across all games so
+                  far (local slope, not total gain over start).</HelpTip
                 ></span
               >
             </th>

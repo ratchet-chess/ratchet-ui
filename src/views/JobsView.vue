@@ -57,7 +57,7 @@ const ended = computed(() =>
 const notes = computed(() => notices(manager.hosts, manager.jobs));
 const sub = computed(() =>
   manager.readAt === null
-    ? 'on the manager · read only'
+    ? 'manager · read only'
     : `${headline(manager.hosts, manager.jobs)} · read only`,
 );
 
@@ -83,9 +83,7 @@ const hostsOf = (j: Job) => j.hosts.join(' ');
     </Panel>
 
     <Panel title="Running" :note="String(running.length)">
-      <div v-if="running.length === 0" class="px-3 py-2 text-dense text-dim">
-        Nothing is running.
-      </div>
+      <div v-if="running.length === 0" class="px-3 py-2 text-dense text-dim">No running jobs.</div>
       <div v-for="j in running" :key="j.id" class="row px-3 py-2" @click="open(j)">
         <div :class="line1">
           <span class="num shrink-0 text-dim">{{ j.id }}</span>
@@ -138,9 +136,9 @@ const hostsOf = (j: Job) => j.hosts.join(' ');
       </div>
     </Panel>
 
-    <Panel title="Done" note="the last day">
+    <Panel title="Done" note="last 24 h">
       <div v-if="ended.length === 0" class="px-3 py-2 text-dense text-dim">
-        Nothing ended in the last day.
+        No jobs finished in the last 24 h.
       </div>
       <div v-for="j in ended" :key="j.id" class="row px-3 py-1.5" @click="open(j)">
         <div :class="line1">
@@ -156,9 +154,7 @@ const hostsOf = (j: Job) => j.hosts.join(' ');
             v-else
             class="tag tone-dim"
             :title="
-              j.state === 'cancelled'
-                ? 'Its queued units were dropped: by its own stop rule, or by a cancel'
-                : undefined
+              j.state === 'cancelled' ? 'Stopped early (stop rule or manual cancel)' : undefined
             "
             >{{ j.state === 'cancelled' ? 'stopped' : j.state }}</span
           >
@@ -224,9 +220,7 @@ const hostsOf = (j: Job) => j.hosts.join(' ');
         >‹ Jobs</RouterLink
       >
       <div class="text-dense text-dim">
-        {{
-          manager.jobMissing ? `The manager has no job ${selected}.` : `Reading job ${selected}…`
-        }}
+        {{ manager.jobMissing ? `Job ${selected} not found.` : `Loading job ${selected}…` }}
       </div>
     </div>
   </div>

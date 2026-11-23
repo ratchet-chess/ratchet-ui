@@ -27,8 +27,8 @@ const markAt = (v: number, lo: number, hi: number) =>
     <StatCard v-if="llr" label="LLR" class="col-span-2">
       <template #help>
         <HelpTip
-          >The evidence so far: the SPRT accepts H1 at the upper bound and H0 at the lower. The
-          marker is where it sits between them.</HelpTip
+          >Log-likelihood ratio: SPRT accepts H1 at the upper bound and H0 at the lower. Bar marks
+          current progress.</HelpTip
         >
       </template>
       {{ llr.value.toFixed(2) }}
@@ -49,8 +49,8 @@ const markAt = (v: number, lo: number, hi: number) =>
     <StatCard label="nElo">
       <template #help>
         <HelpTip
-          >Normalized Elo: the difference scaled by how much results vary, as fishtest and OpenBench
-          report it; the SPRT's bounds are in nElo. ± is the 95% interval.</HelpTip
+          >Normalized Elo (as reported by Fishtest and OpenBench); SPRT bounds are in nElo. ± shows
+          the 95% confidence interval.</HelpTip
         >
       </template>
       {{ signed(nelo.value) }}

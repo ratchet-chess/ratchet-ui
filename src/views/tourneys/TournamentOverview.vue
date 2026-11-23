@@ -157,7 +157,7 @@ const rowLine = 'num mt-0.5 flex gap-2 text-small text-dim';
     <Tabs v-model="tab" :tabs="tabs" />
 
     <Panel v-if="items.length === 0">
-      <div class="px-3 py-3 text-dim">None yet. New… sets up a match or a tournament.</div>
+      <div class="px-3 py-3 text-dim">No tournaments yet. Click New… to start one.</div>
     </Panel>
 
     <Panel v-if="notices.length > 0" title="Notices" :note="String(notices.length)">
@@ -170,7 +170,7 @@ const rowLine = 'num mt-0.5 flex gap-2 text-small text-dim';
       title="Running"
       :note="
         byGroup.running.length > 0
-          ? `${budget.games} at once · ${budget.hardware} threads`
+          ? `${budget.games} concurrent · ${budget.hardware} threads`
           : undefined
       "
     >
@@ -178,7 +178,7 @@ const rowLine = 'num mt-0.5 flex gap-2 text-small text-dim';
         v-if="budget.games > budget.hardware"
         class="border-b border-row px-3 py-1.5 text-dense text-warn"
       >
-        More games at once than threads: each plays slower than its time control assumes.
+        Concurrent games exceed hardware threads; clocks may run slow.
       </div>
       <div class="grid gap-2 p-2 @3xl:grid-cols-2">
         <div
@@ -244,8 +244,8 @@ const rowLine = 'num mt-0.5 flex gap-2 text-small text-dim';
             :disabled="blocked(i)"
             :title="
               blocked(i)
-                ? 'An engine or the book it needs is not here; see Notices'
-                : 'Plays the unfinished games of its pairs, then the rest'
+                ? 'Missing engine or book (see Notices)'
+                : 'Resume unfinished pairs, then remaining games'
             "
             @click.stop="resume(i)"
           >

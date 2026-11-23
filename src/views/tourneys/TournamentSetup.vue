@@ -97,24 +97,24 @@ const entrants = computed(() =>
   kind.value === 'match' ? [tested.value, base.value] : field.value,
 );
 const KIND_NAMES: Record<Format['kind'], string> = {
-  match: 'match',
-  roundrobin: 'round robin',
-  gauntlet: 'gauntlet',
+  match: 'Match',
+  roundrobin: 'Round robin',
+  gauntlet: 'Gauntlet',
   swiss: 'Swiss',
-  knockout: 'knockout',
+  knockout: 'Knockout',
 };
 const KIND_OPTIONS = (Object.keys(KIND_NAMES) as Format['kind'][]).map((k) => ({
   value: k,
   label: KIND_NAMES[k],
 }));
 const ADJUDICATION_OPTIONS = [
-  { value: 'standard', label: 'draw and resign' },
-  { value: 'draw', label: 'draw only' },
-  { value: 'none', label: 'none' },
+  { value: 'standard', label: 'Draw and resign' },
+  { value: 'draw', label: 'Draw only' },
+  { value: 'none', label: 'None' },
 ] as const;
 const SPRT_OPTIONS = [
   ...SPRT_PRESETS.map((p) => ({ value: p.label, label: p.label })),
-  { value: 'custom', label: 'custom' },
+  { value: 'custom', label: 'Custom' },
 ];
 /** a preset's bounds, or custom ones typed in */
 const sprtChoice = computed<string>({
@@ -308,12 +308,12 @@ const gamesBound = computed(() =>
   kind.value === 'match' && useSprt.value ? 'at most' : kind.value === 'knockout' ? 'at least' : '',
 );
 const blocked = computed(() => {
-  if (entrants.value.length < 2) return 'Two engines or more are needed.';
+  if (entrants.value.length < 2) return 'Select at least two engines.';
   const gone = entrants.value.filter((e) => e && !engineIds.value.includes(e));
-  if (gone.length > 0) return `Not served here: ${gone.join(', ')}.`;
-  if (!controlOk.value) return 'The time control does not read.';
+  if (gone.length > 0) return `Missing engine: ${gone.join(', ')}.`;
+  if (!controlOk.value) return 'Invalid time control.';
   if (kind.value === 'match' && useSprt.value && elo1.value <= elo0.value)
-    return 'The upper bound must be above the lower.';
+    return 'Upper bound must exceed lower bound.';
   return '';
 });
 
@@ -342,7 +342,7 @@ const terse = 'text-dense text-dim';
             title="Start from a saved setup"
             @change="useTemplate(($event.target as HTMLSelectElement).value)"
           >
-            <option value="">no template</option>
+            <option value="">No template</option>
             <option v-for="t in settings.templates" :key="t.name" :value="t.name">
               {{ t.name }}{{ t.name === settings.startTemplate ? ' ★' : '' }}
             </option>
@@ -353,8 +353,8 @@ const terse = 'text-dense text-dim';
               class="btn"
               :title="
                 settings.startTemplate === template
-                  ? 'Each New starts from this template; click to stop'
-                  : 'Start each New from this template'
+                  ? 'Default template for New (click to clear)'
+                  : 'Use as default template for New'
               "
               @click="settings.startTemplate = settings.startTemplate === template ? '' : template"
             >
@@ -368,14 +368,16 @@ const terse = 'text-dense text-dim';
         <div :class="section">
           <div :class="sectionTitle">Who plays</div>
           <div :class="row">
-            <span :class="label">format</span>
+            <span :class="label">Format</span>
             <Segmented v-model="kind" :options="KIND_OPTIONS" />
           </div>
 
           <div v-if="kind === 'match'" :class="row">
             <span :class="label"
-              >engines
-              <HelpTip>The <b>first</b> is tested: every statistic is from its side.</HelpTip></span
+              >Engines
+              <HelpTip
+                >The <b>first</b> engine is tested; all statistics are from its side.</HelpTip
+              ></span
             >
             <span class="flex flex-wrap items-center gap-2">
               <EngineCombo v-model="tested" :engines="engineIds" />
@@ -385,13 +387,13 @@ const terse = 'text-dense text-dim';
           </div>
           <div v-else :class="row">
             <span :class="label"
-              >field
+              >Field
               <HelpTip v-if="seedCount > 0">
-                The field's order is its <b>seeding</b>: drag or use ↑ ↓.
+                Order sets <b>seeding</b> (drag or use ↑ ↓).
                 <template v-if="kind === 'gauntlet'">
-                  The first {{ seeds }} each play every other engine; the others do not meet.
+                  The first {{ seeds }} play every other engine; others do not meet.
                 </template>
-                <template v-else> The first is the top seed.</template>
+                <template v-else> First engine is the top seed.</template>
               </HelpTip></span
             >
             <EnginePicker v-model="field" :engines="engineIds" :seeds="seedCount" />
@@ -402,10 +404,9 @@ const terse = 'text-dense text-dim';
               <span :class="label"
                 >SPRT
                 <HelpTip>
-                  Stops once the result is clear: <b>H1</b> when the tested engine gains at least
-                  the upper bound, <b>H0</b> at most the lower, in normalized Elo, α = β = 0.05. The
-                  count is the expected games with the true difference on a bound; between them it
-                  runs longer.
+                  Stops once the result is clear: <b>H1</b> when tested engine gains at least the
+                  upper bound, <b>H0</b> at most the lower, in nElo (α = β = 0.05). Expected game
+                  count assumes the true Elo sits on a bound.
                 </HelpTip></span
               >
               <span class="flex flex-wrap items-center gap-2">
@@ -434,9 +435,9 @@ const terse = 'text-dense text-dim';
             </div>
             <div :class="row">
               <span :class="label"
-                >{{ useSprt ? 'at most' : paired ? 'pairs' : 'games' }}
+                >{{ useSprt ? 'Max pairs' : paired ? 'Pairs' : 'Games' }}
                 <HelpTip v-if="useSprt"
-                  >A cap on the SPRT. Under the estimated games, most runs stop here with no
+                  >Maximum pairs for the SPRT. Below the estimate, most runs stop without a
                   verdict.</HelpTip
                 ></span
               >
@@ -454,18 +455,18 @@ const terse = 'text-dense text-dim';
                 <span
                   v-if="useSprt && sprtEstimate !== null && pairs * perOpening < sprtEstimate"
                   class="text-dense text-warn"
-                  >below the estimate</span
+                  >below estimate</span
                 >
               </span>
             </div>
           </template>
           <div v-if="kind === 'swiss'" :class="row">
             <span :class="label"
-              >rounds
+              >Rounds
               <HelpTip
-                >Each round pairs engines of about equal points; an odd field gives one a
-                <b>bye</b>, worth a point. With {{ field.length }} engines, {{ settling }} rounds
-                can leave one alone on top.</HelpTip
+                >Each round pairs engines with similar points; an odd field awards a <b>bye</b> (1
+                pt). With {{ field.length }} engines, {{ settling }} rounds can produce a clear
+                winner.</HelpTip
               ></span
             >
             <span class="flex items-center gap-2">
@@ -480,10 +481,10 @@ const terse = 'text-dense text-dim';
           </div>
           <div v-if="kind === 'knockout'" :class="row">
             <span :class="label"
-              >per match
+              >Per match
               <HelpTip
-                >A tied match plays one more pair at a time, up to ten in all; then the higher seed
-                goes through.</HelpTip
+                >Tied matches play extra pairs up to 10 total; higher seed advances if still
+                tied.</HelpTip
               ></span
             >
             <span class="flex items-center gap-2">
@@ -497,7 +498,7 @@ const terse = 'text-dense text-dim';
             </span>
           </div>
           <div v-if="kind === 'gauntlet'" :class="row">
-            <span :class="label">seeds</span>
+            <span :class="label">Seeds</span>
             <input
               v-model.number="seeds"
               type="number"
@@ -506,7 +507,7 @@ const terse = 'text-dense text-dim';
             />
           </div>
           <div v-if="kind === 'roundrobin' || kind === 'gauntlet'" :class="row">
-            <span :class="label">cycles</span>
+            <span :class="label">Cycles</span>
             <input
               v-model.number="cycles"
               type="number"
@@ -521,46 +522,46 @@ const terse = 'text-dense text-dim';
           <div :class="sectionTitle">How each game is played</div>
           <div :class="row">
             <span :class="label"
-              >time
+              >Time
               <HelpTip>
-                <b>10+0.1</b>: 10 s, then 0.1 s added a move; <b>2m+1</b> in minutes. <b>40/15</b>:
-                40 moves in 15 min, repeating. <b>1s/move</b>: a fixed time a move.
-                <b>200k nodes</b>, <b>depth 12</b>: a fixed search a move, with no clock, the same
-                on any machine. Yours have a dashed edge.
+                <b>10+0.1</b>: 10 s + 0.1 s/move; <b>2m+1</b> in minutes. <b>40/15</b>: 40 moves in
+                15 min, repeating. <b>1s/move</b>: fixed time per move. <b>200k nodes</b>,
+                <b>depth 12</b>: fixed search per move (clock-independent). Saved custom controls
+                have a dashed border.
               </HelpTip></span
             >
             <ControlPicker v-model="control" />
           </div>
           <div :class="row">
-            <span :class="label">opening</span>
+            <span :class="label">Opening</span>
             <select v-model="book" class="field num w-60 max-w-full">
-              <option value="">start position</option>
+              <option value="">Start position</option>
               <option v-for="b in books.usable" :key="b.id" :value="b.id">{{ b.id }}</option>
             </select>
           </div>
           <div v-if="unpairable" :class="row">
             <span :class="label"
-              >colors
+              >Colors
               <HelpTip>
-                <b>On</b>: each opening twice, each engine White once: a <b>pair</b>. It cancels an
-                opening's bias, and a match's statistics count pairs (pentanomial).<br />
-                <b>Off</b>: one game an opening, colors alternating; a match's statistics count
-                games (trinomial). Wants a balanced book.
+                <b>On</b>: each opening twice with colors swapped (a <b>pair</b>), canceling opening
+                bias (pentanomial stats).<br />
+                <b>Off</b>: one game per opening, alternating colors (trinomial stats; requires a
+                balanced book).
               </HelpTip></span
             >
             <label class="flex cursor-pointer items-center gap-2 pt-1 text-dense">
               <input v-model="paired" type="checkbox" class="accent-accent" />
               <span :class="paired ? 'text-text' : 'text-dim'">{{
-                paired ? 'each opening twice, swapped' : 'each opening once'
+                paired ? 'Paired (swap colors)' : 'Single game per opening'
               }}</span>
             </label>
           </div>
           <div :class="row">
             <span :class="label"
-              >adjudication
+              >Adjudication
               <HelpTip>
-                <b>draw</b>: from move 40, after 8 moves of each side within 10 cp. <b>resign</b>:
-                after 3 moves of one side at −600 cp or worse.
+                <b>Draw</b>: from move 40, after 8 consecutive moves within 10 cp. <b>Resign</b>:
+                after 3 moves at −600 cp or worse.
               </HelpTip></span
             >
             <Segmented v-model="adjudicationChoice" :options="ADJUDICATION_OPTIONS" />
@@ -571,7 +572,7 @@ const terse = 'text-dense text-dim';
         <div :class="section">
           <div :class="sectionTitle">This run</div>
           <div :class="row">
-            <span :class="label">at once</span>
+            <span :class="label">Concurrent</span>
             <span class="flex items-center gap-2">
               <input
                 v-model.number="concurrency"
@@ -584,7 +585,7 @@ const terse = 'text-dense text-dim';
             </span>
           </div>
           <div :class="row">
-            <span :class="label">name</span>
+            <span :class="label">Name</span>
             <input v-model="name" :placeholder="defaultName" class="field w-full max-w-md" />
           </div>
         </div>
@@ -595,26 +596,26 @@ const terse = 'text-dense text-dim';
         <div class="mb-2.5 text-title font-semibold break-words">
           {{ name.trim() || defaultName }}
         </div>
-        <div :class="terse">games{{ gamesBound ? `, ${gamesBound}` : '' }}</div>
+        <div :class="terse">Games{{ gamesBound ? ` (${gamesBound})` : '' }}</div>
         <div class="num mb-2.5 text-hero font-semibold">
           {{ totalGames.toLocaleString('en-US') }}
         </div>
         <dl class="mb-3.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-dense">
-          <dt class="text-dim">format</dt>
+          <dt class="text-dim">Format</dt>
           <dd>{{ formatSummary }}</dd>
-          <dt class="text-dim">engines</dt>
+          <dt class="text-dim">Engines</dt>
           <dd class="num break-words">
-            {{ kind === 'match' ? `${tested} vs ${base}` : `${field.length} entered` }}
+            {{ kind === 'match' ? `${tested} vs ${base}` : `${field.length} selected` }}
           </dd>
-          <dt class="text-dim">time</dt>
+          <dt class="text-dim">Time</dt>
           <dd class="num">{{ control }}</dd>
-          <dt class="text-dim">opening</dt>
-          <dd class="num break-words">{{ book || 'start position' }}</dd>
+          <dt class="text-dim">Opening</dt>
+          <dd class="num break-words">{{ book || 'Start position' }}</dd>
           <template v-if="unpairable">
-            <dt class="text-dim">colors</dt>
-            <dd>{{ paired ? 'pairs, swapped' : 'one game each' }}</dd>
+            <dt class="text-dim">Colors</dt>
+            <dd>{{ paired ? 'Paired (swapped)' : 'Single game each' }}</dd>
           </template>
-          <dt class="text-dim">at once</dt>
+          <dt class="text-dim">Concurrent</dt>
           <dd class="num">{{ concurrency }}</dd>
         </dl>
         <button

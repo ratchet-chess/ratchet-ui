@@ -83,13 +83,13 @@ const icon = 'px-0.5 text-dense text-faint hover:text-text';
           <input
             v-model="query"
             type="search"
-            :placeholder="`search ${engines.length} engines`"
+            :placeholder="`Search ${engines.length} engines`"
             class="field-sm num min-w-0 flex-1 placeholder:text-faint placeholder:italic"
           />
           <button
             class="btn-sm"
             :disabled="addable.length === 0"
-            title="Add every engine shown"
+            title="Add all matching engines"
             @click="addShown"
           >
             + {{ addable.length }}
@@ -106,7 +106,7 @@ const icon = 'px-0.5 text-dense text-faint hover:text-text';
             :class="program === f ? 'border-accent-line text-accent' : 'border-line text-dim'"
             @click="program = f"
           >
-            {{ f || 'all' }} <span class="text-faint">{{ n }}</span>
+            {{ f || 'All' }} <span class="text-faint">{{ n }}</span>
           </button>
         </div>
         <div class="max-h-56 min-h-16 overflow-auto py-0.5">
@@ -124,17 +124,17 @@ const icon = 'px-0.5 text-dense text-faint hover:text-text';
             <span class="truncate">{{ e }}</span>
           </label>
           <div v-if="shown.length === 0" class="px-2 py-3 text-dense text-faint">
-            No engine matches.
+            No matching engines.
           </div>
         </div>
       </div>
 
       <div class="flex min-w-0 flex-col">
         <div :class="head">
-          <b class="font-semibold text-text">{{ field.length }}</b> in the field
+          <b class="font-semibold text-text">{{ field.length }}</b> selected
           <span class="flex-1" />
-          <button class="btn-sm" :disabled="field.length < 2" @click="sortField">sort A–Z</button>
-          <button class="btn-sm" :disabled="field.length === 0" @click="field = []">clear</button>
+          <button class="btn-sm" :disabled="field.length < 2" @click="sortField">Sort A–Z</button>
+          <button class="btn-sm" :disabled="field.length === 0" @click="field = []">Clear</button>
         </div>
         <div class="max-h-56 min-h-16 overflow-auto @2xl:max-h-[17.5rem]">
           <div
@@ -160,12 +160,12 @@ const icon = 'px-0.5 text-dense text-faint hover:text-text';
             <span class="whitespace-nowrap">
               <button :class="icon" title="Up" @click="move(i, i - 1)">↑</button>
               <button :class="icon" title="Down" @click="move(i, i + 1)">↓</button>
-              <button :class="icon" title="Enter it again" @click="again(i)">+</button>
+              <button :class="icon" title="Add duplicate" @click="again(i)">+</button>
             </span>
             <button :class="icon" title="Remove" @click="remove(i)">✕</button>
           </div>
           <div v-if="field.length === 0" class="px-2 py-3 text-dense text-faint">
-            Tick engines to enter them.
+            Select engines to add.
           </div>
         </div>
       </div>

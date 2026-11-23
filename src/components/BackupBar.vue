@@ -19,14 +19,14 @@ async function review(): Promise<void> {
     class="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-warn-line bg-panel px-3 py-1.5 text-dense"
   >
     <span class="size-[7px] shrink-0 rounded-full bg-warn" aria-label="warning" />
-    <span class="text-dim">mirror folder</span>
+    <span class="text-dim">Mirror folder</span>
     <span class="num">{{ backup.mirror.folder }}</span>
     <template v-if="backup.mirror.state === 'allow'">
-      <span>is not copied to until you allow it again</span>
+      <span>needs write permission</span>
       <button class="btn-sm" @click="backup.allowFolder()">Allow</button>
     </template>
     <template v-else-if="backup.mirror.state === 'review'">
-      <span>differs from this browser</span>
+      <span>differs from browser storage</span>
       <button class="btn-sm" @click="review()">Review ›</button>
     </template>
     <template v-else>

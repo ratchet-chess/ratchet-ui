@@ -49,7 +49,7 @@ const listed = computed(() => {
 </script>
 
 <template>
-  <PageHeader title="Tourneys" sub="matches and tournaments played in this browser">
+  <PageHeader title="Tourneys" sub="matches and tournaments in browser">
     <RouterLink to="/tournaments/new" class="btn" @click="fresh++">New…</RouterLink>
   </PageHeader>
   <div v-if="tournaments.error" class="mb-3 text-bad">{{ tournaments.error }}</div>

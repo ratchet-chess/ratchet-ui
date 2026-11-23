@@ -26,7 +26,7 @@ const busy = ref('');
 async function openCollection(id: string): Promise<void> {
   parsed.value = null;
   if (!id) return;
-  busy.value = 'Reading the collection…';
+  busy.value = 'Loading collection…';
   // give the page a frame to show that before a large file's parse
   await new Promise<void>((r) => {
     requestAnimationFrame(() => r());
@@ -82,7 +82,7 @@ async function onFiles(e: Event): Promise<void> {
   const input = e.target as HTMLInputElement;
   let last = '';
   for (const f of Array.from(input.files ?? [])) {
-    busy.value = `Keeping ${f.name}…`;
+    busy.value = `Saving ${f.name}…`;
     last = await games.addFile(f.name.replace(/\.pgn$/i, ''), await f.text());
   }
   input.value = '';
@@ -93,7 +93,7 @@ async function onFiles(e: Event): Promise<void> {
 const download = (c: Collection) => games.download(c.id, c.name);
 
 async function remove(c: Collection): Promise<void> {
-  if (!confirm(`Delete ${c.name} and its ${c.games} games from this browser?`)) return;
+  if (!confirm(`Delete ${c.name} (${c.games} games) from browser?`)) return;
   await games.remove(c.id);
   if (openId.value === c.id) await router.push('/games');
 }
@@ -102,8 +102,8 @@ const day = (iso: string) => iso.slice(0, 10);
 </script>
 
 <template>
-  <PageHeader title="Games" sub="PGN collections kept in this browser">
-    <button class="btn" @click="fileInput?.click()">Open PGN files…</button>
+  <PageHeader title="Games" sub="PGN collections stored in browser">
+    <button class="btn" @click="fileInput?.click()">Import PGN…</button>
     <input
       ref="fileInput"
       type="file"
@@ -144,7 +144,7 @@ const day = (iso: string) => iso.slice(0, 10);
               </td>
             </tr>
             <tr v-if="collections.length === 0">
-              <td class="px-3 py-3 text-dim">No games yet. Play one, or open a PGN file.</td>
+              <td class="px-3 py-3 text-dim">No games yet. Play a game or import a PGN.</td>
             </tr>
           </tbody>
         </table>

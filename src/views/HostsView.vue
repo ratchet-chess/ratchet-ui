@@ -9,9 +9,7 @@ import { useManager } from '../stores/manager.ts';
 
 const manager = useManager();
 const sub = computed(() =>
-  manager.readAt === null
-    ? 'on the manager · condition and units'
-    : headline(manager.hosts, manager.jobs),
+  manager.readAt === null ? 'manager · condition and units' : headline(manager.hosts, manager.jobs),
 );
 
 /** a condition's color: open takes work, silent says nothing, and the rest take none for a stated reason */

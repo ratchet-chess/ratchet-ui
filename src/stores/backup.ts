@@ -176,7 +176,7 @@ export const useBackup = defineStore('backup', () => {
   /** downloads this browser's data as one zip archive */
   async function exportAll(): Promise<void> {
     if (busy.value) return;
-    busy.value = 'writing the archive…';
+    busy.value = 'Writing archive…';
     try {
       const files = await hereFiles(settings.backupBooks);
       const now = Date.now();
@@ -197,7 +197,7 @@ export const useBackup = defineStore('backup', () => {
       await setValue(EXPORTED_KEY, now);
       done(`Exported ${files.size} files.`);
     } catch (e) {
-      fail(`The export failed: ${message(e)}`);
+      fail(`Export failed: ${message(e)}`);
     } finally {
       busy.value = '';
     }
@@ -252,20 +252,20 @@ export const useBackup = defineStore('backup', () => {
   /** reads an archive and lays its items beside this browser's, for the user to choose */
   async function importArchive(file: File): Promise<void> {
     if (busy.value) return;
-    busy.value = 'reading the archive…';
+    busy.value = 'Reading archive…';
     review.value = null;
     note.value = '';
     try {
       const files = layoutOf(await unzipAll(file));
-      if (files.size === 0) throw new Error("it holds none of the app's files");
+      if (files.size === 0) throw new Error('archive contains no app files');
       const r = await reviewOf('archive', file.name, await contentsOf(files));
       if (r.rows.length === 0)
         done(
-          `Nothing to take from ${file.name}: everything in it is already here${r.skipped.length > 0 ? `; ${r.skipped.length} files it could not use` : ''}.`,
+          `Nothing new in ${file.name}: already up to date${r.skipped.length > 0 ? ` (${r.skipped.length} unsupported files skipped)` : ''}.`,
         );
       else review.value = r;
     } catch (e) {
-      fail(`${file.name} was not read: ${message(e)}`);
+      fail(`Could not read ${file.name}: ${message(e)}`);
     } finally {
       busy.value = '';
     }
@@ -283,19 +283,19 @@ export const useBackup = defineStore('backup', () => {
   async function applyReview(): Promise<void> {
     const shown = review.value;
     if (!shown || busy.value) return;
-    busy.value = 'merging…';
+    busy.value = 'Merging…';
     const held: string[] = [];
     try {
       const r = await reviewOf(shown.source, shown.name, shown.there, shown);
       if (!sameAsk(r, shown)) {
         review.value = r;
-        fail('This browser changed while the review was open; check the choices again.');
+        fail('Browser storage changed while review was open; check choices again.');
         return;
       }
       for (const row of r.rows) {
         if (row.here?.kind !== 'tournament' || r.choices.get(row.key) !== 'replace') continue;
         if (!(await tournaments.lock(row.here.id)))
-          throw new Error(`${row.name} runs in another tab`);
+          throw new Error(`${row.name} is running in another tab`);
         held.push(row.here.id);
       }
       const m = await mergeOf(r.rows, r.choices, r.here, r.there);
@@ -308,10 +308,10 @@ export const useBackup = defineStore('backup', () => {
       const taken = [...r.choices.values()].filter((c) => c !== 'keep' && c !== 'skip').length;
       review.value = null;
       if (r.source === 'folder') pending = null;
-      done(`Merged ${r.name}: ${taken} of ${r.rows.length} items taken.`);
+      done(`Merged ${r.name}: ${taken} of ${r.rows.length} items applied.`);
       if (r.source === 'folder') await sync();
     } catch (e) {
-      fail(`The merge stopped: ${message(e)}`);
+      fail(`Merge failed: ${message(e)}`);
     } finally {
       for (const id of held) tournaments.unlock(id);
       await Promise.all([games.load(), books.load(), tournaments.load()]).catch(() => undefined);

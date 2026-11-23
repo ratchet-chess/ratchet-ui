@@ -16,21 +16,21 @@ const rowsFrom = computed(() =>
 <template>
   <Panel v-if="manager.link === 'none'">
     <div class="px-3 py-4 text-dim">
-      No manager is connected. Set its address in
+      No manager configured. Set URL in
       <RouterLink to="/settings" class="text-accent">Settings</RouterLink>.
     </div>
   </Panel>
   <Panel v-else-if="manager.link === 'reading'">
     <div class="px-3 py-4 text-dim">
-      Reading <span class="num text-text">{{ manager.url }}</span>…
+      Loading <span class="num text-text">{{ manager.url }}</span>…
     </div>
   </Panel>
   <Panel v-else-if="manager.link === 'unreachable'">
     <div class="px-3 py-3 text-dense">
       <span class="text-bad">Not connected.</span>
       <span class="ml-1.5 text-dim">{{ manager.problem }}</span>
-      <span v-if="rowsFrom" class="num ml-1.5 text-dim">· rows from {{ rowsFrom }}</span>
-      <button class="btn-sm ml-2" @click="manager.read()">Read again</button>
+      <span v-if="rowsFrom" class="num ml-1.5 text-dim">· cached {{ rowsFrom }}</span>
+      <button class="btn-sm ml-2" @click="manager.read()">Retry</button>
     </div>
   </Panel>
 </template>

@@ -25,9 +25,9 @@ const readClock = computed(() =>
 const draft = ref(settings.managerUrl);
 
 const THEMES = [
-  { value: 'system', label: 'system', title: 'As this computer is set' },
-  { value: 'light', label: 'light' },
-  { value: 'dark', label: 'dark' },
+  { value: 'system', label: 'System', title: 'Match operating system theme' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
 ] as const;
 
 const threads = navigator.hardwareConcurrency;
@@ -65,12 +65,12 @@ onMounted(() => {
 
   <Panel title="Look">
     <div class="flex flex-wrap items-center gap-3 px-3 py-2.5 text-dense">
-      <span class="text-dim">theme</span>
+      <span class="text-dim">Theme</span>
       <Segmented v-model="settings.theme" :options="THEMES" />
     </div>
   </Panel>
 
-  <Panel title="Manager" note="a ratchet-bench manager on this network; read only">
+  <Panel title="Manager" note="LAN ratchet-bench manager · read only">
     <form
       class="flex flex-wrap items-center gap-2 px-3 py-2.5"
       @submit.prevent="settings.managerUrl = draft.trim()"
@@ -83,39 +83,39 @@ onMounted(() => {
     </form>
     <div v-if="manager.link !== 'none'" class="num border-t border-row px-3 py-1.5 text-dense">
       <template v-if="manager.link === 'connected'">
-        <span class="text-good">connected</span>
-        <span class="text-dim"> · read {{ readClock }} · again every {{ RELOAD_MS / 1000 }} s</span>
+        <span class="text-good">Connected</span>
+        <span class="text-dim"> · updated {{ readClock }} (every {{ RELOAD_MS / 1000 }} s)</span>
       </template>
       <template v-else-if="manager.link === 'reading'">
-        <span class="text-dim">reading {{ manager.url }}…</span>
+        <span class="text-dim">Connecting to {{ manager.url }}…</span>
       </template>
       <template v-else>
-        <span class="text-bad">not connected</span>
+        <span class="text-bad">Not connected</span>
         <span class="text-dim"> · {{ manager.problem }}</span>
       </template>
     </div>
   </Panel>
 
-  <Panel title="Storage in this browser">
+  <Panel title="Browser storage">
     <div class="grid grid-cols-[max-content_1fr] gap-x-3.5 gap-y-1 px-3 py-2.5 text-dense">
-      <span class="text-dim">used</span>
+      <span class="text-dim">Used</span>
       <span class="num">
         <template v-if="backup.usage">
           {{ bytes(backup.usage.used) }} of {{ bytes(backup.usage.quota) }}
         </template>
         <template v-else>—</template>
       </span>
-      <span class="text-dim">persistent</span>
+      <span class="text-dim">Persistent</span>
       <span>
         <template v-if="backup.persisted">
-          yes <span class="text-dim">· the browser will not clear it to free space</span>
+          Yes <span class="text-dim">· protected from automatic eviction</span>
         </template>
         <template v-else>
-          no <span class="text-dim">· the browser may clear it to free space</span>
+          No <span class="text-dim">· browser may clear if low on space</span>
           <button class="btn-sm ml-2" @click="backup.askPersist()">Ask</button>
           <HelpTip>
-            Chrome and Edge grant it to a site in use often, or installed; Firefox asks you. A
-            backup below keeps the data either way.
+            Chrome and Edge grant persistent storage to frequently used or installed sites; Firefox
+            prompts you. Use Backup below to keep a copy either way.
           </HelpTip>
         </template>
       </span>
@@ -124,11 +124,11 @@ onMounted(() => {
 
   <BackupReview v-if="backup.review" :review="backup.review" />
 
-  <Panel title="Backup" note="everything but pulled books, in this browser's own layout">
+  <Panel title="Backup" note="excludes pulled books">
     <div
       class="grid grid-cols-[max-content_1fr] items-center gap-x-3.5 gap-y-2 px-3 py-2.5 text-dense"
     >
-      <span class="text-dim">archive</span>
+      <span class="text-dim">Archive</span>
       <span class="flex flex-wrap items-center gap-2">
         <button class="btn-sm" :disabled="backup.busy !== ''" @click="backup.exportAll()">
           Export
@@ -137,36 +137,36 @@ onMounted(() => {
         <button class="btn-sm" :disabled="backup.busy !== ''" @click="archive?.click()">
           Import…
         </button>
-        <span class="text-dim">last export {{ when(backup.exportedAt) }}</span>
+        <span class="text-dim">Last export: {{ when(backup.exportedAt) }}</span>
         <HelpTip>
-          One zip file of the tournaments, games, settings and your books. An import adds what is
-          new and asks about each item both hold.
+          Zip archive containing tournaments, games, settings, and local books. Import adds new
+          items and prompts on conflicts.
         </HelpTip>
       </span>
 
-      <span class="text-dim">folder</span>
+      <span class="text-dim">Mirror folder</span>
       <span class="flex flex-wrap items-center gap-2">
         <template v-if="backup.mirror.state === 'unsupported'">
-          <span class="text-dim">Chrome and Edge can copy each change to a folder of yours</span>
+          <span class="text-dim">Auto-mirroring to a local folder requires Chrome or Edge</span>
         </template>
         <template v-else-if="backup.mirror.state === 'none'">
           <button class="btn-sm" @click="backup.chooseFolder()">
             <FolderOpen :size="13" /> Choose…
           </button>
-          <span class="text-dim">each change is copied to it; best an empty one</span>
+          <span class="text-dim">Auto-syncs changes (use an empty folder)</span>
         </template>
         <template v-else>
           <span class="num">{{ backup.mirror.folder }}</span>
           <span v-if="backup.mirror.state === 'on'" class="text-good">
-            copied {{ when(backup.mirror.at) }}
+            Synced {{ when(backup.mirror.at) }}
           </span>
-          <span v-else-if="backup.mirror.state === 'checking'" class="text-dim">comparing…</span>
+          <span v-else-if="backup.mirror.state === 'checking'" class="text-dim">Comparing…</span>
           <template v-else-if="backup.mirror.state === 'allow'">
-            <span class="text-warn">the browser asks again after a reload</span>
+            <span class="text-warn">Permission needed after reload</span>
             <button class="btn-sm" @click="backup.allowFolder()">Allow</button>
           </template>
           <template v-else-if="backup.mirror.state === 'review'">
-            <span class="text-warn">differs from this browser</span>
+            <span class="text-warn">Differs from browser storage</span>
             <button class="btn-sm" @click="backup.openFolderReview()">Review</button>
           </template>
           <template v-else-if="backup.mirror.state === 'failed'">
@@ -178,10 +178,10 @@ onMounted(() => {
         </template>
       </span>
 
-      <span class="text-dim">your books</span>
+      <span class="text-dim">Local books</span>
       <label class="flex items-center gap-1.5">
         <input v-model="settings.backupBooks" type="checkbox" class="accent-accent" />
-        in the backup
+        Include in backup
         <span class="num text-dim">· {{ bytes(userBytes) }}</span>
       </label>
     </div>
@@ -194,10 +194,10 @@ onMounted(() => {
     </p>
   </Panel>
 
-  <Panel title="This browser">
+  <Panel title="Browser">
     <div class="grid grid-cols-[max-content_1fr] gap-x-3.5 gap-y-1 px-3 py-2.5 text-dense">
-      <span class="text-dim">engine input</span><span class="num">{{ mode }}</span>
-      <span class="text-dim">hardware threads</span><span class="num">{{ threads }}</span>
+      <span class="text-dim">Engine input</span><span class="num">{{ mode }}</span>
+      <span class="text-dim">Hardware threads</span><span class="num">{{ threads }}</span>
     </div>
   </Panel>
 </template>

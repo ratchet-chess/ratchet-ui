@@ -181,10 +181,9 @@ export function endsText(j: Job, now: number): string {
   const pace = j.summary?.pace ?? null;
   const byUnits = j.endsAt === null ? '' : endText(j, now);
   if (j.state !== 'running') return byUnits;
-  const byPace = pace === null ? '' : `≈ ${clockText(pace.at, now)} at the LLR's pace`;
-  return [byPace, byUnits === '' || !j.atMost ? byUnits : `${byUnits} at the latest`]
-    .filter((t) => t !== '')
-    .join(' · ');
+  const byPace = pace === null ? '' : `≈ ${clockText(pace.at, now)} (LLR pace)`;
+  const maxEnd = j.endsAt === null ? '' : `max ${clockText(j.endsAt, now)}`;
+  return [byPace, j.atMost ? maxEnd : byUnits].filter((t) => t !== '').join(' · ');
 }
 
 /** a unit's mean time on a host: `1 min 50 s`, `45 s`; a dash before the host has played one */
@@ -202,9 +201,7 @@ export function unitTimeText(ms: number | null): string {
 export function finishingText(j: Job): string {
   const inPlay = j.units.running ?? 0;
   if (j.state === 'running' && (j.units.queued ?? 0) === 0 && inPlay > 0 && unitsPlanned(j) > 1)
-    return inPlay === 1
-      ? 'its last unit is in play'
-      : `its last ${count(inPlay)} units are in play`;
+    return inPlay === 1 ? 'finishing · 1 unit left' : `finishing · ${count(inPlay)} units left`;
   return '';
 }
 
@@ -245,7 +242,7 @@ export function notices(hosts: readonly Host[], jobs: readonly Job[]): Notice[] 
     else if (
       h.condition !== 'open' &&
       h.condition !== 'allocated' &&
-      !h.reason.startsWith('outside its hours')
+      !/^outside (?:its )?hours/.test(h.reason)
     )
       out.push({
         severity: 'warn',
@@ -270,7 +267,7 @@ export function headline(hosts: readonly Host[], jobs: readonly Job[]): string {
  */
 export function unreachableText(url: string, pageProtocol: string, error: string): string {
   if (pageProtocol === 'https:' && url.startsWith('http://'))
-    return 'This page is served over HTTPS, and a browser lets such a page read no http address. Open the app from this network over http.';
+    return 'Browser blocks HTTP requests from an HTTPS page. Open the app over HTTP on your LAN.';
   return error.startsWith('the manager') ? error : `no answer from ${url}`;
 }
 

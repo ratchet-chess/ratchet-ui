@@ -25,28 +25,28 @@ const KIND: Record<Row['kind'], string> = {
 
 const relation = (r: Relation) =>
   ({
-    new: `only in the ${there.value}`,
-    'only here': 'only here',
-    same: 'the same',
-    ahead: 'more here',
-    behind: `more in the ${there.value}`,
-    diverged: 'both changed',
+    new: folder.value ? 'Folder only' : 'Archive only',
+    'only here': 'Browser only',
+    same: 'Same',
+    ahead: 'Newer in browser',
+    behind: folder.value ? 'Newer in folder' : 'Newer in archive',
+    diverged: 'Both changed',
   })[r];
 
 const busy = (row: Row) => row.kind === 'tournament' && props.review.busy.has(row.here?.id ?? '');
 
 const LABEL: Record<Choice, (row: Row) => { label: string; title: string }> = {
-  add: () => ({ label: 'add', title: 'Add it to this browser' }),
+  add: () => ({ label: 'Add', title: 'Add to browser storage' }),
   skip: () =>
     folder.value
-      ? { label: 'delete', title: 'Leave it out; the folder then deletes it' }
-      : { label: 'skip', title: 'Leave it out' },
-  keep: () => ({ label: 'keep', title: "Keep this browser's copy" }),
-  replace: () => ({ label: 'replace', title: `Take the ${there.value}'s copy instead` }),
+      ? { label: 'Delete', title: 'Exclude (deletes from folder)' }
+      : { label: 'Skip', title: 'Do not import' },
+  keep: () => ({ label: 'Keep', title: 'Keep browser copy' }),
+  replace: () => ({ label: 'Replace', title: `Use ${there.value} copy` }),
   both: (row) =>
     row.kind === 'settings'
-      ? { label: 'join', title: "These values, with the other's time controls and templates added" }
-      : { label: 'both', title: `Keep both: the ${there.value}'s under a new name` },
+      ? { label: 'Join', title: 'Keep browser settings and add missing controls and templates' }
+      : { label: 'Both', title: `Keep both (${there.value} copy renamed)` },
 };
 
 const optionsOf = (row: Row) =>
@@ -83,8 +83,8 @@ function chooseFresh(c: Choice | 'mixed'): void {
   if (c !== 'mixed') for (const r of fresh.value) props.review.choices.set(r.key, c);
 }
 const freshOptions = computed(() => [
-  { value: 'add' as const, label: 'add all' },
-  { value: 'skip' as const, label: folder.value ? 'delete all' : 'skip all' },
+  { value: 'add' as const, label: 'Add all' },
+  { value: 'skip' as const, label: folder.value ? 'Delete all' : 'Skip all' },
 ]);
 
 function choose(row: Row, c: Choice): void {
@@ -121,33 +121,28 @@ function all(how: 'theirs' | 'here' | 'safe'): void {
   >
     <p class="px-3 pt-2.5 text-dense">
       <template v-if="folder && empty">
-        This browser holds no data; the folder does. Restore it, then the folder follows each
-        change.
+        Browser storage is empty. Restore from folder to enable auto-sync.
       </template>
       <template v-else-if="folder">
-        The folder differs from this browser. Choose for each; the folder then holds what this
-        browser holds.
+        Folder differs from browser storage. Pick a version for each item to sync.
       </template>
       <template v-else-if="conflicts.length > 0">
-        Both hold these items, in copies that differ. Choose for each; the rest of this browser
-        stays as it is.
+        Some items conflict. Pick a version for each; unchanged items stay intact.
       </template>
-      <template v-else>The rest of this browser stays as it is.</template>
+      <template v-else>Unchanged items stay intact.</template>
     </p>
     <div v-if="conflicts.length > 1" class="flex flex-wrap items-center gap-3 px-3 pt-2 text-dense">
-      <span class="text-dim">all</span>
-      <button class="text-accent hover:underline" @click="all('safe')">lose nothing</button>
-      <button class="text-accent hover:underline" @click="all('theirs')">
-        take the {{ there }}'s
-      </button>
-      <button class="text-accent hover:underline" @click="all('here')">keep this browser's</button>
+      <span class="text-dim">All:</span>
+      <button class="text-accent hover:underline" @click="all('safe')">Safe defaults</button>
+      <button class="text-accent hover:underline" @click="all('theirs')">Use {{ there }}</button>
+      <button class="text-accent hover:underline" @click="all('here')">Use browser</button>
     </div>
     <div class="overflow-x-auto px-1 pt-1">
       <table class="w-full border-collapse text-dense">
         <thead v-if="conflicts.length > 0 || freshOpen">
           <tr class="text-left text-small text-dim">
             <th class="th">item</th>
-            <th class="th">here</th>
+            <th class="th">browser</th>
             <th class="th">{{ there }}</th>
             <th class="th" />
           </tr>
@@ -155,10 +150,10 @@ function all(how: 'theirs' | 'here' | 'safe'): void {
         <tbody>
           <tr v-if="fresh.length > 0" class="border-b border-row">
             <td class="px-2 py-1" colspan="3">
-              {{ fresh.length }} only in the {{ there }}
+              {{ fresh.length }} new in {{ there }}
               <span class="text-dim">· {{ freshText }}</span>
               <button class="ml-2 text-accent hover:underline" @click="freshOpen = !freshOpen">
-                {{ freshOpen ? 'hide' : 'show' }}
+                {{ freshOpen ? 'Hide' : 'Show' }}
               </button>
             </td>
             <td class="px-2 py-1 text-right">

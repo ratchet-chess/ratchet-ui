@@ -58,13 +58,10 @@ function dropped(e: DragEvent): void {
 </script>
 
 <template>
-  <PageHeader
-    title="Books"
-    sub="pulled on demand from their repos, or added from your files; kept in this browser"
-  />
+  <PageHeader title="Books" sub="pulled on demand or imported locally · stored in browser" />
   <div v-if="books.error" class="mb-3 text-bad">{{ books.error }}</div>
 
-  <Panel title="Listed" note="the app's list, pinned by sha256">
+  <Panel title="Listed" note="pinned by sha256">
     <div class="@container overflow-x-auto">
       <table class="w-full border-collapse text-dense">
         <thead>
@@ -105,8 +102,8 @@ function dropped(e: DragEvent): void {
                 </span>
               </template>
               <template v-else-if="books.pulled.has(b.id)">
-                <span class="mr-2 text-dense text-good">in this browser</span>
-                <button class="btn-sm" title="Delete from this browser" @click="books.remove(b)">
+                <span class="mr-2 text-dense text-good">In browser</span>
+                <button class="btn-sm" title="Remove from browser" @click="books.remove(b)">
                   <Trash2 :size="13" />
                 </button>
               </template>
@@ -121,7 +118,7 @@ function dropped(e: DragEvent): void {
                 class="inline-flex items-center gap-1 text-dense text-dim hover:text-text"
                 @click="listedOpen = !listedOpen"
               >
-                <template v-if="listedOpen"><ChevronUp :size="13" /> fewer</template>
+                <template v-if="listedOpen"><ChevronUp :size="13" /> Fewer</template>
                 <template v-else>
                   <ChevronDown :size="13" /> {{ listed.length - LISTED_SHOWN }} more
                 </template>
@@ -133,7 +130,7 @@ function dropped(e: DragEvent): void {
     </div>
   </Panel>
 
-  <Panel title="Yours" note=".pgn or .epd, plain or zipped">
+  <Panel title="Local books" note=".pgn, .epd, or .zip">
     <div
       class="overflow-x-auto"
       :class="over ? 'outline-2 outline-offset-[-2px] outline-line outline-dashed' : ''"
@@ -159,7 +156,7 @@ function dropped(e: DragEvent): void {
               <button
                 class="btn-sm"
                 :disabled="books.adding !== null"
-                title="Add a book from a file of yours; drop one here too"
+                title="Import a book file (or drag and drop)"
                 @click="picker?.click()"
               >
                 <Upload :size="13" /> Add
@@ -178,7 +175,7 @@ function dropped(e: DragEvent): void {
             <td class="px-2 py-1.5 text-right whitespace-nowrap">
               <button
                 class="btn-sm"
-                title="Delete this browser's copy; your file is untouched"
+                title="Remove from browser (original file untouched)"
                 @click="books.removeUser(b.id)"
               >
                 <Trash2 :size="13" />
@@ -188,16 +185,16 @@ function dropped(e: DragEvent): void {
           <tr v-if="books.adding" class="border-b border-row last:border-0">
             <td class="num px-2 py-1.5 whitespace-nowrap">{{ books.adding.name }}</td>
             <td colspan="4" class="num px-2 py-1.5 text-right text-dense text-dim">
-              <template v-if="books.adding.total === 0">copying into this browser…</template>
+              <template v-if="books.adding.total === 0">Saving to browser…</template>
               <template v-else>
-                checking {{ count(books.adding.checked) }} of
+                Validating {{ count(books.adding.checked) }} of
                 {{ count(books.adding.total) }} openings
               </template>
             </td>
           </tr>
           <tr v-if="books.user.length === 0 && !books.adding">
             <td colspan="5" class="px-2 py-3 text-center text-dense text-dim">
-              No book of yours yet. Add one, or drop a file here.
+              No local books yet. Add or drop a file here.
             </td>
           </tr>
         </tbody>
@@ -206,9 +203,7 @@ function dropped(e: DragEvent): void {
   </Panel>
 
   <p class="text-dense text-faint">
-    A pull checks the archive's sha256 against the app's list before it keeps the book. A book of
-    yours is kept once every opening in it reads; the first that does not is named. Play and
-    Tourneys draw openings from any book in this browser.
+    Pulled books are verified by sha256. Local books are validated before saving.
     <template v-if="books.storage">
       Storage: {{ bytes(books.storage.usage) }} of {{ bytes(books.storage.quota) }}.
     </template>

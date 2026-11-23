@@ -10,10 +10,10 @@ const dot = computed(() =>
 );
 const word = computed(() =>
   manager.link === 'none'
-    ? 'no manager'
+    ? 'No manager'
     : manager.link === 'unreachable'
-      ? 'manager lost'
-      : 'manager',
+      ? 'Manager offline'
+      : 'Manager',
 );
 </script>
 

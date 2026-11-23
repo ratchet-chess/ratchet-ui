@@ -71,13 +71,13 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <PageHeader title="Engines" sub="run in this browser, each in its own Worker" />
+  <PageHeader title="Engines" sub="WASI builds running in browser Workers" />
 
   <Panel>
     <div class="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2 text-dense text-dim">
-      <span>input during a search: <span class="num text-text">{{ mode }}</span></span>
+      <span>Search input: <span class="num text-text">{{ mode }}</span></span>
       <label>
-        trial search depth
+        Trial depth
         <select v-model.number="depth" class="field-sm num ml-1">
           <option v-for="d in [8, 10, 12, 14, 16]" :key="d" :value="d">{{ d }}</option>
         </select>
@@ -117,7 +117,7 @@ onUnmounted(() => {
             <td class="num px-2 py-1.5 text-dense">
               <template v-if="t">
                 <span v-if="t.state === 'failed'" class="text-bad"
-                  >{{ t.error }} · is it copied in? run bun run engines</span
+                  >{{ t.error }} (missing file? run bun run engines)</span
                 >
                 <template v-else>
                   <span class="text-text">{{ t.idName }}</span>

@@ -226,18 +226,18 @@ function savePgn(): void {
             <option value="person">You</option>
             <option v-for="e in engines.list" :key="e.id" :value="e.id">{{ e.id }}</option>
           </select>
-          <span class="text-dim">opening</span>
+          <span class="text-dim">Opening</span>
           <select
             v-model="book"
             class="field-sm num"
             :disabled="phase === 'playing' || phase === 'starting'"
           >
-            <option value="">start position</option>
+            <option value="">Start position</option>
             <option v-for="b in books.usable" :key="b.id" :value="b.id">
               {{ b.id }}
             </option>
           </select>
-          <span class="text-dim">time</span>
+          <span class="text-dim">Time</span>
           <select
             v-model="controlLabel"
             class="field-sm num"
@@ -274,13 +274,13 @@ function savePgn(): void {
         </div>
         <div v-if="error" class="border-t border-row px-3 py-2 text-bad">{{ error }}</div>
         <div v-else-if="phase === 'starting'" class="border-t border-row px-3 py-2 text-dim">
-          Starting the engines…
+          Starting engines…
         </div>
         <div v-else-if="phase === 'over'" class="border-t border-row px-3 py-2">
           <span class="num mr-2 font-semibold">{{ game.outcome?.result ?? '*' }}</span>
           <span class="text-dim">{{ game.outcome?.reason ?? 'aborted' }}</span>
           <RouterLink v-if="saved" :to="`/games/${PLAYED}`" class="ml-2 text-dense text-accent"
-            >in Games</RouterLink
+            >Open in Games</RouterLink
           >
           <button v-else-if="game.san.length > 0" class="btn ml-2" @click="play.save()">
             Save to Games
@@ -303,7 +303,7 @@ function savePgn(): void {
             </div>
             <div class="mt-0.5 text-dim">{{ thinking[c]?.line.join(' ') }}</div>
           </template>
-          <span v-else class="text-faint">not searched yet</span>
+          <span v-else class="text-faint">Waiting for search</span>
         </div>
       </Panel>
 
@@ -313,7 +313,7 @@ function savePgn(): void {
             <span class="text-faint">{{ r.n }}.</span><span>{{ r.white }}</span
             ><span>{{ r.black }}</span>
           </div>
-          <span v-if="moveRows.length === 0" class="text-faint">no moves yet</span>
+          <span v-if="moveRows.length === 0" class="text-faint">No moves</span>
         </div>
       </Panel>
     </div>

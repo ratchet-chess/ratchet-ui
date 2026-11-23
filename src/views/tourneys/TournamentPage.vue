@@ -37,7 +37,7 @@ async function remove(i: Item): Promise<void> {
     await tournaments.remove(i.config.id);
     await router.push('/tournaments');
   } catch (e) {
-    i.state.error = `It could not be deleted: ${e instanceof Error ? e.message : String(e)}`;
+    i.state.error = `Delete failed: ${e instanceof Error ? e.message : String(e)}`;
   }
 }
 
@@ -64,7 +64,7 @@ async function exportPgn(): Promise<void> {
   const id = collectionOf(props.item.config.id);
   await games.load();
   if (!games.list.some((c) => c.id === id && c.games > 0)) {
-    tell('no PGN: its games were deleted from Games');
+    tell('No PGN: collection was deleted from Games');
     return;
   }
   await games.download(id, props.item.config.name);
@@ -183,7 +183,7 @@ async function copy(): Promise<void> {
           :disabled="item.state.status !== 'running'"
           @click="tournaments.stop(item.config.id, false)"
         >
-          Stop after these games
+          Finish active games
         </button>
         <button class="btn" @click="tournaments.stop(item.config.id, true)">Stop now</button>
       </template>
@@ -191,7 +191,7 @@ async function copy(): Promise<void> {
         <button
           v-if="item.ended !== 'done'"
           class="btn"
-          title="Plays the unfinished games of its pairs, then the rest"
+          title="Resume unfinished pairs, then remaining games"
           @click="tournaments.resume(item.config.id)"
         >
           Resume
@@ -202,12 +202,12 @@ async function copy(): Promise<void> {
       <RouterLink
         :to="{ path: '/tournaments/new', query: { from: item.config.id } }"
         class="btn"
-        title="A new setup with this one's settings"
+        title="Clone settings into a new setup"
         >Clone</RouterLink
       >
       <button
         class="btn"
-        title="Download the games played so far as one PGN file"
+        title="Download played games as PGN"
         :disabled="item.state.games.length === 0"
         @click="exportPgn"
       >
@@ -217,8 +217,8 @@ async function copy(): Promise<void> {
         class="btn"
         :title="
           item.state.summary.match
-            ? 'Copy the statistics as text, as OpenBench writes them'
-            : 'Copy the standings as text'
+            ? 'Copy stats as text (OpenBench format)'
+            : 'Copy standings as text'
         "
         @click="copy"
       >
@@ -235,7 +235,7 @@ async function copy(): Promise<void> {
             : 'draw adjudication'
           : 'no adjudication'
       }}
-      · {{ item.config.concurrency }} at once · {{ progress(item) }} games
+      · {{ item.config.concurrency }} concurrent · {{ progress(item) }} games
     </div>
     <div v-if="item.state.error" class="mb-3 text-bad">{{ item.state.error }}</div>
 
@@ -268,8 +268,8 @@ async function copy(): Promise<void> {
       </MatchCards>
       <Panel
         v-if="eloPoints.length >= 2"
-        :title="per === 2 ? 'Over the pairs' : 'Over the games'"
-        note="hover for the values"
+        :title="per === 2 ? 'Over pairs' : 'Over games'"
+        note="hover for values"
       >
         <div class="grid gap-4 px-3 py-2.5 @3xl:grid-cols-2">
           <MatchChart
@@ -377,7 +377,7 @@ async function copy(): Promise<void> {
         item.config.entrants.length <= 12
       "
       title="Crosstable"
-      note="points of the row's engine against the column's, over games played; in standings order"
+      note="row vs column · standings order"
     >
       <div class="overflow-x-auto">
         <table class="border-collapse text-dense">
@@ -416,14 +416,14 @@ async function copy(): Promise<void> {
 
     <Panel
       title="Schedule"
-      :note="`${item.state.pairs.length} ${per === 2 ? 'pairs' : 'games'} issued${unissued === null ? '; the next are paired from results' : unissued > 0 ? `, ${unissued} to come` : ''}`"
+      :note="`${item.state.pairs.length} ${per === 2 ? 'pairs' : 'games'}${unissued === null ? ' · dynamic pairing' : unissued > 0 ? ` · ${unissued} remaining` : ''}`"
     >
       <div class="px-3 py-1.5 text-dense">
         <button class="text-dense text-dim hover:text-text" @click="scheduleOpen = !scheduleOpen">
           {{
             scheduleOpen
-              ? `▾ hide the ${per === 2 ? 'pairs' : 'games'}`
-              : `▸ show the ${per === 2 ? 'pairs' : 'games'}, newest first`
+              ? `▾ Hide ${per === 2 ? 'pairs' : 'games'}`
+              : `▸ Show ${per === 2 ? 'pairs' : 'games'} (newest first)`
           }}
         </button>
         <template v-if="scheduleOpen">
@@ -476,7 +476,7 @@ async function copy(): Promise<void> {
       </div>
     </Panel>
 
-    <Panel title="Last games" note="by number, highest first; a click opens the game">
+    <Panel title="Recent games" note="newest first · click to open">
       <div class="num px-1.5 py-1 text-dense">
         <button
           v-for="g in recent"
