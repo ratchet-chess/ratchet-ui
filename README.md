@@ -1,7 +1,7 @@
 # ratchet-ui
 
-A web app for the Ratchet chess engine. It holds play, games, books, engines and tournaments in the browser. It also
-shows a ratchet-bench manager's jobs, hosts and ratings.
+A web app for the Ratchet chess engine. It holds play, games, books, engines, tournaments and ratings in the browser. It
+also shows a ratchet-bench manager's jobs and hosts.
 
 Engines run in the browser, each in its own Worker. An engine is a WASI build that speaks UCI. `engines.json` lists
 the engines the app serves, each a GitHub release asset pinned by its sha256. The same build serves two uses. It is a local app connected to a manager on
@@ -57,6 +57,16 @@ among the engines still tied, as fastchess-gui does. A bye adds to neither tiebr
 and Elo over the pairs. Copy puts a match's statistics, in OpenBench's stat block, or a tournament's standings on
 the clipboard as text. PGN downloads the games played so far. A game in Last games opens in Games, found by its
 PGN `Round` tag.
+
+Ratings rates every engine from the games in Games, a tournament's or a PGN file's, and needs no manager. It reads
+only each game's tags. The fit is logistic maximum likelihood with a draw as half a win, as fastchess-gui's rating
+list and ratchet-bench's `tools/fit-rating.ts` fit it, and a test pins it to the latter. The interval comes from the
+spread of results over color-swapped pairs, so it counts draws and each pair's correlation. Below ten pairs, where that
+spread reads narrow, the wider of it and the model's interval stands. A tournament's game
+numbers give its pairs; in any other collection, two adjacent games with colors swapped are a pair. An engine is known
+by its PGN name. Engines that never met, through any chain of opponents, form separate pools, and a rating compares
+only within its pool. Stockfish 10, at a rating typed in, fixes its pool's scale; every other pool averages 0. Played
+games are a person's, so they are left out until chosen. A forfeit counts as a loss unless a filter leaves it out.
 
 The browser may delete its private file system: clearing site data or losing the profile loses it. The first write
 asks the browser to keep it, and Settings shows whether it agreed. Settings also backs the data up, in the file

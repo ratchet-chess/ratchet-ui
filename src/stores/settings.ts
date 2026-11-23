@@ -11,6 +11,7 @@ const START_KEY = 'ratchet-ui.template-start';
 /** index.html reads this key too, to set the theme before the first paint */
 const THEME_KEY = 'ratchet-ui.theme';
 const BACKUP_BOOKS_KEY = 'ratchet-ui.backup-books';
+const ANCHOR_KEY = 'ratchet-ui.anchor-rating';
 
 /** light, dark, or as the system asks */
 export type Theme = 'light' | 'dark' | 'system';
@@ -64,6 +65,9 @@ function controlsOf(x: unknown): string[] {
     : [];
 }
 
+const ratingOf = (x: unknown): number | null =>
+  typeof x === 'number' && Number.isFinite(x) ? x : null;
+
 /** the settings as a backup keeps them, in settings.json */
 export interface SettingsFile {
   manager: string;
@@ -72,6 +76,8 @@ export interface SettingsFile {
   templateStart: string;
   theme: Theme;
   backupBooks: boolean;
+  /** the rating Ratings holds its anchor at; null leaves the ratings averaging 0 */
+  anchorRating: number | null;
 }
 
 /** a settings.json read back; what does not read takes its default */
@@ -85,6 +91,7 @@ export function settingsFileOf(x: unknown): SettingsFile {
     templateStart: typeof r.templateStart === 'string' ? r.templateStart : '',
     theme: isTheme(r.theme) ? r.theme : 'system',
     backupBooks: r.backupBooks !== false,
+    anchorRating: ratingOf(r.anchorRating),
   };
 }
 
@@ -150,6 +157,13 @@ export const useSettings = defineStore('settings', () => {
     else localStorage.setItem(BACKUP_BOOKS_KEY, 'false');
   });
 
+  /** the rating Ratings holds its anchor at */
+  const anchorRating = ref<number | null>(ratingOf(readJson(ANCHOR_KEY)));
+  watch(anchorRating, (r) => {
+    if (r === null) localStorage.removeItem(ANCHOR_KEY);
+    else localStorage.setItem(ANCHOR_KEY, String(r));
+  });
+
   /** the settings as a backup keeps them */
   function file(): SettingsFile {
     // a copy through JSON, which reactive proxies survive and structuredClone refuses
@@ -162,6 +176,7 @@ export const useSettings = defineStore('settings', () => {
           templateStart: startTemplate.value,
           theme: theme.value,
           backupBooks: backupBooks.value,
+          anchorRating: anchorRating.value,
         }),
       ),
     );
@@ -176,6 +191,7 @@ export const useSettings = defineStore('settings', () => {
     startTemplate.value = f.templateStart;
     theme.value = f.theme;
     backupBooks.value = f.backupBooks;
+    anchorRating.value = f.anchorRating;
   }
 
   /** keeps a setup under a name, replacing a template of that name */
@@ -198,6 +214,7 @@ export const useSettings = defineStore('settings', () => {
     startTemplate,
     theme,
     backupBooks,
+    anchorRating,
     file,
     restore,
     saveTemplate,

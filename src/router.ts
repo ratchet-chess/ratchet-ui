@@ -5,8 +5,8 @@ import EnginesView from './views/EnginesView.vue';
 import GamesView from './views/GamesView.vue';
 import HostsView from './views/HostsView.vue';
 import JobsView from './views/JobsView.vue';
-import LaterView from './views/LaterView.vue';
 import PlayView from './views/PlayView.vue';
+import RatingsView from './views/RatingsView.vue';
 import SettingsView from './views/SettingsView.vue';
 import StyleView from './views/StyleView.vue';
 import TournamentsView from './views/TournamentsView.vue';
@@ -25,10 +25,6 @@ export const router = createRouter({
     { path: '/settings', component: SettingsView },
     { path: '/style', component: StyleView },
     { path: '/hosts', component: HostsView },
-    {
-      path: '/:section(ratings)',
-      component: LaterView,
-      props: true,
-    },
+    { path: '/ratings', component: RatingsView },
   ],
 });

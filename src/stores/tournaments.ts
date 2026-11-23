@@ -45,7 +45,8 @@ function endOf(text: string): { ended: 'done' | 'stopped'; at: string | null } {
   return { ended: 'stopped', at: null };
 }
 
-const ROOT = ['tournaments'];
+/** the OPFS folder of the tournaments, one folder each */
+export const TOURNAMENTS = ['tournaments'];
 
 /** a uniform number in [0, 1) from a seed and a pair's number, so a pair's opening can be picked again */
 function pick(seed: number, pair: number): number {
@@ -85,20 +86,20 @@ export const useTournaments = defineStore('tournaments', () => {
       await engines.load();
       const held = new Set(((await navigator.locks.query()).held ?? []).map((l) => l.name));
       const out: Item[] = [];
-      for (const id of await folders(ROOT)) {
+      for (const id of await folders(TOURNAMENTS)) {
         const live = items.value.find((i) => i.config.id === id && runs.has(id));
         if (live) {
           out.push(live);
           continue;
         }
-        const text = await readText([...ROOT, id], 'config.json');
+        const text = await readText([...TOURNAMENTS, id], 'config.json');
         if (text === null) continue;
         const config = configOf(text);
-        const end = await readText([...ROOT, id], 'end.json');
+        const end = await readText([...TOURNAMENTS, id], 'end.json');
         const state = stateOf(
           config,
-          pairsOf(await readText([...ROOT, id], 'pairs.jsonl')),
-          gamesOf(await readText([...ROOT, id], 'games.jsonl')),
+          pairsOf(await readText([...TOURNAMENTS, id], 'pairs.jsonl')),
+          gamesOf(await readText([...TOURNAMENTS, id], 'games.jsonl')),
         );
         const { ended, at } = end === null ? { ended: null, at: null } : endOf(end);
         state.status = ended === 'done' ? 'done' : 'stopped';
@@ -159,7 +160,7 @@ export const useTournaments = defineStore('tournaments', () => {
       item.elsewhere = true;
       throw new Error('another tab plays this tournament');
     }
-    const path = [...ROOT, config.id];
+    const path = [...TOURNAMENTS, config.id];
     await removeFile(path, 'end.json');
     const run = new Run(config, players, control, item.state, {
       opening: async (pair) =>
@@ -192,7 +193,7 @@ export const useTournaments = defineStore('tournaments', () => {
 
   /** saves a new tournament and starts it */
   async function create(config: TournamentConfig): Promise<void> {
-    await writeText([...ROOT, config.id], 'config.json', JSON.stringify(config, null, 1));
+    await writeText([...TOURNAMENTS, config.id], 'config.json', JSON.stringify(config, null, 1));
     const item: Item = reactive({
       config,
       state: stateOf(config, [], []),
@@ -227,7 +228,7 @@ export const useTournaments = defineStore('tournaments', () => {
     if (runs.has(id)) throw new Error('stop the tournament before deleting it');
     if (!(await lock(id))) throw new Error('another tab plays this tournament');
     try {
-      await removeFolder(ROOT, id);
+      await removeFolder(TOURNAMENTS, id);
     } finally {
       unlock(id);
     }
