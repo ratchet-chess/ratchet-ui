@@ -1,0 +1,61 @@
+name: Pages
+
+# Publishes the static site to GitHub Pages. Gitea runs only .gitea/workflows, so this runs on
+# GitHub alone. The repo's Pages source must be set to GitHub Actions.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# a newer push waits for the deploy in progress instead of cutting it off
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # downloads each build in engines.json and stops on one that does not match its pin
+      - name: Engines
+        run: bun run engines
+
+      - name: Pages metadata
+        id: pages
+        uses: actions/configure-pages@v6
+
+      # base_path is "/<repo>" on a project site and "" on a custom domain
+      - name: Build
+        run: bun run build
+        env:
+          BASE: ${{ steps.pages.outputs.base_path }}/
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v5

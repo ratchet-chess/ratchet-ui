@@ -19,7 +19,13 @@ bun run engines add-local <package dir>
 bun run books add <book>         # add a book from official-stockfish/books to books.json, pinned to a commit
 bun run dev                      # the app, cross-origin isolated, on Vite's dev server
 bun run build                    # the static site, in dist/
+BASE=/ratchet-ui/ bun run build  # the static site for a path below the host's root
 ```
+
+`.github/workflows/pages.yml` publishes the static site to GitHub Pages on a push to main. It runs on GitHub only,
+because Gitea runs `.gitea/workflows` alone when that folder exists. An engine runs threads only on a cross-origin
+isolated page, and Pages sends no headers. So a first visit registers `public/isolation-sw.js`, a service worker that
+adds the headers to the site's own responses, and reloads once.
 
 `books.json` lists the opening books the app can pull. The browser pulls a book from its repo at the pinned commit,
 checks the archive's sha256, and keeps the book in its private file system. A user can also add a book from a file of

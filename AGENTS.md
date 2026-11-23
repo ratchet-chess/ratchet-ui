@@ -50,7 +50,8 @@ The rows for **release**, **own engine**, **WASI build** and **condition** quote
 - **Add a book to `books.json` with `bun run books add`.** It checks the book against its repo's own record where one exists.
 - **The browser pulls each book from its repo at the pinned commit.** The app serves no copy of a book.
 - **Keep games and books in OPFS or IndexedDB.** localStorage holds about 5 MB, so it keeps only settings.
-- **Serve the app cross-origin isolated where the host allows it.** Without isolation, the Worker uses a slower input mode.
+- **Serve the app cross-origin isolated.** Without isolation, no engine runs threads, and the Worker uses a slower input mode.
+- **A host that cannot send the isolation headers gets them from `public/isolation-sw.js`.** The page reloads once on a first visit.
 - **A tournament's pairs come from its saved records alone.** `directorOf` keeps no state, so a resumed tournament pairs as the first run would.
 - **A Swiss round is paired from the rounds before it,** so the director waits until a round's games finish.
 - **A pair's opening comes from the tournament's seed and the pair's number,** so a resumed pair gets it again.

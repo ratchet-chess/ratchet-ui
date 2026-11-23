@@ -3,9 +3,9 @@ import vue from '@vitejs/plugin-vue';
 import tailwindcss from '@tailwindcss/vite';
 
 /**
- * Cross-origin isolation lets an engine's Worker hear `stop` and `isready` during a search,
- * through shared memory, and keeps its hash table between moves. A host that cannot send
- * these headers, such as GitHub Pages, gets the Worker's slower fallbacks.
+ * Cross-origin isolation lets an engine run threads, and lets its Worker hear `stop` and
+ * `isready` during a search through shared memory. A host that cannot send these headers, such
+ * as GitHub Pages, gets them from public/isolation-sw.js, which src/isolation.ts registers.
  */
 const isolation = {
   'Cross-Origin-Opener-Policy': 'same-origin',
