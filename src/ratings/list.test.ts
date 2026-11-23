@@ -156,6 +156,10 @@ describe('rate', () => {
       ['x', 'y', 2],
     ]);
     expect(list.records[0]?.wins).toBe(2);
+    // a and b met over two pairs, so the model's interval stands, read from the whole fit
+    expect(list.records[0]?.error).toBeGreaterThan(0);
+    expect(list.records[0]?.los).toBeGreaterThan(0.5);
+    expect(list.records[0]?.mark).toBe('');
     expect(list.records[0]?.losses).toBe(0);
   });
 });

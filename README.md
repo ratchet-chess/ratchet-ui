@@ -64,9 +64,11 @@ list and ratchet-bench's `tools/fit-rating.ts` fit it, and a test pins it to the
 spread of results over color-swapped pairs, so it counts draws and each pair's correlation. Below ten pairs, where that
 spread reads narrow, the wider of it and the model's interval stands. A tournament's game
 numbers give its pairs; in any other collection, two adjacent games with colors swapped are a pair. An engine is known
-by its PGN name. Engines that never met, through any chain of opponents, form separate pools, and a rating compares
+by its PGN name. An engine that won or lost every game has no finite rating; as Ordo does, it is
+fitted out and shown at the floor (`>`) or ceiling (`<`) one draw would give. Engines that never met, through any chain of opponents, form separate pools, and a rating compares
 only within its pool. Stockfish 10, at a rating typed in, fixes its pool's scale; every other pool averages 0. Played
-games are a person's, so they are left out until chosen. A forfeit counts as a loss unless a filter leaves it out.
+games are a person's, so they are left out until chosen. A forfeit counts as a loss unless a filter leaves it out. An engine's ± is against the anchor, or its pool's average;
+LOS and Head to head read the gap between two engines, from the whole fit.
 
 The browser may delete its private file system: clearing site data or losing the profile loses it. The first write
 asks the browser to keep it, and Settings shows whether it agreed. Settings also backs the data up, in the file

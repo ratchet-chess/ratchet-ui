@@ -17,6 +17,7 @@ const row = (name: string, elo: number, pool: number, extra: Partial<Row> = {}):
   los: 0.873,
   pool,
   anchor: false,
+  bound: null,
   ...extra,
 });
 const list: RatingList = {
@@ -44,6 +45,16 @@ describe('ratingText', () => {
     // a pool without the anchor is signed about its average
     expect(lines[6]).toMatch(/^1\s+a\|b\s+\+12\s/);
     expect(lines[6]).toMatch(/100$/);
+  });
+});
+
+describe('a bound', () => {
+  it('reads as Ordo marks it, with no interval', () => {
+    const one: RatingList = {
+      ...list,
+      rows: [row('sweeper', 3120.4, 0, { bound: 'floor', error: 0, los: null })],
+    };
+    expect(ratingText(one, []).split('\n')[2]).toMatch(/^1\s+sweeper\s+>3120\s+-\s/);
   });
 });
 

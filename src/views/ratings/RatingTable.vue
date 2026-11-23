@@ -5,7 +5,7 @@
  */
 import HelpTip from '../../components/HelpTip.vue';
 import type { RatingList, Row } from '../../ratings/list.ts';
-import { losText, POOL_NOTE } from '../../ratings/report.ts';
+import { boundMark, losText, POOL_NOTE } from '../../ratings/report.ts';
 import { count, signed } from '../../ui/format.ts';
 
 const props = defineProps<{ list: RatingList; rows: readonly Row[] }>();
@@ -39,9 +39,12 @@ const pct = (x: number) => (100 * x).toFixed(1);
             <span class="inline-flex items-center gap-1"
               >±
               <HelpTip side="left"
-                >Half the 95% interval of the rating, from the spread of results over color-swapped
-                pairs. Under ten pairs, or with no spread, the model's interval stands where it is
-                wider; it shows in warning color. Compare two neighbors with LOS.</HelpTip
+                >Half the 95% interval of the rating, against the anchor in its pool, else against
+                the pool's average: not of the gap between two engines. LOS, and the ± in Head to
+                head, read that gap. The interval comes from the spread of results over
+                color-swapped pairs; under ten pairs, or with no spread, the model's stands where it
+                is wider, in warning color. An engine that won or lost every game shows the floor
+                (&gt;) or ceiling (&lt;) one draw would give.</HelpTip
               ></span
             >
           </th>
@@ -96,19 +99,19 @@ const pct = (x: number) => (100 * x).toFixed(1);
                 >
               </span>
             </td>
-            <td class="num px-2 py-1 text-right">{{ rating(r, r.elo) }}</td>
+            <td class="num px-2 py-1 text-right">{{ boundMark(r) }}{{ rating(r, r.elo) }}</td>
             <td
               class="num px-2 py-1 text-right"
               :class="r.model ? 'text-warn' : 'text-dim'"
               :title="
-                r.model
-                  ? r.score === 1 || r.score === 0
-                    ? `${r.score === 1 ? 'Won' : 'Lost'} every game: the interval is the model's`
-                    : 'Too few pairs, or no spread in them: the interval is the model\'s'
-                  : undefined
+                r.bound
+                  ? `${r.bound === 'floor' ? 'Won' : 'Lost'} every game: no finite rating. Shown is the ${r.bound === 'floor' ? 'floor' : 'ceiling'} one draw would give`
+                  : r.model
+                    ? 'Too few pairs, or no spread in them: the interval is the model\'s'
+                    : undefined
               "
             >
-              {{ r.anchor ? '—' : `±${count(Math.round(r.error))}` }}
+              {{ r.anchor || r.bound ? '—' : `±${count(Math.round(r.error))}` }}
             </td>
             <td
               class="num px-2 py-1 text-right"

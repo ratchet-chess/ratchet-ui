@@ -4,6 +4,7 @@ import { computed, ref, watch } from 'vue';
 import HelpTip from '../../components/HelpTip.vue';
 import Pager from '../../components/Pager.vue';
 import type { HeadToHead } from '../../ratings/list.ts';
+import { losText } from '../../ratings/report.ts';
 import { count, signed } from '../../ui/format.ts';
 
 const props = defineProps<{ records: readonly HeadToHead[] }>();
@@ -36,10 +37,15 @@ const score = (m: HeadToHead) => ((100 * (m.wins + m.draws / 2)) / m.games).toFi
               >Elo diff
               <HelpTip side="left"
                 >The gap between the two engines' ratings in the list, which every game counted
-                sets, not a fit of these games alone.</HelpTip
+                sets, not a fit of these games alone. Its ± is half the 95% interval of that gap,
+                and LOS the likelihood that the first engine is the stronger, both from the whole
+                fit. Blank where no interval reads: an engine that won or lost every game, or one
+                with no spread in its pairs.</HelpTip
               ></span
             >
           </th>
+          <th class="th">±</th>
+          <th class="th">LOS</th>
         </tr>
       </thead>
       <tbody>
@@ -55,7 +61,11 @@ const score = (m: HeadToHead) => ((100 * (m.wins + m.draws / 2)) / m.games).toFi
           <td class="num px-2 py-1 text-right text-dim">{{ count(m.draws) }}</td>
           <td class="num px-2 py-1 text-right text-bad">{{ count(m.losses) }}</td>
           <td class="num px-2 py-1 text-right">{{ score(m) }}</td>
-          <td class="num px-2 py-1 text-right">{{ signed(m.gap, 0) }}</td>
+          <td class="num px-2 py-1 text-right">{{ m.mark }}{{ signed(m.gap, 0) }}</td>
+          <td class="num px-2 py-1 text-right text-dim">
+            {{ Number.isNaN(m.error) ? '' : `±${count(Math.round(m.error))}` }}
+          </td>
+          <td class="num px-2 py-1 text-right">{{ losText(m.los) }}</td>
         </tr>
       </tbody>
     </table>

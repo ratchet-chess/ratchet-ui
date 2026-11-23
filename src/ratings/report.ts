@@ -3,9 +3,13 @@ import type { RatingList, Row } from './list.ts';
 
 /** Ratings' list as text to paste: an aligned table, or Markdown that forums and GitHub render. */
 
+/** `>` before a floor, `<` before a ceiling, as Ordo marks an engine that won or lost every game */
+export const boundMark = (r: Row): string =>
+  r.bound === 'floor' ? '>' : r.bound === 'ceiling' ? '<' : '';
+
 /** a row's Elo: on the anchor's scale in its pool, else signed about the pool's average */
 export const eloText = (list: RatingList, r: Row): string =>
-  list.anchored && r.pool === 0 ? String(Math.round(r.elo)) : signed(r.elo, 0);
+  boundMark(r) + (list.anchored && r.pool === 0 ? String(Math.round(r.elo)) : signed(r.elo, 0));
 
 /** a likelihood of superiority in percent; above 99.95 it reads 100 */
 export const losText = (los: number | null): string =>
@@ -29,7 +33,7 @@ function cells(list: RatingList): (string[] | null)[] {
       String(n),
       r.name,
       eloText(list, r),
-      r.anchor ? '-' : String(Math.round(r.error)),
+      r.anchor || r.bound ? '-' : String(Math.round(r.error)),
       String(r.games),
       (100 * r.score).toFixed(1),
       String(r.wins),

@@ -62,7 +62,7 @@ describe('fitRatings', () => {
       }
   });
 
-  it("keeps an engine that won every game finite, with the model's interval", () => {
+  it('places an engine that won every game at the floor one draw would give, as Ordo does', () => {
     const games: FitGame[] = [];
     for (let p = 0; p < 10; p++) {
       games.push({ white: 0, black: 1, score: 1, pair: p });
@@ -72,11 +72,57 @@ describe('fitRatings', () => {
     }
     const fit = fitRatings(3, games);
     const top = rated(fit, 0);
-    expect(Number.isFinite(top.elo)).toBe(true);
-    expect(top.model).toBe(true);
-    expect(top.error).toBeGreaterThan(200);
+    expect(top.bound).toBe('floor');
+    expect(top.error).toBe(0);
+    // its 20 games against engine 1 would score 19.5 at that rating
+    const e = 1 / (1 + 10 ** (-(top.elo - rated(fit, 1).elo) / 400));
+    expect(20 * e).toBeCloseTo(19.5, 6);
     expect(fit.differenceError(0, 1)).toBeNaN();
-    expect(rated(fit, 1).model).toBe(false);
+    // the others are fitted without it, so they average 0
+    expect(rated(fit, 1).elo + rated(fit, 2).elo).toBeCloseTo(0, 6);
+  });
+
+  it('drops again an engine that a drop leaves sweeping, and places the last to leave first', () => {
+    // 0 beats 1 only; 1 beats 2 and 3 always; 2 and 3 share their games
+    const games: FitGame[] = [];
+    for (let p = 0; p < 10; p++) {
+      games.push({ white: 0, black: 1, score: 1, pair: p });
+      games.push({ white: 1, black: 2, score: 1, pair: 20 + p });
+      games.push({ white: 3, black: 1, score: 0, pair: 40 + p });
+      games.push({ white: 2, black: 3, score: p % 3 === 0 ? 1 : 0.5, pair: 60 + p });
+      games.push({ white: 3, black: 2, score: p % 4 === 0 ? 1 : 0.5, pair: 60 + p });
+    }
+    const fit = fitRatings(4, games);
+    expect(rated(fit, 1).bound).toBe('floor');
+    expect(rated(fit, 0).bound).toBe('floor');
+    expect(rated(fit, 0).elo).toBeGreaterThan(rated(fit, 1).elo);
+    expect(rated(fit, 2).bound).toBeNull();
+  });
+
+  it('keeps engines that only swept each other finite by the prior', () => {
+    const games: FitGame[] = [
+      { white: 0, black: 1, score: 1, pair: 0 },
+      { white: 1, black: 0, score: 0, pair: 0 },
+    ];
+    const fit = fitRatings(2, games);
+    expect(rated(fit, 0).bound).toBeNull();
+    expect(rated(fit, 0).model).toBe(true);
+    expect(Number.isFinite(rated(fit, 0).elo)).toBe(true);
+    expect(rated(fit, 0).elo).toBeGreaterThan(rated(fit, 1).elo);
+  });
+
+  it('never drops the anchor', () => {
+    const games: FitGame[] = [];
+    for (let p = 0; p < 10; p++) {
+      games.push({ white: 0, black: 1, score: 1, pair: p });
+      games.push({ white: 1, black: 0, score: 0, pair: p });
+      games.push({ white: 1, black: 2, score: 0.5, pair: 100 + p });
+      games.push({ white: 2, black: 1, score: p % 2 === 1 ? 1 : 0.5, pair: 100 + p });
+    }
+    const fit = fitRatings(3, games, { index: 0, rating: 3000 });
+    expect(rated(fit, 0).elo).toBe(3000);
+    expect(rated(fit, 0).bound).toBeNull();
+    expect(rated(fit, 1).model).toBe(true);
   });
 
   it("falls back to the model's interval where the pairs show no spread", () => {

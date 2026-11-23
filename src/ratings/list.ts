@@ -45,6 +45,8 @@ export interface Row {
   error: number;
   /** the interval is the model's: the engine won or lost every game */
   model: boolean;
+  /** won (`floor`) or lost (`ceiling`) every game: `elo` is the rating one draw would give */
+  bound: 'floor' | 'ceiling' | null;
   games: number;
   wins: number;
   draws: number;
@@ -71,6 +73,12 @@ export interface HeadToHead {
   losses: number;
   /** a's rating minus b's */
   gap: number;
+  /** `>` when `gap` is a floor (a won every game, or b lost every game), `<` when a ceiling */
+  mark: '' | '>' | '<';
+  /** half the 95% interval of `gap`, from the whole fit; NaN where none reads */
+  error: number;
+  /** the likelihood that a is the stronger, from the whole fit; null where no interval reads */
+  los: number | null;
 }
 
 export interface RatingList {
@@ -257,7 +265,7 @@ export function rate(
   }
   const rows = names
     .map((name, i): Row & { i: number } => {
-      const r = fit.rated[i] ?? { elo: 0, error: 0, model: true, pool: 0 };
+      const r = fit.rated[i] ?? { elo: 0, error: 0, model: true, pool: 0, bound: null };
       const t = tally.get(i) ?? { wins: 0, draws: 0, losses: 0, forfeits: 0 };
       const n = t.wins + t.draws + t.losses;
       const o = opponents[i] ?? { sum: 0, games: 0 };
@@ -267,6 +275,7 @@ export function rate(
         elo: r.elo,
         error: r.error,
         model: r.model,
+        bound: r.bound,
         games: n,
         wins: t.wins,
         draws: t.draws,
@@ -288,6 +297,14 @@ export function rate(
   });
   const nameOf = (i: number) => names[i] ?? '?';
   const records = [...between.values()].map((m): HeadToHead => {
+    const error = fit.differenceError(m.a, m.b);
+    const boundOf = (i: number) => fit.rated[i]?.bound ?? null;
+    /** the mark of hi's gap over lo: a floor above or a ceiling below makes it a floor */
+    const markOf = (hi: number, lo: number): HeadToHead['mark'] => {
+      const up = boundOf(hi) === 'floor' || boundOf(lo) === 'ceiling';
+      const down = boundOf(hi) === 'ceiling' || boundOf(lo) === 'floor';
+      return up === down ? '' : up ? '>' : '<';
+    };
     const ea = eloOf(m.a);
     const eb = eloOf(m.b);
     const played = m.wins + m.draws + m.losses;
@@ -300,6 +317,9 @@ export function rate(
           draws: m.draws,
           losses: m.losses,
           gap: ea - eb,
+          mark: markOf(m.a, m.b),
+          error,
+          los: Number.isNaN(error) ? null : likelihoodOfSuperiority(ea - eb, error),
         }
       : {
           a: nameOf(m.b),
@@ -309,6 +329,9 @@ export function rate(
           draws: m.draws,
           losses: m.wins,
           gap: eb - ea,
+          mark: markOf(m.b, m.a),
+          error,
+          los: Number.isNaN(error) ? null : likelihoodOfSuperiority(eb - ea, error),
         };
   });
   const byGames = records.toSorted((x, y) => y.games - x.games);

@@ -10,6 +10,10 @@
  *   game, played a single pair, or drew every game against its equals) falls back to the model's
  *   interval, as fit-rating.ts's `fit` does; so does every engine of a pool whose anchor is such.
  *   Below `FEW_PAIRS` pairs the wider of the two intervals stands.
+ * - An engine that won or lost every game has no finite rating. As Ordo does, it leaves the fit,
+ *   again while leaving makes another such, and comes back at the rating one draw would give: a
+ *   floor for a winner, a ceiling for a loser. Where none of a pool would stay, or the anchor is
+ *   such, the prior keeps the pool's ratings finite instead.
  * - Engines that never met, through any chain of opponents, are in separate pools. Each pool is
  *   fitted alone, and a rating compares only within its pool. The anchor fixes its own pool's scale;
  *   every other pool averages 0.
@@ -35,6 +39,11 @@ export interface Rated {
   model: boolean;
   /** the pool it was rated in; pools are numbered by games, most first */
   pool: number;
+  /**
+   * set for an engine that won (`floor`) or lost (`ceiling`) every game: its rating is the one a
+   * single draw would give, a bound on the true one, and `error` is 0
+   */
+  bound: 'floor' | 'ceiling' | null;
 }
 
 export interface Fit {
@@ -286,20 +295,24 @@ function fitPool(members: readonly number[], games: readonly FitGame[]): PoolFit
   return { r, model, sandwich: model.times(spread).times(model), flat, pairs: pairsOf };
 }
 
-/**
- * Rates `n` engines from `games`. With an anchor, the anchor's pool is on its scale; every other
- * pool, and every pool without one, averages 0.
- */
-export function fitRatings(
+/** where an engine was fitted, for the interval of a difference */
+interface Placed {
+  pool: number;
+  local: number;
+}
+
+/** fits each pool of `games`, numbering pools from `first`, into `rated` and `where` */
+function ratePools(
   n: number,
   games: readonly FitGame[],
-  anchor: { index: number; rating: number } | null = null,
-): Fit {
-  const rated: (Rated | null)[] = Array.from({ length: n }, () => null);
+  anchor: { index: number; rating: number } | null,
+  rated: (Rated | null)[],
+  where: Map<number, Placed>,
+  fits: PoolFit[],
+): number {
   let anchorPool = -1;
-  const where = new Map<number, { pool: number; local: number }>();
-  const fits: PoolFit[] = [];
-  poolsOf(n, games).forEach((members, pool) => {
+  for (const members of poolsOf(n, games)) {
+    const pool = fits.length;
     const f = fitPool(members, games);
     fits.push(f);
     const k = members.length;
@@ -335,9 +348,107 @@ export function fitRatings(
       const model = flat || (few && byModel > byPairs);
       const variance = model ? byModel : byPairs;
       const elo = held ? anchor.rating + at(f.r, i) - at(f.r, a) : at(f.r, i) - mean;
-      rated[e] = { elo, error: Z95 * Math.sqrt(Math.max(0, variance)), model, pool };
+      rated[e] = { elo, error: Z95 * Math.sqrt(Math.max(0, variance)), model, pool, bound: null };
     });
-  });
+  }
+  return anchorPool;
+}
+
+/**
+ * The engines that won or lost every game, by the round they left in: each round drops every
+ * such engine, which can leave another. The anchor never leaves.
+ */
+function sweepsOf(
+  n: number,
+  games: readonly FitGame[],
+  anchor: number | null,
+): Map<number, { round: number; bound: 'floor' | 'ceiling' }> {
+  const out = new Map<number, { round: number; bound: 'floor' | 'ceiling' }>();
+  for (let round = 0; ; round++) {
+    const points = new Float64Array(n);
+    const played = new Float64Array(n);
+    for (const g of games) {
+      if (out.has(g.white) || out.has(g.black) || g.white === g.black) continue;
+      points[g.white] = at(points, g.white) + g.score;
+      points[g.black] = at(points, g.black) + 1 - g.score;
+      played[g.white] = at(played, g.white) + 1;
+      played[g.black] = at(played, g.black) + 1;
+    }
+    let left = 0;
+    for (let i = 0; i < n; i++) {
+      const p = at(played, i);
+      if (p === 0 || i === anchor) continue;
+      const won = at(points, i);
+      if (won === p || won === 0) {
+        out.set(i, { round, bound: won === p ? 'floor' : 'ceiling' });
+        left++;
+      }
+    }
+    if (left === 0) return out;
+  }
+}
+
+/** the rating at which games against `opponents` score `target` points */
+function ratingFor(opponents: readonly number[], target: number, start: number): number {
+  let r = start;
+  for (let iter = 0; iter < 100; iter++) {
+    let f = -target;
+    let slope = 0;
+    for (const o of opponents) {
+      const e = expected(r - o);
+      f += e;
+      slope += K * e * (1 - e);
+    }
+    const step = Math.max(-400, Math.min(400, -f / slope));
+    r += step;
+    if (Math.abs(step) < 1e-9) break;
+  }
+  return r;
+}
+
+/**
+ * Rates `n` engines from `games`. With an anchor, the anchor's pool is on its scale; every other
+ * pool, and every pool without one, averages 0.
+ */
+export function fitRatings(
+  n: number,
+  games: readonly FitGame[],
+  anchor: { index: number; rating: number } | null = null,
+): Fit {
+  const rated: (Rated | null)[] = Array.from({ length: n }, () => null);
+  const where = new Map<number, Placed>();
+  const fits: PoolFit[] = [];
+  const swept = sweepsOf(n, games, anchor?.index ?? null);
+  const kept = games.filter((g) => !swept.has(g.white) && !swept.has(g.black));
+  let anchorPool = ratePools(n, kept, anchor, rated, where, fits);
+
+  // back in, the last to leave first, each against the opponents already rated in one pool
+  const unplaced: number[] = [];
+  for (const [e, s] of [...swept].toSorted((x, y) => y[1].round - x[1].round)) {
+    const byPool = new Map<number, number[]>();
+    for (const g of games) {
+      const o = g.white === e ? g.black : g.black === e ? g.white : -1;
+      const r = o >= 0 && o !== e ? rated[o] : null;
+      if (!r) continue;
+      byPool.set(r.pool, [...(byPool.get(r.pool) ?? []), r.elo]);
+    }
+    const [pool, opponents] = [...byPool].toSorted((x, y) => y[1].length - x[1].length)[0] ?? [];
+    if (pool === undefined || !opponents) {
+      unplaced.push(e);
+      continue;
+    }
+    const target = s.bound === 'floor' ? opponents.length - 0.5 : 0.5;
+    const mean = opponents.reduce((t, o) => t + o, 0) / opponents.length;
+    const elo = ratingFor(opponents, target, mean + (s.bound === 'floor' ? 400 : -400));
+    rated[e] = { elo, error: 0, model: false, pool, bound: s.bound };
+  }
+  // engines that only swept or were swept by each other: the prior keeps them finite
+  if (unplaced.length > 0) {
+    const left = new Set(unplaced);
+    const among = games.filter((g) => left.has(g.white) && left.has(g.black));
+    const pool = ratePools(n, among, anchor, rated, where, fits);
+    if (anchorPool < 0) anchorPool = pool;
+  }
   return {
     rated,
     anchorPool,
