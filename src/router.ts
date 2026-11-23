@@ -1,4 +1,5 @@
 import { createRouter, createWebHashHistory } from 'vue-router';
+import { useManager } from './stores/manager.ts';
 import BooksView from './views/BooksView.vue';
 import EnginesView from './views/EnginesView.vue';
 import GamesView from './views/GamesView.vue';
@@ -14,7 +15,7 @@ import TournamentsView from './views/TournamentsView.vue';
 export const router = createRouter({
   history: createWebHashHistory(),
   routes: [
-    { path: '/', redirect: '/jobs' },
+    { path: '/', redirect: () => (useManager().link === 'none' ? '/play' : '/jobs') },
     { path: '/jobs/:id?', component: JobsView },
     { path: '/engines', component: EnginesView },
     { path: '/play', component: PlayView },

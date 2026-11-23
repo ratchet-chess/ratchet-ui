@@ -4,17 +4,12 @@ import { sections } from '../sections.ts';
 import { useManager } from '../stores/manager.ts';
 
 const manager = useManager();
+const visible = computed(() => sections.filter((s) => !s.manager || manager.link !== 'none'));
 /** the manager's dot and word: green while its reads arrive, red when the last one failed */
 const dot = computed(() =>
   manager.link === 'connected' ? 'bg-good' : manager.link === 'unreachable' ? 'bg-bad' : 'bg-faint',
 );
-const word = computed(() =>
-  manager.link === 'none'
-    ? 'No manager'
-    : manager.link === 'unreachable'
-      ? 'Manager offline'
-      : 'Manager',
-);
+const word = computed(() => (manager.link === 'unreachable' ? 'Manager offline' : 'Manager'));
 </script>
 
 <!-- The app's sections: a row on top in a narrow window, a column at the side in a wide one. -->
@@ -27,7 +22,7 @@ const word = computed(() =>
     </span>
     <div class="flex gap-0.5 wide:flex-col wide:gap-1">
       <RouterLink
-        v-for="s in sections"
+        v-for="s in visible"
         :key="s.path"
         :to="s.path"
         :title="s.label"
@@ -40,6 +35,7 @@ const word = computed(() =>
     </div>
     <span class="flex-1" />
     <div
+      v-if="manager.link !== 'none'"
       class="flex items-center gap-2.5 text-small whitespace-nowrap text-dim wide:flex-col wide:gap-1.5 wide:text-center wide:text-label wide:whitespace-normal"
     >
       <RouterLink to="/settings" title="Settings › Manager">
