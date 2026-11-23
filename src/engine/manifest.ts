@@ -6,6 +6,8 @@ export interface ServedEngine {
   version: string | null;
   /** the build's file, in public/engines/ */
   wasm: string;
+  /** raw .wasm size in bytes; null if absent from an older manifest */
+  bytes: number | null;
   sha256: string;
   /** `<owner/repo> <tag>` for a GitHub release; `local` for a build on this machine */
   source: string;
@@ -24,14 +26,17 @@ const isRecord = (x: unknown): x is Record<string, unknown> => typeof x === 'obj
 const isText = (x: unknown): x is string => typeof x === 'string';
 const isTextOrNull = (x: unknown) => x === null || typeof x === 'string';
 
+const isNumberOrNull = (x: unknown) => x === undefined || x === null || typeof x === 'number';
+
 function isEngine(x: unknown): x is ServedEngine {
   if (!isRecord(x)) return false;
-  const { id, name, version, wasm, sha256, source, license } = x;
+  const { id, name, version, wasm, bytes, sha256, source, license } = x;
   return (
     isText(id) &&
     isText(name) &&
     isTextOrNull(version) &&
     isText(wasm) &&
+    isNumberOrNull(bytes) &&
     isText(sha256) &&
     isText(source) &&
     isTextOrNull(license)
@@ -46,5 +51,8 @@ export function parseServed(text: string): Served {
   if (!isText(host) || !Array.isArray(engines) || !engines.every(isEngine)) {
     throw new Error('engines.json is not a list of engines');
   }
-  return { host, engines };
+  return {
+    host,
+    engines: engines.map((e) => ({ ...e, bytes: typeof e.bytes === 'number' ? e.bytes : null })),
+  };
 }

@@ -29,6 +29,8 @@ export const useEngines = defineStore('engines', () => {
 
   /** the Worker URL that runs `engine` in the host */
   const workerUrl = (engine: ServedEngine) => `${enginesBase}${host.value}#${engine.wasm}`;
+  /** the direct URL of `engine`'s .wasm module */
+  const wasmUrl = (engine: ServedEngine) => `${enginesBase}${engine.wasm}`;
 
-  return { list, host, error, loaded, load, workerUrl };
+  return { list, host, error, loaded, load, workerUrl, wasmUrl };
 });
