@@ -1,21 +1,26 @@
 /**
  * What the Tourneys overview shows of the tournaments in this browser: their groups by state, the
- * archive, the notices that want a look, each run's end by its pace, and the threads the running
- * ones ask for.
+ * archive, the notices that want a look, what the queue waits for, each run's end by its pace, and
+ * the threads the running ones ask for.
  */
 import { bracket } from '../../match/director.ts';
 import { problemOf, type Problem } from '../../match/referee.ts';
 import type { GameRecord } from '../../match/summary.ts';
+import { inOrder, lacking } from '../../stores/queue.ts';
 import type { Item } from '../../stores/tournaments.ts';
 import { count, signed, spanText, whenText } from '../../ui/format.ts';
 import { label, planned, roundName } from './show.ts';
 
-export type Group = 'running' | 'stopped' | 'finished';
+export type Group = 'running' | 'queued' | 'stopped' | 'finished';
 
-/** running in a tab, this one or another; stopped, whether by a person or a closed tab; finished */
+/**
+ * running in a tab, this one or another; waiting in the queue; stopped, whether by a person or a
+ * closed tab; finished
+ */
 export function groupOf(i: Item): Group {
   if (i.elsewhere || i.state.status === 'running' || i.state.status === 'stopping')
     return 'running';
+  if (i.queued !== null) return 'queued';
   return i.ended === 'done' ? 'finished' : 'stopped';
 }
 
@@ -152,21 +157,14 @@ export interface Served {
   storage: { usage: number; quota: number } | null;
 }
 
-/** the engines and the book a resume needs that are no longer here */
-export function lacking(i: Item, served: Served): { engines: string[]; book: string } {
-  return {
-    engines: [...new Set(i.config.entrants)].filter((e) => !served.engines.has(e)),
-    book: i.config.book && !served.books.has(i.config.book) ? i.config.book : '',
-  };
-}
-
 /** the share of the storage quota past which a notice warns */
 export const STORAGE_WARN = 0.9;
 
 /**
- * The problems that want a look, for the tournaments running or stopped: an error, a run its tab
- * left, games ended by a fault, an engine or book a resume needs and no longer has; and storage
- * near its quota. A finished tournament's faults show on its row instead, so notices clear.
+ * The problems that want a look, for the tournaments running, queued or stopped: an error, a run
+ * its tab left, games ended by a fault, an engine or book a start or a resume needs and no longer
+ * has; and storage near its quota. A finished tournament's faults show on its row instead, so
+ * notices clear. The queue passes over a queued tournament that cannot start.
  */
 export function noticesOf(items: readonly Item[], served: Served): Notice[] {
   const out: Notice[] = [];
@@ -177,15 +175,16 @@ export function noticesOf(items: readonly Item[], served: Served): Notice[] {
     const note = (severity: Notice['severity'], text: string) =>
       out.push({ severity, id, where: name, text });
     if (i.state.error) note('bad', i.state.error);
-    if (group === 'stopped') {
-      if (i.ended === null) note('warn', 'Interrupted (tab closed)');
-      const { engines, book } = lacking(i, served);
+    if (group === 'stopped' && i.ended === null) note('warn', 'Interrupted (tab closed)');
+    if (group === 'stopped' || group === 'queued') {
+      const verb = group === 'stopped' ? 'Cannot resume' : 'Cannot start';
+      const { engines, book } = lacking(i.config, served);
       if (engines.length > 0)
         note(
           'bad',
-          `Cannot resume: missing ${engines.length === 1 ? 'engine' : 'engines'} ${engines.join(', ')}`,
+          `${verb}: missing ${engines.length === 1 ? 'engine' : 'engines'} ${engines.join(', ')}`,
         );
-      if (book) note('bad', `Cannot resume: missing book ${book}`);
+      if (book) note('bad', `${verb}: missing book ${book}`);
     }
     for (const [p, n] of problemsOf(i.state.games))
       note(p === 'time' ? 'warn' : 'bad', problemText(p, n));
@@ -199,6 +198,42 @@ export function noticesOf(items: readonly Item[], served: Served): Notice[] {
       text: `Storage ${Math.round((100 * s.usage) / s.quota)}% full`,
     });
   return out.toSorted((a, b) => (a.severity === b.severity ? 0 : a.severity === 'bad' ? -1 : 1));
+}
+
+// ── the queue ──────────────────────────────────────────────────────────────
+
+/** what the queue waits for, in a few words; empty when nothing is queued */
+export function queueNote(items: readonly Item[], paused: boolean): string {
+  if (!items.some((i) => groupOf(i) === 'queued')) return '';
+  const running = items.filter((i) => groupOf(i) === 'running').length;
+  if (running > 0)
+    return running === 1 ? 'starts when the run ends' : `starts when ${running} runs end`;
+  return paused ? 'waiting · paused' : 'waiting · Start now';
+}
+
+/** a queued tournament's place, and when it starts, in a few words */
+export function queuePlace(
+  i: Item,
+  items: readonly Item[],
+  paused: boolean,
+): { place: number; of: number; starts: string } {
+  const queue = inOrder(items);
+  const k = queue.indexOf(i);
+  const running = items.filter((x) => groupOf(x) === 'running').length;
+  const runs = running === 1 ? 'the run ends' : `${running} runs end`;
+  const ahead = k > 0 ? `, then ${k} queued before it` : '';
+  return {
+    place: k + 1,
+    of: queue.length,
+    starts:
+      running > 0
+        ? `after ${runs}${ahead}`
+        : paused
+          ? 'waiting · paused'
+          : k > 0
+            ? `after ${k} queued before it`
+            : 'waiting · Start now, or when a run ends done',
+  };
 }
 
 // ── pace ───────────────────────────────────────────────────────────────────

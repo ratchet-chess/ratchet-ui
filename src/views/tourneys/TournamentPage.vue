@@ -1,5 +1,8 @@
 <script setup lang="ts">
-/** One match's or tournament's page: its statistics, standings, bracket and games. */
+/**
+ * One match's or tournament's page: its statistics, standings, bracket and games; for a queued one,
+ * its place in the queue and its field.
+ */
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import HelpTip from '../../components/HelpTip.vue';
@@ -15,7 +18,8 @@ import { pointsOf, type GameRecord, type PairRecord } from '../../match/summary.
 import { useGames } from '../../stores/games.ts';
 import { collectionOf, useTournaments, type Item } from '../../stores/tournaments.ts';
 import MatchChart, { type ChartPoint } from './MatchChart.vue';
-import { signed } from '../../ui/format.ts';
+import { queuePlace } from './overview.ts';
+import { signed, whenText } from '../../ui/format.ts';
 import { formatText, label, progress, roundName, statusClass, statusText } from './show.ts';
 
 const props = defineProps<{ item: Item }>();
@@ -31,8 +35,18 @@ const bracketRounds = computed(() => {
 /** a tournament this tab may play on or delete: not done, and not played by a tab */
 const idle = (i: Item) => !tournaments.running(i.config.id) && !i.elsewhere;
 
+/** where a queued tournament stands in the queue; null once it runs */
+const queued = computed(() =>
+  props.item.queued !== null && statusText(props.item) === 'queued'
+    ? queuePlace(props.item, tournaments.items, tournaments.paused.length > 0)
+    : null,
+);
+
 async function remove(i: Item): Promise<void> {
-  if (!confirm(`Delete “${i.config.name}”? Its games stay in Games.`)) return;
+  const ask = queued.value
+    ? `Remove “${i.config.name}” from the queue? It has no games.`
+    : `Delete “${i.config.name}”? Its games stay in Games.`;
+  if (!confirm(ask)) return;
   try {
     await tournaments.remove(i.config.id);
     await router.push('/tournaments');
@@ -177,7 +191,17 @@ async function copy(): Promise<void> {
       <span class="tag" :class="statusClass(statusText(item))">{{ statusText(item) }}</span>
       <span class="flex-1" />
       <span v-if="notice" class="text-dense text-dim">{{ notice }}</span>
-      <template v-if="tournaments.running(item.config.id)">
+      <template v-if="queued">
+        <button
+          class="btn"
+          title="Start now, beside what runs"
+          @click="tournaments.startNow(item.config.id)"
+        >
+          Start now
+        </button>
+        <button class="btn" @click="remove(item)">Remove</button>
+      </template>
+      <template v-else-if="tournaments.running(item.config.id)">
         <button
           class="btn"
           :disabled="item.state.status !== 'running'"
@@ -198,7 +222,9 @@ async function copy(): Promise<void> {
         </button>
         <button class="btn" @click="remove(item)">Delete</button>
       </template>
-      <RouterLink :to="`/games/${collectionOf(item.config.id)}`" class="btn">Games</RouterLink>
+      <RouterLink v-if="!queued" :to="`/games/${collectionOf(item.config.id)}`" class="btn"
+        >Games</RouterLink
+      >
       <RouterLink
         :to="{ path: '/tournaments/new', query: { from: item.config.id } }"
         class="btn"
@@ -206,6 +232,7 @@ async function copy(): Promise<void> {
         >Clone</RouterLink
       >
       <button
+        v-if="!queued"
         class="btn"
         title="Download played games as PGN"
         :disabled="item.state.games.length === 0"
@@ -214,6 +241,7 @@ async function copy(): Promise<void> {
         PGN
       </button>
       <button
+        v-if="!queued"
         class="btn"
         :title="
           item.state.summary.match
@@ -239,7 +267,28 @@ async function copy(): Promise<void> {
     </div>
     <div v-if="item.state.error" class="mb-3 text-bad">{{ item.state.error }}</div>
 
-    <template v-if="item.state.summary.match">
+    <template v-if="queued">
+      <Panel title="Queue">
+        <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 gap-y-1 px-3 py-2.5 text-dense">
+          <dt class="text-dim">Place</dt>
+          <dd class="num">{{ queued.place }} of {{ queued.of }}</dd>
+          <dt class="text-dim">Starts</dt>
+          <dd>{{ queued.starts }}</dd>
+          <dt class="text-dim">Queued</dt>
+          <dd class="num">{{ whenText(item.config.created, Date.now()) }}</dd>
+        </dl>
+      </Panel>
+      <Panel title="Engines" :note="String(item.config.entrants.length)">
+        <ol class="num columns-2 gap-6 px-3 py-2 text-dense @3xl:columns-3">
+          <li v-for="(_, n) in item.config.entrants" :key="n">
+            <span class="text-faint">{{ n + 1 }}</span> {{ label(item, n) }}
+          </li>
+        </ol>
+      </Panel>
+      <div class="text-dense text-dim">Standings, schedule and games appear once it starts.</div>
+    </template>
+
+    <template v-else-if="item.state.summary.match">
       <MatchCards
         :llr="
           item.state.summary.match.llr !== null && item.state.summary.match.bounds
@@ -341,159 +390,166 @@ async function copy(): Promise<void> {
       </div>
     </Panel>
 
-    <Panel v-if="bracketRounds.length > 0" title="Bracket" note="points over finished pairs">
-      <div class="grid gap-3 px-3 py-2 text-dense @3xl:grid-flow-col">
-        <div v-for="(round, r) in bracketRounds" :key="r">
-          <div class="caps mb-1 text-label">
-            {{ roundName(r, bracketRounds.length) }}
-          </div>
-          <div
-            v-for="(t, k) in round"
-            :key="k"
-            class="num mb-1.5 rounded border border-line bg-panel2 px-2 py-1"
-          >
-            <div
-              v-for="(side, s) in [t.a, t.b]"
-              :key="s"
-              class="flex gap-2"
-              :class="t.winner !== null && side === t.winner ? 'text-text' : 'text-dim'"
-            >
-              <span class="flex-1 truncate">{{
-                side === null ? (t.by === 'bye' ? 'bye' : '…') : label(item, side)
-              }}</span>
-              <span v-if="t.pairs.length > 0">{{ t.points[s] }}</span>
+    <template v-if="!queued">
+      <Panel v-if="bracketRounds.length > 0" title="Bracket" note="points over finished pairs">
+        <div class="grid gap-3 px-3 py-2 text-dense @3xl:grid-flow-col">
+          <div v-for="(round, r) in bracketRounds" :key="r">
+            <div class="caps mb-1 text-label">
+              {{ roundName(r, bracketRounds.length) }}
             </div>
-            <div v-if="t.by === 'seed'" class="text-small text-faint">
-              tied after {{ t.done }} pairs: the higher seed goes through
+            <div
+              v-for="(t, k) in round"
+              :key="k"
+              class="num mb-1.5 rounded border border-line bg-panel2 px-2 py-1"
+            >
+              <div
+                v-for="(side, s) in [t.a, t.b]"
+                :key="s"
+                class="flex gap-2"
+                :class="t.winner !== null && side === t.winner ? 'text-text' : 'text-dim'"
+              >
+                <span class="flex-1 truncate">{{
+                  side === null ? (t.by === 'bye' ? 'bye' : '…') : label(item, side)
+                }}</span>
+                <span v-if="t.pairs.length > 0">{{ t.points[s] }}</span>
+              </div>
+              <div v-if="t.by === 'seed'" class="text-small text-faint">
+                tied after {{ t.done }} pairs: the higher seed goes through
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    </Panel>
+      </Panel>
 
-    <Panel
-      v-if="
-        (item.config.format.kind === 'roundrobin' || item.config.format.kind === 'swiss') &&
-        item.config.entrants.length <= 12
-      "
-      title="Crosstable"
-      note="row vs column · standings order"
-    >
-      <div class="overflow-x-auto">
-        <table class="border-collapse text-dense">
-          <thead>
-            <tr class="text-small text-dim">
-              <th class="px-2 py-0.5 font-medium" />
-              <th class="px-2 py-0.5" />
-              <th v-for="(_, k) in crossOrder" :key="k" class="num px-2 py-0.5 font-medium">
-                {{ k + 1 }}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="(i, n) in crossOrder" :key="i">
-              <td class="num px-2 py-0.5 text-right text-faint">{{ n + 1 }}</td>
-              <td class="num px-2 py-0.5 whitespace-nowrap text-dim">{{ label(item, i) }}</td>
-              <td
-                v-for="j in crossOrder"
-                :key="j"
-                class="num px-2 py-0.5 text-center"
-                :class="i === j ? 'text-faint' : ''"
+      <Panel
+        v-if="
+          (item.config.format.kind === 'roundrobin' || item.config.format.kind === 'swiss') &&
+          item.config.entrants.length <= 12
+        "
+        title="Crosstable"
+        note="row vs column · standings order"
+      >
+        <div class="overflow-x-auto">
+          <table class="border-collapse text-dense">
+            <thead>
+              <tr class="text-small text-dim">
+                <th class="px-2 py-0.5 font-medium" />
+                <th class="px-2 py-0.5" />
+                <th v-for="(_, k) in crossOrder" :key="k" class="num px-2 py-0.5 font-medium">
+                  {{ k + 1 }}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(i, n) in crossOrder" :key="i">
+                <td class="num px-2 py-0.5 text-right text-faint">
+                  {{ n + 1 }}
+                </td>
+                <td class="num px-2 py-0.5 whitespace-nowrap text-dim">
+                  {{ label(item, i) }}
+                </td>
+                <td
+                  v-for="j in crossOrder"
+                  :key="j"
+                  class="num px-2 py-0.5 text-center"
+                  :class="i === j ? 'text-faint' : ''"
+                >
+                  {{
+                    i === j
+                      ? '·'
+                      : (item.state.summary.games[i]?.[j] ?? 0)
+                        ? `${item.state.summary.points[i]?.[j] ?? 0}/${item.state.summary.games[i]?.[j]}`
+                        : ''
+                  }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+
+      <Panel
+        title="Schedule"
+        :note="`${item.state.pairs.length} ${per === 2 ? 'pairs' : 'games'}${unissued === null ? ' · dynamic pairing' : unissued > 0 ? ` · ${unissued} remaining` : ''}`"
+      >
+        <div class="px-3 py-1.5 text-dense">
+          <button class="text-dense text-dim hover:text-text" @click="scheduleOpen = !scheduleOpen">
+            {{
+              scheduleOpen
+                ? `▾ Hide ${per === 2 ? 'pairs' : 'games'}`
+                : `▸ Show ${per === 2 ? 'pairs' : 'games'} (newest first)`
+            }}
+          </button>
+          <template v-if="scheduleOpen">
+            <div
+              v-for="(p, k) in scheduleRows"
+              :key="p.pair"
+              class="num grid grid-cols-[3rem_minmax(0,1.3fr)_minmax(0,1fr)_7rem] gap-2 py-0.5"
+            >
+              <div
+                v-if="byRound && (k === 0 || scheduleRows[k - 1]?.round !== p.round)"
+                class="caps col-span-4 mt-1.5 text-label"
               >
                 {{
-                  i === j
-                    ? '·'
-                    : (item.state.summary.games[i]?.[j] ?? 0)
-                      ? `${item.state.summary.points[i]?.[j] ?? 0}/${item.state.summary.games[i]?.[j]}`
-                      : ''
+                  item.config.format.kind === 'knockout'
+                    ? roundName(p.round, bracketRounds.length)
+                    : `round ${p.round + 1}`
                 }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </Panel>
-
-    <Panel
-      title="Schedule"
-      :note="`${item.state.pairs.length} ${per === 2 ? 'pairs' : 'games'}${unissued === null ? ' · dynamic pairing' : unissued > 0 ? ` · ${unissued} remaining` : ''}`"
-    >
-      <div class="px-3 py-1.5 text-dense">
-        <button class="text-dense text-dim hover:text-text" @click="scheduleOpen = !scheduleOpen">
-          {{
-            scheduleOpen
-              ? `▾ Hide ${per === 2 ? 'pairs' : 'games'}`
-              : `▸ Show ${per === 2 ? 'pairs' : 'games'} (newest first)`
-          }}
-        </button>
-        <template v-if="scheduleOpen">
-          <div
-            v-for="(p, k) in scheduleRows"
-            :key="p.pair"
-            class="num grid grid-cols-[3rem_minmax(0,1.3fr)_minmax(0,1fr)_7rem] gap-2 py-0.5"
-          >
-            <div
-              v-if="byRound && (k === 0 || scheduleRows[k - 1]?.round !== p.round)"
-              class="caps col-span-4 mt-1.5 text-label"
-            >
-              {{
-                item.config.format.kind === 'knockout'
-                  ? roundName(p.round, bracketRounds.length)
-                  : `round ${p.round + 1}`
-              }}
+              </div>
+              <span class="text-faint">{{ p.pair + 1 }}</span>
+              <span class="truncate"
+                >{{ label(item, p.a) }}
+                <template v-if="p.b !== BYE">
+                  <span class="text-dim">–</span>
+                  {{ label(item, p.b) }}</template
+                ></span
+              >
+              <span class="truncate text-dim" :title="p.opening">{{
+                p.b === BYE ? '' : p.opening || 'start position'
+              }}</span>
+              <span class="text-right text-dim">{{ pairState(p) }}</span>
             </div>
-            <span class="text-faint">{{ p.pair + 1 }}</span>
-            <span class="truncate"
-              >{{ label(item, p.a) }}
-              <template v-if="p.b !== BYE">
-                <span class="text-dim">–</span> {{ label(item, p.b) }}</template
-              ></span
-            >
-            <span class="truncate text-dim" :title="p.opening">{{
-              p.b === BYE ? '' : p.opening || 'start position'
-            }}</span>
-            <span class="text-right text-dim">{{ pairState(p) }}</span>
-          </div>
-          <Pager v-model="schedulePage" :pages="schedulePages" class="mt-1.5" />
-        </template>
-      </div>
-    </Panel>
-
-    <Panel
-      v-if="item.state.live.length > 0"
-      title="Playing"
-      :note="`${item.state.live.length} game${item.state.live.length === 1 ? '' : 's'}`"
-    >
-      <div class="num max-h-60 overflow-auto px-3 py-1.5 text-dense">
-        <div v-for="g in item.state.live" :key="`${g.pair}.${g.game}`" class="flex gap-2 py-0.5">
-          <span class="w-14 text-faint">{{ number(g) }}</span>
-          <span class="flex-1 truncate"
-            >{{ label(item, g.white) }} <span class="text-dim">vs</span>
-            {{ label(item, g.black) }}</span
-          >
-          <span class="text-dim">{{ g.plies }} plies {{ g.last }}</span>
+            <Pager v-model="schedulePage" :pages="schedulePages" class="mt-1.5" />
+          </template>
         </div>
-      </div>
-    </Panel>
+      </Panel>
 
-    <Panel title="Recent games" note="newest first · click to open">
-      <div class="num px-1.5 py-1 text-dense">
-        <button
-          v-for="g in recent"
-          :key="`${g.pair}.${g.game}`"
-          class="grid w-full grid-cols-[3rem_minmax(0,1.2fr)_4.5rem_minmax(0,1fr)] gap-2 rounded px-1.5 py-0.5 text-left hover:bg-hover"
-          @click="openGame(g)"
-        >
-          <span class="text-faint">{{ number(g) }}</span>
-          <span class="truncate"
-            >{{ label(item, g.white) }} <span class="text-dim">vs</span>
-            {{ label(item, g.black) }}</span
+      <Panel
+        v-if="item.state.live.length > 0"
+        title="Playing"
+        :note="`${item.state.live.length} game${item.state.live.length === 1 ? '' : 's'}`"
+      >
+        <div class="num max-h-60 overflow-auto px-3 py-1.5 text-dense">
+          <div v-for="g in item.state.live" :key="`${g.pair}.${g.game}`" class="flex gap-2 py-0.5">
+            <span class="w-14 text-faint">{{ number(g) }}</span>
+            <span class="flex-1 truncate"
+              >{{ label(item, g.white) }} <span class="text-dim">vs</span>
+              {{ label(item, g.black) }}</span
+            >
+            <span class="text-dim">{{ g.plies }} plies {{ g.last }}</span>
+          </div>
+        </div>
+      </Panel>
+
+      <Panel title="Recent games" note="newest first · click to open">
+        <div class="num px-1.5 py-1 text-dense">
+          <button
+            v-for="g in recent"
+            :key="`${g.pair}.${g.game}`"
+            class="grid w-full grid-cols-[3rem_minmax(0,1.2fr)_4.5rem_minmax(0,1fr)] gap-2 rounded px-1.5 py-0.5 text-left hover:bg-hover"
+            @click="openGame(g)"
           >
-          <span class="text-right">{{ g.result }}</span>
-          <span class="truncate text-dim" :title="g.reason">{{ g.reason }}</span>
-        </button>
-        <div v-if="recent.length === 0" class="text-faint">none yet</div>
-      </div>
-    </Panel>
+            <span class="text-faint">{{ number(g) }}</span>
+            <span class="truncate"
+              >{{ label(item, g.white) }} <span class="text-dim">vs</span>
+              {{ label(item, g.black) }}</span
+            >
+            <span class="text-right">{{ g.result }}</span>
+            <span class="truncate text-dim" :title="g.reason">{{ g.reason }}</span>
+          </button>
+          <div v-if="recent.length === 0" class="text-faint">none yet</div>
+        </div>
+      </Panel>
+    </template>
   </div>
 </template>

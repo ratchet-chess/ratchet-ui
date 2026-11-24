@@ -47,15 +47,23 @@ Each tournament is a folder in the browser's private file system:
 
 - `config.json`, its setup;
 - `pairs.jsonl` and `games.jsonl`, one JSON line per pair issued and per game finished;
-- `end.json`, once it ends.
+- `end.json`, once it ends;
+- `queued.json`, while it waits in the queue.
 
 Its games' PGN goes to a collection in Games, which stays when the tournament is deleted. Stop now ends
 the games in play, and they do not count. Resume plays the unfinished games of the issued pairs, then continues. One
 tab at a time plays a tournament.
 
-With none selected, Tourneys shows an overview: tournaments running, stopped and finished, and notices of what wants
-a look. A notice is about a run its tab left, games that ended abnormally (a time loss, an illegal move, no move given or an
-engine failure), an engine or book a resume needs, or storage near its quota. Finished tournaments move into a monthly
+Add to queue puts a setup at the end of the queue. The queue starts its first tournament that can start when a
+tournament ends done and none runs in any tab. A tournament added while nothing runs starts at once. It does not start after a stop or
+an error, or by itself when the page loads, so after a reload it waits for a resumed run to end done or for Start now. A
+queued tournament that lacks an engine or its book stays queued, and the queue passes it over. Pause all stops every
+run in this tab, letting games in play finish, and Resume all resumes them. Another tab sees the queue change on a
+reload.
+
+With none selected, Tourneys shows an overview: tournaments running, queued, stopped and finished, and notices of what
+wants a look. A notice is about a run its tab left, games that ended abnormally (a time loss, an illegal move, no move
+given or an engine failure), an engine or book a start or a resume needs, or storage near its quota. Finished tournaments move into a monthly
 archive 30 days after their end. A run's time left is timed by its pace in this tab.
 
 A tournament's standings rank by points, then by Buchholz in a Swiss, then by Sonneborn-Berger, then by head to head

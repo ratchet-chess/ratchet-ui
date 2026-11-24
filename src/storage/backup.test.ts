@@ -109,6 +109,19 @@ describe('items', () => {
     expect(c.skipped).toEqual(['user-books/stray.pgn: not in user-books/list.json']);
   });
 
+  it('carries a queued tournament with its queue file, and reads it as queued', async () => {
+    expect(inLayout('tournaments/q/queued.json', false)).toBe(true);
+    const c = await contentsOf(
+      files({
+        'tournaments/q/config.json': JSON.stringify(config('q')),
+        'tournaments/q/queued.json': '{"order":2}',
+      }),
+    );
+    const t = c.items.get('tournament:q');
+    expect(t?.files.has('tournaments/q/queued.json')).toBe(true);
+    expect(t?.facts).toBe('0 games · queued');
+  });
+
   it('skips a tournament whose config does not read', async () => {
     const c = await contentsOf(files({ 'tournaments/x/config.json': '{"id":"y"}' }));
     expect(c.items.size).toBe(0);

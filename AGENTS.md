@@ -11,8 +11,8 @@ The rows for **release**, **own engine**, **WASI build** and **condition** quote
 | **release**      | one program as it stood at one dated version or event; the unit of the inventory and of `engines/`                                                             | exhibit, snapshot, edition, version |
 | **own engine**   | Ratchet's own program, `engines/ratchet/`: Ratchet's code on the core, with no original                                                                        | release, variant                    |
 | **WASI build**   | a WASI preview-1 command module that speaks UCI on stdin and stdout, as UCI over WASI states; a release's is `build/wasi/<release>.wasm`                       |                                     |
-| **job**          | the queue's unit of submitted work, as `tools/queue.ts status` lists it                                                                                        |                                     |
-| **condition**    | a host's one word in the queue's `status` (open, closed, allocated, retiring, drained, silent), with its reason                                                | state                               |
+| **job**          | the manager's queue's unit of submitted work, as `tools/queue.ts status` lists it                                                                              |                                     |
+| **condition**    | a host's one word in the manager's queue's `status` (open, closed, allocated, retiring, drained, silent), with its reason                                      | state                               |
 | **package**      | one WASI build's distribution files from Ratchet's `tools/package.ts`: the WASI build, its browser Worker and `SHA256SUMS`                                     |                                     |
 | **manifest**     | `engines.json`: the maintained list of engines, each a WASI build from a GitHub release, pinned by sha256                                                      |                                     |
 | **manager view** | the sections that read a ratchet-bench manager: Jobs and Hosts                                                                                                 |                                     |
@@ -21,6 +21,7 @@ The rows for **release**, **own engine**, **WASI build** and **condition** quote
 | **pair**         | two games on one opening, colors swapped; a match's statistics count pairs. A match, a round robin or a gauntlet may play one game an opening instead          |                                     |
 | **bye**          | a Swiss round an engine sits out; it scores one point                                                                                                          |                                     |
 | **template**     | a setup saved under a name in this browser; a New may start from one                                                                                           |                                     |
+| **queue**        | the tournaments in this browser waiting their turn, in order; the manager's queue is ratchet-bench's, and holds jobs                                           |                                     |
 | **pool**         | engines rated on one scale: every two are linked through a chain of games. A rating compares only within its pool, and the anchor fixes its own pool's scale   | group, component                    |
 
 ### UI wording and casing

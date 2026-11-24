@@ -106,6 +106,7 @@ const selected = ref(1);
             <button class="btn" disabled>disabled</button>
             <button class="btn-sm">btn-sm</button>
             <button class="btn-primary">btn-primary</button>
+            <button class="btn-secondary">btn-secondary</button>
             <a class="text-dense text-accent hover:underline">a link ›</a>
           </div>
           <div class="flex flex-wrap items-center gap-2">

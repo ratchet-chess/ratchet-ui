@@ -10,7 +10,14 @@ import { archived, groupOf, type Group } from './tourneys/overview.ts';
 import TournamentOverview from './tourneys/TournamentOverview.vue';
 import TournamentPage from './tourneys/TournamentPage.vue';
 import TournamentSetup from './tourneys/TournamentSetup.vue';
-import { formatShort, pct, progressShort, statusClass, statusText } from './tourneys/show.ts';
+import {
+  formatShort,
+  pct,
+  plannedText,
+  progressShort,
+  statusClass,
+  statusText,
+} from './tourneys/show.ts';
 
 const tournaments = useTournaments();
 const books = useBooks();
@@ -33,23 +40,57 @@ const item = computed<Item | undefined>(() =>
 /** the list beside a tournament: by state, the archive left to the overview */
 const GROUPS: [Group, string][] = [
   ['running', 'Running'],
+  ['queued', 'Queued'],
   ['stopped', 'Stopped'],
   ['finished', 'Finished'],
 ];
+/** the queued tournaments the list shows, in the queue's order; the overview shows them all */
+const QUEUED_SHOWN = 10;
 const listed = computed(() => {
   const now = Date.now();
   const shown = tournaments.items.filter(
     (i) => !archived(i, now) || i.config.id === selected.value,
   );
+  const queued = tournaments.queue.filter((i) => groupOf(i) === 'queued');
+  const queuedShown = queued.filter((i, k) => k < QUEUED_SHOWN || i.config.id === selected.value);
   return {
-    groups: GROUPS.map(([g, name]) => ({ g, name, items: shown.filter((i) => groupOf(i) === g) })),
+    groups: GROUPS.map(([g, name]) => ({
+      g,
+      name,
+      count: g === 'queued' ? queued.length : undefined,
+      items: g === 'queued' ? queuedShown : shown.filter((i) => groupOf(i) === g),
+    })),
+    queuedMore: queued.length > queuedShown.length ? queued.length : 0,
     archived: tournaments.items.length - shown.length,
   };
+});
+
+/** Pause all while a run in this tab plays; Resume all once the runs it stopped have stopped */
+const pauseAction = computed<'pause' | 'resume' | ''>(() => {
+  if (tournaments.items.some((i) => !i.elsewhere && i.state.status === 'running')) return 'pause';
+  const paused = tournaments.items.filter((i) => tournaments.paused.includes(i.config.id));
+  return paused.some((i) => i.state.status === 'stopped' && i.ended !== 'done') ? 'resume' : '';
 });
 </script>
 
 <template>
   <PageHeader title="Tourneys" sub="matches and tournaments in browser">
+    <button
+      v-if="pauseAction === 'pause'"
+      class="btn"
+      title="Stop every run in this tab; games in play finish. The queue waits."
+      @click="tournaments.pauseAll()"
+    >
+      Pause all
+    </button>
+    <button
+      v-else-if="pauseAction === 'resume'"
+      class="btn"
+      title="Resume the runs Pause all stopped"
+      @click="tournaments.resumeAll()"
+    >
+      Resume all
+    </button>
     <RouterLink to="/tournaments/new" class="btn" @click="fresh++">New…</RouterLink>
   </PageHeader>
   <div v-if="tournaments.error" class="mb-3 text-bad">{{ tournaments.error }}</div>
@@ -64,7 +105,7 @@ const listed = computed(() => {
             class="border-b border-line bg-panel2 px-3 py-1 text-label tracking-widest text-dim uppercase"
           >
             {{ group.name }}
-            <span class="tracking-normal text-faint">{{ group.items.length }}</span>
+            <span class="tracking-normal text-faint">{{ group.count ?? group.items.length }}</span>
           </div>
           <div
             v-for="i in group.items"
@@ -81,10 +122,22 @@ const listed = computed(() => {
               <span class="min-w-0 flex-1 truncate"
                 >{{ formatShort(i.config.format) }} · {{ i.config.control }}</span
               >
-              <span class="shrink-0">{{ progressShort(i) }}</span>
+              <span class="shrink-0">{{
+                group.g === 'queued' ? plannedText(i) : progressShort(i)
+              }}</span>
             </div>
-            <ProgressBar class="mt-1" :parts="[{ share: pct(i), tone: 'accent' }]" />
+            <ProgressBar
+              v-if="group.g !== 'queued'"
+              class="mt-1"
+              :parts="[{ share: pct(i), tone: 'accent' }]"
+            />
           </div>
+          <RouterLink
+            v-if="group.g === 'queued' && listed.queuedMore > 0"
+            :to="{ path: '/tournaments', query: { show: 'queued' } }"
+            class="block border-b border-row px-3 py-2 text-dense text-dim hover:text-text"
+            >All {{ listed.queuedMore }} queued ›</RouterLink
+          >
         </template>
         <RouterLink
           v-if="listed.archived > 0"

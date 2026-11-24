@@ -18,6 +18,7 @@ import { useTournaments } from '../../stores/tournaments.ts';
 import ControlPicker from './ControlPicker.vue';
 import EngineCombo from './EngineCombo.vue';
 import EnginePicker from './EnginePicker.vue';
+import { groupOf } from './overview.ts';
 import { cloneName } from './show.ts';
 
 const tournaments = useTournaments();
@@ -283,17 +284,38 @@ function deleteTemplate(): void {
   template.value = '';
 }
 
+/** the form as a new tournament, with its own id and seed */
+const newConfig = (): TournamentConfig => ({
+  ...setup.value,
+  id: crypto.randomUUID(),
+  name: name.value.trim() || defaultName.value,
+  created: new Date().toISOString(),
+  seed: Math.floor(Math.random() * 2 ** 31),
+});
+
 async function startNew(): Promise<void> {
-  const config: TournamentConfig = {
-    ...setup.value,
-    id: crypto.randomUUID(),
-    name: name.value.trim() || defaultName.value,
-    created: new Date().toISOString(),
-    seed: Math.floor(Math.random() * 2 ** 31),
-  };
+  const config = newConfig();
   await tournaments.create(config);
   await router.push(`/tournaments/${config.id}`);
 }
+
+/** the form as a new tournament at the queue's end; it starts at once when nothing runs */
+async function queueNew(): Promise<void> {
+  const config = newConfig();
+  await tournaments.enqueue(config);
+  await router.push(`/tournaments/${config.id}`);
+}
+
+/** where Add to queue puts the setup, and whether it starts at once */
+const queueHint = computed(() => {
+  const running = tournaments.items.filter((i) => groupOf(i) === 'running').length;
+  const place = tournaments.queue.filter((i) => groupOf(i) === 'queued').length + 1;
+  if (running > 0)
+    return `#${place} in queue · starts after ${running === 1 ? 'the run ends' : `${running} runs end`}`;
+  return tournaments.paused.length > 0
+    ? `#${place} in queue · paused`
+    : 'Nothing runs: it starts now';
+});
 
 // ── the summary ────────────────────────────────────────────────────────────
 const formatSummary = computed(() => {
@@ -625,6 +647,14 @@ const terse = 'text-dense text-dim';
         >
           Start
         </button>
+        <button
+          class="btn-secondary mt-1.5 w-full py-2.5"
+          :disabled="!canStart || blocked !== ''"
+          @click="queueNew"
+        >
+          Add to queue
+        </button>
+        <div v-if="!blocked" class="mt-1.5 text-small text-dim">{{ queueHint }}</div>
         <div v-if="blocked" class="mt-2 text-dense text-warn">{{ blocked }}</div>
       </aside>
     </div>

@@ -73,11 +73,20 @@ export function progressShort(i: Item): string {
     : `${n}/${count(planned(i))}`;
 }
 
+/** the games a tournament plays, marked when it may play fewer (an SPRT) or more (a knockout) */
+export function plannedText(i: Item): string {
+  const f = i.config.format;
+  const bound = f.kind === 'match' && f.sprt ? '≤ ' : f.kind === 'knockout' ? '≥ ' : '';
+  return `${bound}${count(planned(i))}`;
+}
+
 export const pct = (i: Item): number =>
   i.ended === 'done' ? 100 : Math.min(100, (100 * i.state.games.length) / Math.max(1, planned(i)));
 
 export function statusText(i: Item): string {
   if (i.elsewhere) return 'in another tab';
+  if (i.queued !== null && i.state.status !== 'running' && i.state.status !== 'stopping')
+    return 'queued';
   if (i.state.status === 'running') return 'running';
   if (i.state.status === 'stopping') return 'stopping';
   if (i.ended === 'done') return i.state.summary.match?.verdict ?? 'done';

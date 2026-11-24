@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
  * Tourneys when no tournament is selected: the tournaments by state, behind tabs with counts; the
- * notices that want a look; a card per run; the finished ones, then the archive by month, folded.
+ * notices that want a look; a card per run; the queue, in its order; the finished ones, then the
+ * archive by month, folded.
  * The tab and the open month are in the route's query, so Back returns to them.
  */
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
@@ -15,6 +16,7 @@ import Tabs from '../../components/Tabs.vue';
 import FinishedRow from './FinishedRow.vue';
 import { useBooks } from '../../stores/books.ts';
 import { useEngines } from '../../stores/engines.ts';
+import { lacking } from '../../stores/queue.ts';
 import { useTournaments, type Item } from '../../stores/tournaments.ts';
 import {
   ARCHIVE_DAYS,
@@ -23,18 +25,25 @@ import {
   etaOf,
   etaText,
   groupOf,
-  lacking,
   monthName,
   noticesOf,
   problemsLine,
   problemTotal,
+  queueNote,
   standingText,
   threadBudget,
   type Group,
   type Served,
 } from './overview.ts';
 import { count } from '../../ui/format.ts';
-import { formatShort, planned, progressShort, statusClass, statusText } from './show.ts';
+import {
+  formatShort,
+  planned,
+  plannedText,
+  progressShort,
+  statusClass,
+  statusText,
+} from './show.ts';
 
 const tournaments = useTournaments();
 const engines = useEngines();
@@ -54,6 +63,7 @@ const query = (k: string) => (typeof route.query[k] === 'string' ? route.query[k
 const TABS: { key: Group | ''; name: string }[] = [
   { key: '', name: 'All' },
   { key: 'running', name: 'Running' },
+  { key: 'queued', name: 'Queued' },
   { key: 'stopped', name: 'Stopped' },
   { key: 'finished', name: 'Finished' },
 ];
@@ -69,8 +79,14 @@ function go(q: Record<string, string>): void {
 
 const items = computed(() => tournaments.items);
 const byGroup = computed(() => {
-  const out: Record<Group, Item[]> = { running: [], stopped: [], finished: [] };
+  const out: Record<Group, Item[]> = {
+    running: [],
+    queued: [],
+    stopped: [],
+    finished: [],
+  };
   for (const i of items.value) out[groupOf(i)].push(i);
+  out.queued = tournaments.queue.filter((i) => groupOf(i) === 'queued');
   return out;
 });
 const tabs = computed(() =>
@@ -139,7 +155,7 @@ const llrOf = (m: { llr: number | null; bounds: { lower: number; upper: number }
     ? { value: m.llr, lower: m.bounds.lower, upper: m.bounds.upper }
     : null;
 const blocked = (i: Item) => {
-  const l = lacking(i, served.value);
+  const l = lacking(i.config, served.value);
   return l.engines.length > 0 || l.book !== '';
 };
 async function resume(i: Item): Promise<void> {
@@ -147,6 +163,32 @@ async function resume(i: Item): Promise<void> {
 }
 
 const rowLine = 'num mt-0.5 flex gap-2 text-small text-dim';
+
+// ── the queue ─────────────────────────────────────────────────────────────
+const queuedPage = ref(0);
+const queuedPages = computed(() => Math.max(1, Math.ceil(byGroup.value.queued.length / PAGE)));
+const queuedRows = computed(() =>
+  byGroup.value.queued.slice(queuedPage.value * PAGE, (queuedPage.value + 1) * PAGE),
+);
+/** a row's place in the whole queue, from its place on the page */
+const placeOf = (k: number) => queuedPage.value * PAGE + k;
+const dragging = ref<number | null>(null);
+function drop(to: number): void {
+  const from = dragging.value;
+  dragging.value = null;
+  const i = from === null ? undefined : byGroup.value.queued[from];
+  if (i) void tournaments.move(i.config.id, to);
+}
+async function removeQueued(i: Item): Promise<void> {
+  if (!confirm(`Remove “${i.config.name}” from the queue? It has no games.`)) return;
+  try {
+    await tournaments.remove(i.config.id);
+  } catch (e) {
+    i.state.error = `Remove failed: ${e instanceof Error ? e.message : String(e)}`;
+  }
+}
+const pausedHere = computed(() => tournaments.paused.length > 0);
+const icon = 'btn-sm w-[21px] px-0';
 </script>
 
 <template>
@@ -228,6 +270,93 @@ const rowLine = 'num mt-0.5 flex gap-2 text-small text-dim';
         </div>
         <div v-if="byGroup.running.length === 0" class="px-1 py-1 text-dim">None running.</div>
       </div>
+    </Panel>
+
+    <!-- ── queued ──────────────────────────────────────────────────────── -->
+    <Panel
+      v-if="shows('queued') && (byGroup.queued.length > 0 || tab === 'queued')"
+      title="Queued"
+      :note="
+        byGroup.queued.length > 0
+          ? `${byGroup.queued.length} · ${queueNote(items, pausedHere)}`
+          : undefined
+      "
+    >
+      <div
+        v-for="(i, k) in queuedRows"
+        :key="i.config.id"
+        draggable="true"
+        class="row px-3 py-2"
+        :class="dragging === placeOf(k) ? 'opacity-40' : ''"
+        @click="open(i)"
+        @dragstart="dragging = placeOf(k)"
+        @dragover.prevent
+        @drop.prevent="drop(placeOf(k))"
+        @dragend="dragging = null"
+      >
+        <div class="flex items-baseline gap-2">
+          <span class="cursor-grab text-small text-faint" title="Drag to reorder">⠿</span>
+          <span class="num w-5 shrink-0 text-right text-small text-faint">{{
+            placeOf(k) + 1
+          }}</span>
+          <span class="min-w-0 flex-1 truncate">{{ i.config.name }}</span>
+          <span v-if="blocked(i)" class="tag tone-bad" title="Missing engine or book (see Notices)"
+            >cannot start</span
+          >
+          <span class="flex shrink-0 gap-0.5" @click.stop>
+            <button
+              :class="icon"
+              title="Move to the top"
+              :disabled="placeOf(k) === 0"
+              @click="tournaments.move(i.config.id, 0)"
+            >
+              ⤒
+            </button>
+            <button
+              :class="icon"
+              title="Move up"
+              :disabled="placeOf(k) === 0"
+              @click="tournaments.move(i.config.id, placeOf(k) - 1)"
+            >
+              ↑
+            </button>
+            <button
+              :class="icon"
+              title="Move down"
+              :disabled="placeOf(k) === byGroup.queued.length - 1"
+              @click="tournaments.move(i.config.id, placeOf(k) + 1)"
+            >
+              ↓
+            </button>
+            <button
+              class="btn-sm"
+              :disabled="blocked(i)"
+              :title="
+                blocked(i) ? 'Missing engine or book (see Notices)' : 'Start now, beside what runs'
+              "
+              @click="tournaments.startNow(i.config.id)"
+            >
+              Start now
+            </button>
+            <button :class="icon" title="Remove from the queue" @click="removeQueued(i)">✕</button>
+          </span>
+        </div>
+        <div :class="rowLine" class="pl-10">
+          <span class="min-w-0 truncate"
+            >{{ formatShort(i.config.format) }} · {{ i.config.control }} ·
+            {{ i.config.entrants.length }} engines · {{ i.config.concurrency }} concurrent</span
+          >
+          <span class="flex-1" />
+          <span class="shrink-0">{{ plannedText(i) }} games</span>
+        </div>
+      </div>
+      <div v-if="byGroup.queued.length === 0" class="px-3 py-2 text-dim">None queued.</div>
+      <Pager
+        v-if="queuedPages > 1"
+        v-model="queuedPage"
+        :pages="queuedPages"
+        class="border-t border-line px-3 py-1.5"
+      />
     </Panel>
 
     <!-- ── stopped ─────────────────────────────────────────────────────── -->

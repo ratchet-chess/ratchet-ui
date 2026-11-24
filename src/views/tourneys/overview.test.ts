@@ -11,6 +11,8 @@ import {
   groupOf,
   noticesOf,
   problemsOf,
+  queueNote,
+  queuePlace,
   standingText,
   threadBudget,
   type Served,
@@ -19,7 +21,9 @@ import {
 const NOW = Date.parse('2026-11-18T12:00:00Z');
 
 function item(
-  over: Partial<Omit<Item, 'config'>> & { config?: Partial<TournamentConfig> } = {},
+  over: Partial<Omit<Item, 'config'>> & {
+    config?: Partial<TournamentConfig>;
+  } = {},
 ): Item {
   const config: TournamentConfig = {
     id: 'a',
@@ -41,6 +45,7 @@ function item(
     elsewhere: false,
     endedAt: '2026-11-18T09:00:00Z',
     since: null,
+    queued: null,
     ...over,
     config,
   };
@@ -67,6 +72,43 @@ describe('the overview', () => {
     expect(groupOf(item({ ended: null }))).toBe('stopped');
     expect(groupOf(item({ ended: 'stopped' }))).toBe('stopped');
     expect(groupOf(item({ ended: 'done' }))).toBe('finished');
+  });
+
+  it('groups a queued tournament as queued until it runs', () => {
+    expect(groupOf(item({ ended: null, queued: 3 }))).toBe('queued');
+    const started = item({ ended: null, queued: 3 });
+    started.state.status = 'running';
+    expect(groupOf(started)).toBe('running');
+  });
+
+  it('says what the queue waits for, and where a queued tournament stands in it', () => {
+    const run = item({ config: { id: 'r' } });
+    run.state.status = 'running';
+    const q1 = item({ ended: null, queued: 1, config: { id: 'q1' } });
+    const q2 = item({ ended: null, queued: 2, config: { id: 'q2' } });
+    expect(queueNote([run, q1, q2], false)).toBe('starts when the run ends');
+    expect(queuePlace(q2, [run, q1, q2], false)).toEqual({
+      place: 2,
+      of: 2,
+      starts: 'after the run ends, then 1 queued before it',
+    });
+    expect(queueNote([q1, q2], true)).toBe('waiting · paused');
+    expect(queueNote([q1, q2], false)).toBe('waiting · Start now');
+    expect(queuePlace(q1, [q1, q2], false).starts).toBe(
+      'waiting · Start now, or when a run ends done',
+    );
+    expect(queueNote([run], false)).toBe('');
+  });
+
+  it('notes a queued tournament that cannot start, which the queue passes over', () => {
+    const q = item({
+      ended: null,
+      queued: 1,
+      config: { id: 'q', entrants: ['x-1', 'gone-1'] },
+    });
+    expect(noticesOf([q], served).map((n) => [n.severity, n.text])).toEqual([
+      ['bad', 'Cannot start: missing engine gone-1'],
+    ]);
   });
 
   it('archives finished tournaments a month past their end, by month, newest first', () => {

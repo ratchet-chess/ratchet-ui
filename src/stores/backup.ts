@@ -313,7 +313,7 @@ export const useBackup = defineStore('backup', () => {
     } catch (e) {
       fail(`Merge failed: ${message(e)}`);
     } finally {
-      for (const id of held) tournaments.unlock(id);
+      await Promise.all(held.map((id) => tournaments.unlock(id)));
       await Promise.all([games.load(), books.load(), tournaments.load()]).catch(() => undefined);
       busy.value = '';
     }

@@ -6,6 +6,7 @@
  */
 import { configOf } from '../match/records.ts';
 import { isUserBook, USER, USER_LIST, type UserBook } from '../stores/books.ts';
+import { QUEUED } from '../stores/queue.ts';
 import { GAMES, GAMES_INDEX, isCollection, type Collection } from '../stores/games.ts';
 import { settingsFileOf, unionOf, type SettingsFile } from '../stores/settings.ts';
 import { bytes, count } from '../ui/format.ts';
@@ -15,7 +16,7 @@ export type Files = Map<string, Blob>;
 
 export const SETTINGS = 'settings.json';
 export const TOURNAMENTS = 'tournaments';
-const TOURNAMENT_FILES = new Set(['config.json', 'pairs.jsonl', 'games.jsonl', 'end.json']);
+const TOURNAMENT_FILES = new Set(['config.json', 'pairs.jsonl', 'games.jsonl', 'end.json', QUEUED]);
 /** a collection's id for a tournament's games, as the tournaments store names it */
 const T_PREFIX = 't-';
 
@@ -153,7 +154,9 @@ export async function contentsOf(files: Files): Promise<Contents> {
         ? end.status === 'done'
           ? 'finished'
           : 'stopped'
-        : 'interrupted';
+        : t.has(`${TOURNAMENTS}/${id}/${QUEUED}`)
+          ? 'queued'
+          : 'interrupted';
     items.set(keyOf('tournament', id), {
       kind: 'tournament',
       id,

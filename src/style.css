@@ -106,7 +106,10 @@
   @apply tracking-widest text-dim uppercase;
 }
 
-/* buttons: the usual one, a small one for a row or a pager, and the one main action of a form */
+/*
+ * buttons: the usual one, a small one for a row or a pager, the one main action of a form, and a
+ * second action beside it
+ */
 @utility btn {
   @apply inline-flex items-center justify-center gap-1 rounded border border-line bg-panel2 px-2.5 py-1 text-dense text-text hover:border-line-strong disabled:cursor-not-allowed disabled:border-line disabled:text-faint;
 }
@@ -115,6 +118,9 @@
 }
 @utility btn-primary {
   @apply rounded-md bg-accent px-3 py-2 text-dense font-semibold text-on-accent disabled:cursor-not-allowed disabled:bg-line disabled:text-faint;
+}
+@utility btn-secondary {
+  @apply rounded-md border border-accent-line bg-panel2 px-3 py-2 text-dense font-semibold text-accent hover:border-accent disabled:cursor-not-allowed disabled:border-line disabled:text-faint;
 }
 
 /* a text box or a select: the form's size, and a compact one for a header or a toolbar */
