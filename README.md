@@ -108,6 +108,19 @@ names the commit it came from. `scripts/engines.ts` bundles its `browser.ts` int
 Checks, which the pre-commit hook runs: `bun run typecheck`, `bun run lint`, `bun run knip`, `bun run test` and
 `bun run format:check`. CI runs the same checks and the build.
 
+## Credits
+
+Much of this app follows [fastchess-gui](https://github.com/jromang/fastchess-gui), Jean-François Romang's desktop GUI
+for fastchess: the setup forms and their presets, the tournament formats, the standings and their tiebreaks, the
+rating list, and the layout of the sections. Its community's feedback shaped those choices.
+
+The SPRT's LLR and the Elo estimates in `src/match/stats.ts` are ported from
+[fastchess](https://github.com/Disservin/fastchess), by Disservin and contributors, and its tests check them against
+fastchess's own. The adjudication and the PGN comments follow fastchess. The About page in the app says the same.
+
 ## License
 
 GPL-3.0-or-later. See `LICENSE`.
+
+The code ported from fastchess is under fastchess's MIT License, in `src/match/fastchess-LICENSE.txt`. The
+`vendor/uci-over-wasi/` copy is under the MIT License in its own `LICENSE`.

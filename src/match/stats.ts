@@ -3,11 +3,14 @@
  * opening: the pentanomial or trinomial counts, normalized Elo and Elo with their intervals, and the
  * SPRT's log-likelihood ratio.
  *
- * Ported from Ratchet's tools/llr.ts and tools/pool.ts (same author, GPL-3.0-or-later). The LLR
+ * Ported from ratchet-bench's tools/llr.ts and tools/pool.ts (same author, GPL-3.0-or-later). The LLR
  * there is a port of fastchess's SPRT::getLLR(penta) and getLLR_normalized
  * (app/src/matchmaking/sprt/sprt.cpp), so a match here reports the LLR fastchess would. The
  * trinomial path ports SPRT::getLLR(win, draw, loss) for the normalized model, and EloWDL
  * (app/src/matchmaking/elo/elo_wdl.cpp) for nElo and Elo.
+ *
+ * The ported parts are under fastchess's MIT License: Copyright (c) 2023 disservin. Its full
+ * text is in fastchess-LICENSE.txt beside this file, and the About page shows it.
  */
 
 /** Pair counts in fastchess's `Ptnml(0-2)` order: LL, LD, WL+DD, WD, WW. */

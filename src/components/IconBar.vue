@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Info } from '@lucide/vue';
 import { computed } from 'vue';
 import { sections } from '../sections.ts';
 import { useManager } from '../stores/manager.ts';
@@ -44,5 +45,14 @@ const word = computed(() => (manager.link === 'unreachable' ? 'Manager offline' 
         }}
       </RouterLink>
     </div>
+    <RouterLink
+      to="/about"
+      title="About"
+      class="ml-2 flex flex-col items-center gap-px rounded-md px-1.5 py-1 text-label text-faint hover:bg-hover hover:text-text wide:mt-2 wide:ml-0 wide:px-0.5 wide:pt-1.5 wide:pb-1"
+      active-class="!bg-active !text-text"
+    >
+      <Info :size="16" :stroke-width="1.7" />
+      <span class="hidden wide:block">About</span>
+    </RouterLink>
   </nav>
 </template>

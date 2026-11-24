@@ -1,5 +1,6 @@
 import { createRouter, createWebHashHistory } from 'vue-router';
 import { useManager } from './stores/manager.ts';
+import AboutView from './views/AboutView.vue';
 import BooksView from './views/BooksView.vue';
 import EnginesView from './views/EnginesView.vue';
 import GamesView from './views/GamesView.vue';
@@ -26,5 +27,6 @@ export const router = createRouter({
     { path: '/style', component: StyleView },
     { path: '/hosts', component: HostsView },
     { path: '/ratings', component: RatingsView },
+    { path: '/about', component: AboutView },
   ],
 });
