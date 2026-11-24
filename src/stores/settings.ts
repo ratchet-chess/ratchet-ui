@@ -3,6 +3,7 @@ import { ref, watch } from 'vue';
 import { parseControl } from '../chess/clock.ts';
 import type { TournamentConfig } from '../match/format.ts';
 import { configOf } from '../match/records.ts';
+import { ANCHOR_RATING } from '../ratings/list.ts';
 
 const MANAGER_KEY = 'ratchet-ui.manager';
 const CONTROLS_KEY = 'ratchet-ui.controls';
@@ -76,7 +77,7 @@ export interface SettingsFile {
   templateStart: string;
   theme: Theme;
   backupBooks: boolean;
-  /** the rating Ratings holds its anchor at; null leaves the ratings averaging 0 */
+  /** the rating Ratings holds its anchor at; null, a rating cleared, leaves the ratings averaging 0 */
   anchorRating: number | null;
 }
 
@@ -91,7 +92,7 @@ export function settingsFileOf(x: unknown): SettingsFile {
     templateStart: typeof r.templateStart === 'string' ? r.templateStart : '',
     theme: isTheme(r.theme) ? r.theme : 'system',
     backupBooks: r.backupBooks !== false,
-    anchorRating: ratingOf(r.anchorRating),
+    anchorRating: 'anchorRating' in r ? ratingOf(r.anchorRating) : ANCHOR_RATING,
   };
 }
 
@@ -158,10 +159,14 @@ export const useSettings = defineStore('settings', () => {
   });
 
   /** the rating Ratings holds its anchor at */
-  const anchorRating = ref<number | null>(ratingOf(readJson(ANCHOR_KEY)));
+  const anchorRating = ref<number | null>(
+    localStorage.getItem(ANCHOR_KEY) === null ? ANCHOR_RATING : ratingOf(readJson(ANCHOR_KEY)),
+  );
+  // the default is not kept in browser storage, so a newer default reaches a user who never set one;
+  // a cleared rating is kept as null
   watch(anchorRating, (r) => {
-    if (r === null) localStorage.removeItem(ANCHOR_KEY);
-    else localStorage.setItem(ANCHOR_KEY, String(r));
+    if (r === ANCHOR_RATING) localStorage.removeItem(ANCHOR_KEY);
+    else localStorage.setItem(ANCHOR_KEY, JSON.stringify(r));
   });
 
   /** the settings as a backup keeps them */

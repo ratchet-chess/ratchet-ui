@@ -33,6 +33,9 @@ export interface Filter {
 /** the one engine Ratings can hold fixed; the user sets its rating in the filter bar */
 export const ANCHOR_NAME = 'stockfish-10';
 
+/** the anchor's rating until the user sets one: Stockfish 10 64-bit on CCRL Blitz, list of 2026-10-31 */
+export const ANCHOR_RATING = 3509;
+
 export interface Anchor {
   name: string;
   rating: number;

@@ -9,7 +9,7 @@ import HelpTip from '../components/HelpTip.vue';
 import PageHeader from '../components/PageHeader.vue';
 import Panel from '../components/Panel.vue';
 import Tabs from '../components/Tabs.vue';
-import { ANCHOR_NAME, controlLabel, controlsOf, rate } from '../ratings/list.ts';
+import { ANCHOR_NAME, ANCHOR_RATING, controlLabel, controlsOf, rate } from '../ratings/list.ts';
 import { ratingMarkdown, ratingText } from '../ratings/report.ts';
 import { useRatings } from '../stores/ratings.ts';
 import { useSettings } from '../stores/settings.ts';
@@ -170,8 +170,9 @@ async function copy(markdown: boolean): Promise<void> {
       </template>
       <span v-else>· not in these games</span>
       <HelpTip side="left"
-        >Stockfish 10's rating fixes the scale of the engines that met it. Without its games, or
-        without a rating typed here, the ratings average 0.</HelpTip
+        >Stockfish 10's rating fixes the scale of the engines that met it; the default,
+        {{ count(ANCHOR_RATING) }}, is its CCRL Blitz rating. Without its games, or with the rating
+        cleared, the ratings average 0.</HelpTip
       >
     </span>
   </div>
