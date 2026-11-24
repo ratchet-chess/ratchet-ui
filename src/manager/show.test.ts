@@ -116,11 +116,11 @@ describe('the manager view, written for a reader', () => {
     waits,
     text: `behind job ${id}`,
   });
-  const hours: Wait = { by: 'filter', filter: 'hours', reason: 'outside its hours', text: 'hours' };
+  const hours: Wait = { by: 'filter', filter: 'hours', reason: 'outside hours', text: 'hours' };
   const own: Wait = {
     by: 'filter',
     filter: 'concurrency',
-    reason: 'its 5 fill',
+    reason: 'at concurrency (5/5)',
     text: 'concurrency',
   };
   const full = (runs: number, cap: number): Wait => ({
@@ -154,7 +154,7 @@ describe('the manager view, written for a reader', () => {
       waitingText(
         job({ units: { queued: 10 }, waiting: { a: full(30, 30), b: full(5, 5), c: hours } }),
       ),
-    ).toBe('full on 2 hosts · outside its hours on c');
+    ).toBe('full on 2 hosts · outside hours on c');
     expect(waitingText(job({ units: { queued: 10 }, waiting: null }))).toBe('');
     expect(waitingText(job({ units: { queued: 10 }, waiting: { alpha: own } }))).toBe('');
     expect(waitingText(job({ units: { running: 10 }, waiting: { alpha: hours } }))).toBe('');
@@ -179,7 +179,7 @@ describe('the manager view, written for a reader', () => {
     // a job of one unit has no last unit to speak of
     expect(unitsNote(job({ units: { running: 1 }, waiting }))).toBe('');
     expect(unitsNote(job({ units: { queued: 5, running: 40 }, waiting }))).toBe(
-      'outside its hours on alpha',
+      'outside hours on alpha',
     );
   });
 
@@ -188,15 +188,15 @@ describe('the manager view, written for a reader', () => {
       host({
         name: 'local',
         condition: 'closed',
-        reason: 'outside its hours 22:00-10:00; an allocation still starts',
+        reason: 'outside hours 22:00-10:00',
       }),
       host({
         name: 'delta',
         condition: 'closed',
-        reason: 'its agent claims nothing: its own check failed',
+        reason: 'agent: its own check failed',
       }),
-      host({ name: 'beta', condition: 'silent', reason: 'no word from its agent' }),
-      host({ name: 'gamma', condition: 'allocated', reason: 'allocation 7' }),
+      host({ name: 'beta', condition: 'silent', reason: 'heartbeat expired' }),
+      host({ name: 'gamma', condition: 'allocated', reason: 'job 7, exclusive' }),
     ];
     const jobs = [
       job({ units: { failed: 2, running: 1 } }),

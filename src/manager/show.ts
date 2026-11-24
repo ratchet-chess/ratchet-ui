@@ -242,7 +242,7 @@ export function notices(hosts: readonly Host[], jobs: readonly Job[]): Notice[] 
     else if (
       h.condition !== 'open' &&
       h.condition !== 'allocated' &&
-      !/^outside (?:its )?hours/.test(h.reason)
+      !h.reason.startsWith('outside hours')
     )
       out.push({
         severity: 'warn',
