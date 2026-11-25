@@ -6,6 +6,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import HelpTip from '../../components/HelpTip.vue';
+import OpeningSelect from '../../components/OpeningSelect.vue';
 import Segmented from '../../components/Segmented.vue';
 import { resolveControl } from '../../chess/clock.ts';
 import { STANDARD_ADJUDICATION, type Adjudication } from '../../match/adjudicate.ts';
@@ -556,10 +557,7 @@ const terse = 'text-dense text-dim';
           </div>
           <div :class="row">
             <span :class="label">Opening</span>
-            <select v-model="book" class="field num w-60 max-w-full">
-              <option value="">Start position</option>
-              <option v-for="b in books.usable" :key="b.id" :value="b.id">{{ b.id }}</option>
-            </select>
+            <OpeningSelect v-model="book" />
           </div>
           <div v-if="unpairable" :class="row">
             <span :class="label"

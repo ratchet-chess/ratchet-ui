@@ -4,6 +4,7 @@ import type { Color } from 'chessops/types';
 import { opposite } from 'chessops/util';
 import { computed, onMounted, ref, watch } from 'vue';
 import Board from '../components/Board.vue';
+import OpeningSelect from '../components/OpeningSelect.vue';
 import Panel from '../components/Panel.vue';
 import { TIME_CONTROLS } from '../chess/clock.ts';
 import { usePlay, type Player } from '../play/usePlay.ts';
@@ -206,9 +207,9 @@ function savePgn(): void {
     <div>
       <Panel title="Game">
         <div
-          class="grid grid-cols-[max-content_1fr] items-center gap-x-3 gap-y-1.5 px-3 py-2.5 text-dense"
+          class="grid grid-cols-[max-content_1fr] items-start gap-x-3 gap-y-1.5 px-3 py-2.5 text-dense"
         >
-          <span class="text-dim">White</span>
+          <span class="flex h-7 items-center text-dim">White</span>
           <select
             v-model="whiteChoice"
             class="field-sm num"
@@ -217,7 +218,7 @@ function savePgn(): void {
             <option value="person">You</option>
             <option v-for="e in engines.list" :key="e.id" :value="e.id">{{ e.id }}</option>
           </select>
-          <span class="text-dim">Black</span>
+          <span class="flex h-7 items-center text-dim">Black</span>
           <select
             v-model="blackChoice"
             class="field-sm num"
@@ -226,18 +227,13 @@ function savePgn(): void {
             <option value="person">You</option>
             <option v-for="e in engines.list" :key="e.id" :value="e.id">{{ e.id }}</option>
           </select>
-          <span class="text-dim">Opening</span>
-          <select
+          <span class="flex h-7 items-center text-dim">Opening</span>
+          <OpeningSelect
             v-model="book"
-            class="field-sm num"
+            size="sm"
             :disabled="phase === 'playing' || phase === 'starting'"
-          >
-            <option value="">Start position</option>
-            <option v-for="b in books.usable" :key="b.id" :value="b.id">
-              {{ b.id }}
-            </option>
-          </select>
-          <span class="text-dim">Time</span>
+          />
+          <span class="flex h-7 items-center text-dim">Time</span>
           <select
             v-model="controlLabel"
             class="field-sm num"

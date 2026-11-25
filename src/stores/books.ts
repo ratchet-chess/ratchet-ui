@@ -101,6 +101,7 @@ export const useBooks = defineStore('books', () => {
   const adding = ref<Adding | null>(null);
   const storage = ref<Storage | null>(null);
   const error = ref('');
+  const loaded = ref(false);
   /** each book's index of opening starts, built on first use and kept for the session */
   const indexes = new Map<string, Promise<Uint32Array>>();
   let dir: FileSystemDirectoryHandle | undefined;
@@ -164,6 +165,7 @@ export const useBooks = defineStore('books', () => {
     } catch (e) {
       error.value = `This browser cannot keep books: ${message(e)}`;
     }
+    loaded.value = true;
     await estimate();
   }
 
@@ -345,6 +347,7 @@ export const useBooks = defineStore('books', () => {
     storage,
     progress,
     error,
+    loaded,
     load,
     pull,
     remove,
