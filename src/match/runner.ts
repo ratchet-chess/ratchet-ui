@@ -257,6 +257,7 @@ export class Run {
     const engines: UciEngine[] = [];
     /** the side whose engine is starting, which loses the game if it does not start */
     let starting: 'white' | 'black' | null = null;
+    let speed: { wnps?: number; bnps?: number } = {};
     try {
       const side = async (i: number): Promise<Side> => {
         const e = this.entrants[i];
@@ -275,7 +276,7 @@ export class Run {
       const blackSide = await side(black);
       starting = null;
       const sides = { white: whiteSide, black: blackSide };
-      await playOut({
+      speed = await playOut({
         game,
         sides,
         control: this.control,
@@ -306,6 +307,7 @@ export class Run {
     if (i >= 0) this.state.live.splice(i, 1);
     const outcome = game.outcome;
     if (outcome) {
+      const timed = this.control.kind !== 'nodes' && this.control.kind !== 'depth';
       const record: GameRecord = {
         pair: pair.pair,
         game: n,
@@ -314,6 +316,8 @@ export class Run {
         result: outcome.result,
         reason: outcome.reason,
         plies: game.san.length - book,
+        ...(timed && speed.wnps !== undefined ? { wnps: speed.wnps } : {}),
+        ...(timed && speed.bnps !== undefined ? { bnps: speed.bnps } : {}),
       };
       this.state.games.push(record);
       this.state.summary = summarize(

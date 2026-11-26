@@ -34,6 +34,10 @@ export interface GameRecord {
   result: Result;
   reason: string;
   plies: number;
+  /** White's passive average nodes/s over timed moves in this game, when observed */
+  wnps?: number;
+  /** Black's passive average nodes/s over timed moves in this game, when observed */
+  bnps?: number;
 }
 
 export interface Standing {

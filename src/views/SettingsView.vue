@@ -12,6 +12,7 @@ import { RELOAD_MS, useManager } from '../stores/manager.ts';
 import { useSettings } from '../stores/settings.ts';
 import { bytes, whenText } from '../ui/format.ts';
 import BackupReview from './settings/BackupReview.vue';
+import DeviceSpeedPanel from './settings/DeviceSpeedPanel.vue';
 
 const settings = useSettings();
 const backup = useBackup();
@@ -193,6 +194,8 @@ onMounted(() => {
       {{ backup.busy || backup.note }}
     </p>
   </Panel>
+
+  <DeviceSpeedPanel />
 
   <Panel title="Browser">
     <div class="grid grid-cols-[max-content_1fr] gap-x-3.5 gap-y-1 px-3 py-2.5 text-dense">

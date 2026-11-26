@@ -111,11 +111,18 @@ export function pairsOf(text: string | null): PairRecord[] {
   }));
 }
 
+function optPos(r: Rec, k: string): number | undefined {
+  const v = r[k];
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? Math.round(v) : undefined;
+}
+
 export function gamesOf(text: string | null): GameRecord[] {
   return lines(text, (r) => {
     const result = str(r, 'result');
     if (!isResult(result)) throw new Error(`result ${result}`);
     const game = int(r, 'game');
+    const wnps = optPos(r, 'wnps');
+    const bnps = optPos(r, 'bnps');
     return {
       pair: int(r, 'pair'),
       game: game === 0 ? 0 : 1,
@@ -124,6 +131,8 @@ export function gamesOf(text: string | null): GameRecord[] {
       result,
       reason: str(r, 'reason'),
       plies: int(r, 'plies'),
+      ...(wnps !== undefined ? { wnps } : {}),
+      ...(bnps !== undefined ? { bnps } : {}),
     };
   });
 }

@@ -270,4 +270,18 @@ describe('the overview', () => {
     const b = item({ elsewhere: true, config: { concurrency: 2 } });
     expect(threadBudget([a, b, item()], 8)).toEqual({ games: 5, hardware: 8 });
   });
+
+  it('surfaces speed drift as a warning notice without turning the badge bad', () => {
+    const run = item({ config: { id: 'drift', name: 'Drift run', control: '10+0.1' } });
+    run.state.status = 'running';
+    for (let k = 0; k < 8; k++) {
+      const wnps = k < 4 ? 1_000_000 : 600_000;
+      run.state.games.push({ ...game(k, 'draw'), wnps, bnps: 500_000 });
+    }
+    const notices = noticesOf([run], served);
+    expect(notices.map((n) => [n.severity, n.text])).toEqual([
+      ['warn', 'Speed drift: x-1 down 40% (1,000 k → 600 k nps)'],
+    ]);
+    expect(badgeOf([run], served)).toEqual({ running: 1, bad: false });
+  });
 });

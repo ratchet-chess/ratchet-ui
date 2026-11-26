@@ -126,6 +126,8 @@ export interface Turn {
   /** false once the game has ended elsewhere, as by an abort; the turn then changes nothing */
   live: () => boolean;
   onInfo?: (info: Info) => void;
+  /** called after a legal move with the search's final reported node count and wall time in ms */
+  onStats?: (nodes: number, ms: number) => void;
 }
 
 /**
@@ -141,7 +143,7 @@ export async function engineTurn(t: Turn): Promise<Info | null> {
     (control.kind === 'clock' || control.kind === 'moves');
   const started = performance.now();
   /** the search's last report with a depth and a score; a holder, as the callback sets it */
-  const seen: { last: Info | null } = { last: null };
+  const seen: { last: Info | null; nodes: number } = { last: null, nodes: 0 };
   const limit = silenceLimit(control, clock, color);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const silent = new Promise<'silent'>((resolve) => {
@@ -150,6 +152,7 @@ export async function engineTurn(t: Turn): Promise<Info | null> {
   try {
     const answer = await Promise.race([
       engine.go(positionCommand(game), goLimits(control, clock, color), (info) => {
+        if (info.nodes !== undefined && info.nodes > 0) seen.nodes = info.nodes;
         if (info.depth !== undefined && (info.cp !== undefined || info.mate !== undefined))
           seen.last = info;
         t.onInfo?.(info);
@@ -173,9 +176,11 @@ export async function engineTurn(t: Turn): Promise<Info | null> {
       game.forfeit(color, forfeitReason.illegal(name, answer.move), 'rules infraction');
       return null;
     }
-    const seconds = ((performance.now() - started) / 1000).toFixed(3);
+    const elapsedMs = performance.now() - started;
+    const seconds = (elapsedMs / 1000).toFixed(3);
     const info = seen.last;
     game.annotate(`${scoreText(info)}/${info?.depth ?? 0} ${seconds}s`);
+    if (seen.nodes > 0 && elapsedMs > 0) t.onStats?.(seen.nodes, elapsedMs);
     clock?.press();
     return info;
   } catch (e) {
@@ -200,9 +205,20 @@ export interface Side {
   name: string;
 }
 
+/** Passive per-side average nodes/s observed across timed moves of a played game. */
+export interface GameSpeed {
+  wnps?: number;
+  bnps?: number;
+}
+
+/** Minimum per-move nodes and wall ms to include in passive game NPS (filters trivial moves). */
+const MIN_SPEED_NODES = 1000;
+const MIN_SPEED_MS = 20;
+
 /**
  * Plays an engine game to its end: each side's moves through `engineTurn`, on a clock started for
  * the side to move, with the engines' scores adjudicated if `adjudication` is given.
+ * Returns passive per-side average nodes/s observed over non-trivial moves.
  */
 export async function playOut(o: {
   game: Game;
@@ -211,11 +227,15 @@ export async function playOut(o: {
   adjudication: Adjudication | null;
   live: () => boolean;
   onMove?: () => void;
-}): Promise<void> {
+}): Promise<GameSpeed> {
   const { game, sides, control } = o;
   const clock = clockFor(control);
   clock?.start(game.turn);
   const judge = o.adjudication ? new Adjudicator(o.adjudication) : null;
+  const totals: Record<Color, { nodes: number; ms: number }> = {
+    white: { nodes: 0, ms: 0 },
+    black: { nodes: 0, ms: 0 },
+  };
   while (!isOver(game) && o.live()) {
     const color = game.turn;
     const side = sides[color];
@@ -227,6 +247,12 @@ export async function playOut(o: {
       control,
       clock,
       live: o.live,
+      onStats: (nodes, ms) => {
+        if (nodes >= MIN_SPEED_NODES && ms >= MIN_SPEED_MS) {
+          totals[color].nodes += nodes;
+          totals[color].ms += ms;
+        }
+      },
     });
     if (!o.live() || isOver(game)) break;
     // the number of the move just played: a move by Black has already advanced the count
@@ -238,4 +264,12 @@ export async function playOut(o: {
     o.onMove?.();
   }
   clock?.stop();
+  const wnps =
+    totals.white.ms > 0 ? Math.round((totals.white.nodes * 1000) / totals.white.ms) : undefined;
+  const bnps =
+    totals.black.ms > 0 ? Math.round((totals.black.nodes * 1000) / totals.black.ms) : undefined;
+  return {
+    ...(wnps !== undefined ? { wnps } : {}),
+    ...(bnps !== undefined ? { bnps } : {}),
+  };
 }

@@ -12,6 +12,7 @@ import MatchCards from '../../components/MatchCards.vue';
 import PentaCounts from '../../components/PentaCounts.vue';
 import StatCard from '../../components/StatCard.vue';
 import { bracket } from '../../match/director.ts';
+import { analyzeDrift, driftLines } from '../../match/drift.ts';
 import { BYE, gameNumber, gamesPerPair, plannedGames } from '../../match/format.ts';
 import { matchText, score, standingsText, TIEBREAK_NAMES, tiebreaks } from '../../match/report.ts';
 import { matchSeries } from '../../match/series.ts';
@@ -21,7 +22,7 @@ import { useGames } from '../../stores/games.ts';
 import { collectionOf, useTournaments, type Item } from '../../stores/tournaments.ts';
 import MatchChart, { type ChartPoint } from './MatchChart.vue';
 import { endsText, problemsLine, queuePlace } from './overview.ts';
-import { count, sentence, signed, whenText } from '../../ui/format.ts';
+import { count, sentence, signed, thousands, whenText } from '../../ui/format.ts';
 import { formatText, label, progress, roundName, statusClass, statusText } from './show.ts';
 
 const props = defineProps<{ item: Item }>();
@@ -126,6 +127,15 @@ const faulted = computed(() =>
 const healthPages = computed(() => Math.max(1, Math.ceil(faulted.value.length / HEALTH_PAGE)));
 const healthRows = computed(() =>
   faulted.value.slice(healthPage.value * HEALTH_PAGE, (healthPage.value + 1) * HEALTH_PAGE),
+);
+const drift = computed(() =>
+  analyzeDrift(props.item.config.control, props.item.state.games, props.item.config.paired),
+);
+const driftWarnings = computed(() => driftLines(drift.value, (idx) => label(props.item, idx)));
+const healthNote = computed(() =>
+  [problemsLine(props.item.state.games), driftWarnings.value.length > 0 ? 'speed drift' : '']
+    .filter(Boolean)
+    .join(' · '),
 );
 
 // ── statistics over the pairs ──────────────────────────────────────────────
@@ -438,8 +448,52 @@ async function copy(): Promise<void> {
     </div>
 
     <template v-if="!queued">
-      <Panel v-if="faulted.length > 0" title="Health" :note="problemsLine(item.state.games)">
-        <div class="num px-1.5 py-1 text-dense">
+      <Panel
+        v-if="faulted.length > 0 || driftWarnings.length > 0"
+        title="Health"
+        :note="healthNote"
+      >
+        <div
+          v-if="driftWarnings.length > 0"
+          class="px-3 py-2 text-dense"
+          :class="faulted.length > 0 ? 'border-b border-row' : ''"
+        >
+          <div class="mb-1 flex items-center gap-1.5 text-small font-medium text-warn">
+            <span>Speed drift</span>
+            <HelpTip>
+              Passive check on UCI info.nps over clocked games. Warns when an engine's 4-game median
+              drops 25% or more below its opening baseline, or when White and Black relative speeds
+              swing 1.5× inside a color-swapped pair.
+            </HelpTip>
+          </div>
+          <div v-for="d in drift.drops" :key="d.entrant" class="num text-warn">
+            {{ label(item, d.entrant) }} down {{ Math.round(d.drop * 100) }}%
+            <span class="text-dim">
+              · {{ thousands(d.baselineNps) }} → {{ thousands(d.lowNps) }} nps low ({{
+                thousands(d.recentNps)
+              }}
+              recent across {{ count(d.games) }} games)
+            </span>
+          </div>
+          <div v-if="drift.asymmetricPairs.length > 0" class="num text-warn">
+            {{ count(drift.asymmetricPairs.length) }} asymmetric speed
+            {{ drift.asymmetricPairs.length === 1 ? 'pair' : 'pairs' }}
+            <span class="text-dim">
+              ·
+              {{
+                drift.asymmetricPairs
+                  .slice(0, 6)
+                  .map((p) => `#${p.pair + 1} (${p.ratio.toFixed(1)}×)`)
+                  .join(', ')
+              }}{{
+                drift.asymmetricPairs.length > 6
+                  ? `, +${drift.asymmetricPairs.length - 6} more`
+                  : ''
+              }}
+            </span>
+          </div>
+        </div>
+        <div v-if="faulted.length > 0" class="num px-1.5 py-1 text-dense">
           <button
             v-for="g in healthRows"
             :key="`${g.pair}.${g.game}`"

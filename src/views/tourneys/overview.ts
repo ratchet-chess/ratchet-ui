@@ -4,6 +4,7 @@
  * the threads the running ones ask for.
  */
 import { bracket } from '../../match/director.ts';
+import { analyzeDrift, driftLines } from '../../match/drift.ts';
 import { gamesPerPair } from '../../match/format.ts';
 import { problemOf, type Problem } from '../../match/referee.ts';
 import type { GameRecord } from '../../match/summary.ts';
@@ -189,6 +190,8 @@ export function noticesOf(items: readonly Item[], served: Served): Notice[] {
     }
     for (const [p, n] of problemsOf(i.state.games))
       note(p === 'time' ? 'warn' : 'bad', problemText(p, n));
+    const drift = analyzeDrift(i.config.control, i.state.games, i.config.paired);
+    for (const line of driftLines(drift, (idx) => label(i, idx))) note('warn', line);
   }
   const s = served.storage;
   if (s && s.quota > 0 && s.usage / s.quota > STORAGE_WARN)

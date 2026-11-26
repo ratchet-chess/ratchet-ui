@@ -560,7 +560,7 @@ const terse = 'text-dense text-dim';
                 have a dashed border.
               </HelpTip></span
             >
-            <ControlPicker v-model="control" />
+            <ControlPicker v-model="control" :concurrency="concurrency" />
           </div>
           <div :class="row">
             <span :class="label">Opening</span>

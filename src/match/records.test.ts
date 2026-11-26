@@ -49,4 +49,52 @@ describe('records', () => {
     const text = `{"pair":0,"game":0,"white":0,"black":1,"result":"*","reason":"","plies":3}\n`;
     expect(gamesOf(text)).toEqual([]);
   });
+
+  it('preserves optional passive nps fields on game records and ignores invalid values', () => {
+    const text = [
+      JSON.stringify({
+        pair: 0,
+        game: 0,
+        white: 0,
+        black: 1,
+        result: '1-0',
+        reason: 'checkmate',
+        plies: 42,
+        wnps: 812_345.4,
+        bnps: 650_000,
+      }),
+      JSON.stringify({
+        pair: 0,
+        game: 1,
+        white: 1,
+        black: 0,
+        result: '0-1',
+        reason: 'checkmate',
+        plies: 38,
+        wnps: -10,
+      }),
+    ].join('\n');
+    expect(gamesOf(text)).toEqual([
+      {
+        pair: 0,
+        game: 0,
+        white: 0,
+        black: 1,
+        result: '1-0',
+        reason: 'checkmate',
+        plies: 42,
+        wnps: 812_345,
+        bnps: 650_000,
+      },
+      {
+        pair: 0,
+        game: 1,
+        white: 1,
+        black: 0,
+        result: '0-1',
+        reason: 'checkmate',
+        plies: 38,
+      },
+    ]);
+  });
 });
