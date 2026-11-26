@@ -96,13 +96,24 @@ function hydrateCache(list: readonly ServedEngine[]): void {
 const filtered = computed(() => {
   const q = query.value.trim().toLowerCase();
   if (!q) return engines.list;
-  return engines.list.filter(
-    (e) =>
+  return engines.list.filter((e) => {
+    if (
       e.id.toLowerCase().includes(q) ||
       e.name.toLowerCase().includes(q) ||
       e.source.toLowerCase().includes(q) ||
-      (e.license?.toLowerCase().includes(q) ?? false),
-  );
+      (e.license?.toLowerCase().includes(q) ?? false)
+    ) {
+      return true;
+    }
+    const m = e.meta;
+    if (!m) return false;
+    return (
+      String(m.year).includes(q) ||
+      m.kind.includes(q) ||
+      m.originalAuthors.some((a) => a.toLowerCase().includes(q)) ||
+      m.features.some((f) => f.label.toLowerCase().includes(q) || f.key.toLowerCase().includes(q))
+    );
+  });
 });
 
 const showingUpload = computed(
@@ -462,6 +473,13 @@ onUnmounted(() => {
             </div>
             <div class="mt-0.5 flex items-center gap-2 text-label text-dim">
               <span class="num truncate">{{ e.source }}</span>
+              <span
+                v-if="e.meta"
+                class="tag shrink-0"
+                :class="e.meta.kind === 'release' ? 'tone-accent' : 'tone-dim'"
+              >
+                {{ e.meta.year }} · {{ e.meta.kind }}
+              </span>
               <span v-if="e.bytes !== null" class="num ml-auto shrink-0">
                 {{ bytes(e.bytes) }}
               </span>

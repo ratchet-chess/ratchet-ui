@@ -19,6 +19,7 @@
     "vite.config.ts",
     "scripts/**/*.ts",
     "src/engine/manifest.ts",
+    "src/engine/meta.ts",
     "src/books/list.ts",
     "src/storage/zip.ts"
   ]

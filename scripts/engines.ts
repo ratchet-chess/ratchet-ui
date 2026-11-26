@@ -19,6 +19,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import type { ServedEngine } from '../src/engine/manifest.ts';
+import { isEngineMeta, type EngineMeta } from '../src/engine/meta.ts';
 import {
   at,
   download,
@@ -46,6 +47,9 @@ interface ReleaseEntry {
   sha256: string;
   /** SPDX identifier; it must permit serving a copy */
   license: string;
+  /** optional sibling `<id>.meta.json` asset on the same GitHub release */
+  metaUrl?: string;
+  metaSha256?: string;
 }
 
 /** a build on this machine in engines.local.json */
@@ -56,6 +60,9 @@ interface LocalEntry {
   /** the build's path, absolute or from the repo's root */
   path: string;
   sha256: string;
+  /** optional `<id>.meta.json` path beside the local .wasm */
+  metaPath?: string;
+  metaSha256?: string;
 }
 
 const root = resolve(import.meta.dir, '..');
@@ -67,6 +74,14 @@ const HOST = 'wasi-host.js';
 
 const textOrNull = (x: unknown, what: string, key: string) =>
   at(x, key) === null ? null : text(x, what, key);
+const optText = (x: unknown, what: string, key: string) =>
+  at(x, key) === undefined ? undefined : text(x, what, key);
+
+function parseMetaBytes(bytes: Uint8Array, what: string): EngineMeta {
+  const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes));
+  if (!isEngineMeta(parsed)) fail(`${what}: invalid EngineMeta JSON`);
+  return parsed;
+}
 
 /** a list file's entries, as records */
 function readList(path: string): Record<string, unknown>[] {
@@ -79,6 +94,8 @@ function readList(path: string): Record<string, unknown>[] {
 function readReleases(): ReleaseEntry[] {
   return readList(listPath).map((e) => {
     const t = (k: string) => text(e, listPath, k);
+    const metaUrl = optText(e, listPath, 'metaUrl');
+    const metaSha256 = optText(e, listPath, 'metaSha256');
     return {
       id: t('id'),
       name: t('name'),
@@ -90,6 +107,7 @@ function readReleases(): ReleaseEntry[] {
       url: t('url'),
       sha256: t('sha256'),
       license: t('license'),
+      ...(metaUrl && metaSha256 ? { metaUrl, metaSha256 } : {}),
     };
   });
 }
@@ -97,12 +115,15 @@ function readReleases(): ReleaseEntry[] {
 function readLocals(): LocalEntry[] {
   return readList(localPath).map((e) => {
     const t = (k: string) => text(e, localPath, k);
+    const metaPath = optText(e, localPath, 'metaPath');
+    const metaSha256 = optText(e, localPath, 'metaSha256');
     return {
       id: t('id'),
       name: t('name'),
       version: textOrNull(e, localPath, 'version'),
       path: t('path'),
       sha256: t('sha256'),
+      ...(metaPath && metaSha256 ? { metaPath, metaSha256 } : {}),
     };
   });
 }
@@ -159,6 +180,21 @@ async function add(args: string[]): Promise<void> {
     fail(`${repo} states no license GitHub can name; give one with --license`);
 
   const id = asset.replace(/\.wasm$/, '');
+  const metaAsset: unknown = assets.find((x: unknown) => at(x, 'name') === `${id}.meta.json`);
+  let metaFields: { metaUrl: string; metaSha256: string } | undefined;
+  if (metaAsset !== undefined) {
+    const metaDigest = at(metaAsset, 'digest');
+    if (typeof metaDigest === 'string' && metaDigest.startsWith('sha256:')) {
+      const metaUrl = text(metaAsset, what, 'browser_download_url');
+      const metaBytes = await download(metaUrl);
+      const metaGot = sha256(metaBytes);
+      if (`sha256:${metaGot}` !== metaDigest) {
+        fail(`${id}.meta.json hashes to ${metaGot}, and GitHub publishes ${metaDigest}`);
+      }
+      parseMetaBytes(metaBytes, `${id}.meta.json`);
+      metaFields = { metaUrl, metaSha256: metaGot };
+    }
+  }
   const guess = nameOf(id);
   const list = readReleases();
   upsert(list, {
@@ -172,9 +208,12 @@ async function add(args: string[]): Promise<void> {
     url,
     sha256: got,
     license,
+    ...metaFields,
   });
   writeList(listPath, 'engines', list);
-  console.log(`engines.json: ${id} from ${repo} ${tag} (${license}), sha256 ${got.slice(0, 12)}…`);
+  console.log(
+    `engines.json: ${id} from ${repo} ${tag} (${license}), sha256 ${got.slice(0, 12)}…${metaFields ? ' + meta' : ''}`,
+  );
 }
 
 function addLocal(dir: string | undefined): void {
@@ -186,10 +225,17 @@ function addLocal(dir: string | undefined): void {
   const path = join(dir, `${id}.wasm`);
   const got = sha256(readFileSync(path));
   if (got !== want) fail(`${path} hashes to ${got}, and SHA256SUMS says ${want}`);
+  const metaPath = join(dir, `${id}.meta.json`);
+  let metaFields: { metaPath: string; metaSha256: string } | undefined;
+  if (existsSync(metaPath)) {
+    const metaBytes = new Uint8Array(readFileSync(metaPath));
+    parseMetaBytes(metaBytes, metaPath);
+    metaFields = { metaPath, metaSha256: sha256(metaBytes) };
+  }
   const list = readLocals();
-  upsert(list, { id, ...nameOf(id), path, sha256: got });
+  upsert(list, { id, ...nameOf(id), path, sha256: got, ...metaFields });
   writeList(localPath, 'engines', list);
-  console.log(`engines.local.json: ${id}`);
+  console.log(`engines.local.json: ${id}${metaFields ? ' + meta' : ''}`);
 }
 
 async function sync(): Promise<void> {
@@ -203,6 +249,15 @@ async function sync(): Promise<void> {
     if (got !== e.sha256)
       fail(`${e.id}: ${e.url} hashes to ${got}, and engines.json pins ${e.sha256}`);
     files.set(`${e.id}.wasm`, bytes);
+    let meta: EngineMeta | undefined;
+    if (e.metaUrl && e.metaSha256) {
+      const metaBytes = await download(e.metaUrl);
+      const metaGot = sha256(metaBytes);
+      if (metaGot !== e.metaSha256) {
+        fail(`${e.id}: ${e.metaUrl} hashes to ${metaGot}, and engines.json pins ${e.metaSha256}`);
+      }
+      meta = parseMetaBytes(metaBytes, `${e.id}.meta.json`);
+    }
     const { id, name, version, sha256: pin, license } = e;
     served.push({
       id,
@@ -213,6 +268,7 @@ async function sync(): Promise<void> {
       sha256: pin,
       source: `${e.repo} ${e.tag}`,
       license,
+      ...(meta ? { meta } : {}),
     });
   }
   for (const e of readLocals()) {
@@ -222,6 +278,18 @@ async function sync(): Promise<void> {
     if (got !== e.sha256)
       fail(`${e.id}: ${e.path} hashes to ${got}, and engines.local.json pins ${e.sha256}`);
     files.set(`${e.id}.wasm`, bytes);
+    let meta: EngineMeta | undefined;
+    if (e.metaPath && e.metaSha256) {
+      const resolvedMeta = resolve(root, e.metaPath);
+      const metaBytes = new Uint8Array(readFileSync(resolvedMeta));
+      const metaGot = sha256(metaBytes);
+      if (metaGot !== e.metaSha256) {
+        fail(
+          `${e.id}: ${e.metaPath} hashes to ${metaGot}, and engines.local.json pins ${e.metaSha256}`,
+        );
+      }
+      meta = parseMetaBytes(metaBytes, resolvedMeta);
+    }
     const { id, name, version, sha256: pin } = e;
     served.push({
       id,
@@ -232,6 +300,7 @@ async function sync(): Promise<void> {
       sha256: pin,
       source: 'local',
       license: null,
+      ...(meta ? { meta } : {}),
     });
   }
 

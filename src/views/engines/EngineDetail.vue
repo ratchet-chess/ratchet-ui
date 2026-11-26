@@ -5,12 +5,14 @@ import Panel from '../../components/Panel.vue';
 import type { EngineInspection, EngineProbe, WasiCheckReport } from '../../engine/cache.ts';
 import type { Info } from '../../engine/info.ts';
 import type { ServedEngine } from '../../engine/manifest.ts';
+import { buildBasisLabel, cpwUrl, kindLabel } from '../../engine/meta.ts';
 import { engineResults, type ProbeSuite } from '../../engine/options.ts';
 import { inputMode } from '../../engine/uci.ts';
 import { useTournaments } from '../../stores/tournaments.ts';
 import { bytes, count, thousands } from '../../ui/format.ts';
 import { formatShort } from '../tourneys/show.ts';
 import { canSpawnBrowserThreads } from '../../../vendor/uci-over-wasi/check-browser.ts';
+import EngineHistory from './EngineHistory.vue';
 import WasiChecker from './WasiChecker.vue';
 
 const props = defineProps<{
@@ -33,8 +35,13 @@ const tournaments = useTournaments();
 const mode = inputMode();
 const threadsOk = canSpawnBrowserThreads();
 
+const DEFAULT_DEPTHS = [8, 10, 12, 14, 16];
+
+const probeDepths = computed(() => props.engine.meta?.probe?.depths ?? DEFAULT_DEPTHS);
+const defaultProbeDepth = computed(() => props.engine.meta?.probe?.defaultDepth ?? 12);
+
 const suite = ref<ProbeSuite>(props.probe?.suite ?? 'startpos');
-const depth = ref(props.probe?.depth ?? 12);
+const depth = ref(props.probe?.depth ?? defaultProbeDepth.value);
 const copied = ref(false);
 let copyTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -44,9 +51,24 @@ watch(
     if (props.probe) {
       suite.value = props.probe.suite;
       depth.value = props.probe.depth;
+    } else {
+      depth.value = defaultProbeDepth.value;
     }
   },
 );
+
+const hasDualLicense = computed(
+  () =>
+    Boolean(props.engine.meta?.originalLicense) &&
+    props.engine.meta?.originalLicense !== props.engine.license,
+);
+
+const authorsLine = computed(() => {
+  const m = props.engine.meta;
+  if (!m) return '';
+  const names = m.originalAuthors.join(', ');
+  return m.affiliation ? `${names} · ${m.affiliation}` : names;
+});
 
 async function copySha(): Promise<void> {
   try {
@@ -98,6 +120,14 @@ const pctText = (v: number | null) => (v === null ? '—' : `${v.toFixed(1)}%`);
         <span class="text-title font-semibold text-text">
           {{ engine.version ? `${engine.name} ${engine.version}` : engine.name }}
         </span>
+        <span
+          v-if="engine.meta"
+          class="tag"
+          :class="engine.meta.kind === 'release' ? 'tone-accent' : 'tone-dim'"
+        >
+          {{ kindLabel(engine.meta.kind) }}
+        </span>
+        <span v-if="engine.meta" class="tag tone-dim">{{ engine.meta.year }}</span>
         <span class="tag tone-dim">{{ engine.source }}</span>
         <span v-if="engine.license" class="tag tone-dim">{{ engine.license }}</span>
         <span v-if="engine.bytes !== null" class="num text-small text-dim">
@@ -118,8 +148,16 @@ const pctText = (v: number | null) => (v === null ? '—' : `${v.toFixed(1)}%`);
         </dd>
         <dt class="text-dim">Source</dt>
         <dd class="num text-text">{{ engine.source }}</dd>
-        <dt class="text-dim">License</dt>
-        <dd class="num text-text">{{ engine.license ?? '—' }}</dd>
+        <dt class="text-dim">{{ hasDualLicense ? 'Build license' : 'License' }}</dt>
+        <dd class="num text-text">
+          {{ engine.license ?? '—' }}
+          <span
+            v-if="engine.meta?.buildBasis === 'written-from-record'"
+            class="text-small text-dim"
+          >
+            · written from record
+          </span>
+        </dd>
         <dt class="text-dim">SHA-256</dt>
         <dd class="flex min-w-0 items-center gap-2">
           <span class="num truncate text-small text-dim" :title="engine.sha256">
@@ -136,8 +174,85 @@ const pctText = (v: number | null) => (v === null ? '—' : `${v.toFixed(1)}%`);
           input <span class="text-text">{{ mode }}</span> · threads
           <span class="text-text">{{ threadsOk ? 'available' : 'unavailable' }}</span>
         </dd>
+
+        <template v-if="engine.meta">
+          <div
+            class="col-span-2 mt-1.5 flex items-center gap-2 border-t border-row pt-1.5 text-label tracking-widest text-faint uppercase"
+          >
+            <span>{{
+              engine.meta.kind === 'release' ? 'Original program' : 'Upstream engine'
+            }}</span>
+            <span
+              class="tag tracking-normal normal-case"
+              :class="engine.meta.buildBasis === 'written-from-record' ? 'tone-warn' : 'tone-dim'"
+            >
+              {{ buildBasisLabel(engine.meta.buildBasis) }}
+            </span>
+          </div>
+
+          <dt class="text-dim">Original</dt>
+          <dd class="text-text">
+            {{ engine.version ? `${engine.name} ${engine.version}` : engine.name }}
+            <span class="num text-dim">({{ engine.meta.date }})</span>
+            <span v-if="engine.meta.originalLanguage" class="text-dim">
+              · {{ engine.meta.originalLanguage }}
+            </span>
+            <template v-if="engine.meta.cpwPage">
+              ·
+              <a
+                :href="cpwUrl(engine.meta.cpwPage)"
+                target="_blank"
+                rel="noopener"
+                class="text-accent hover:underline"
+                >CPW</a
+              >
+            </template>
+          </dd>
+
+          <dt class="text-dim">Original by</dt>
+          <dd class="text-text">{{ authorsLine }}</dd>
+
+          <dt v-if="engine.meta.sources.length > 0" class="text-dim">Original source</dt>
+          <dd
+            v-if="engine.meta.sources.length > 0"
+            class="flex flex-wrap items-baseline gap-x-3 gap-y-0.5"
+          >
+            <span
+              v-for="s in engine.meta.sources"
+              :key="s.url"
+              class="inline-flex items-baseline gap-1 text-small"
+            >
+              <a :href="s.url" target="_blank" rel="noopener" class="text-accent hover:underline">{{
+                s.label
+              }}</a>
+              <span v-if="s.sha256" class="num text-label text-dim">
+                (sha256 {{ s.sha256.slice(0, 8) }}…)
+              </span>
+              <span v-else-if="s.commit" class="num text-label text-dim">
+                (commit {{ s.commit.slice(0, 8) }})
+              </span>
+              <span v-else-if="s.note" class="text-label text-dim">({{ s.note }})</span>
+            </span>
+          </dd>
+
+          <dt v-if="hasDualLicense" class="text-dim">Original license</dt>
+          <dd v-if="hasDualLicense" class="text-text">
+            <span class="num">{{ engine.meta.originalLicense }}</span>
+            <span v-if="engine.meta.originalLicenseNote" class="text-small text-dim">
+              · {{ engine.meta.originalLicenseNote }}
+            </span>
+          </dd>
+
+          <dt v-if="engine.meta.fidelity" class="text-dim">Fidelity</dt>
+          <dd v-if="engine.meta.fidelity" class="flex flex-wrap items-center gap-1.5 text-text">
+            <span class="tag tone-good">{{ engine.meta.fidelity.status }}</span>
+            <span>{{ engine.meta.fidelity.headline }}</span>
+          </dd>
+        </template>
       </dl>
     </Panel>
+
+    <EngineHistory v-if="engine.meta" :engine="engine" :meta="engine.meta" />
 
     <Panel title="UCI" note="on demand">
       <div
@@ -237,9 +352,15 @@ const pctText = (v: number | null) => (v === null ? '—' : `${v.toFixed(1)}%`);
         <label class="text-dim">
           Depth
           <select v-model.number="depth" class="field-sm num ml-1" :disabled="probeBusy">
-            <option v-for="d in [8, 10, 12, 14, 16]" :key="d" :value="d">{{ d }}</option>
+            <option v-for="d in probeDepths" :key="d" :value="d">{{ d }}</option>
           </select>
         </label>
+        <span
+          v-if="engine.meta?.probe && engine.meta.probe.defaultDepth < 12"
+          class="text-label text-dim"
+        >
+          scaled for {{ engine.meta.year }} {{ engine.meta.kind }}
+        </span>
 
         <div class="ml-auto flex items-center gap-1.5">
           <button v-if="probeBusy" class="btn-sm" @click="emit('stopProbe', engine)">

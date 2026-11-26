@@ -1,3 +1,5 @@
+import { isEngineMeta, type EngineMeta } from './meta.ts';
+
 /** One engine the app serves: a WASI build that speaks UCI, run in the app's own host. */
 export interface ServedEngine {
   /** the build's file name without .wasm, such as ratchet-0.3.14 */
@@ -13,6 +15,8 @@ export interface ServedEngine {
   source: string;
   /** SPDX identifier; null for a local build */
   license: string | null;
+  /** optional provenance, history, and CPW features from `<id>.meta.json` */
+  meta?: EngineMeta;
 }
 
 /** public/engines.json, which scripts/engines.ts writes from engines.json and engines.local.json */
@@ -30,7 +34,7 @@ const isNumberOrNull = (x: unknown) => x === undefined || x === null || typeof x
 
 function isEngine(x: unknown): x is ServedEngine {
   if (!isRecord(x)) return false;
-  const { id, name, version, wasm, bytes, sha256, source, license } = x;
+  const { id, name, version, wasm, bytes, sha256, source, license, meta } = x;
   return (
     isText(id) &&
     isText(name) &&
@@ -39,7 +43,8 @@ function isEngine(x: unknown): x is ServedEngine {
     isNumberOrNull(bytes) &&
     isText(sha256) &&
     isText(source) &&
-    isTextOrNull(license)
+    isTextOrNull(license) &&
+    (meta === undefined || isEngineMeta(meta))
   );
 }
 
