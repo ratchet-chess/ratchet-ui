@@ -134,7 +134,9 @@ const pctText = (v: number | null) => (v === null ? '—' : `${v.toFixed(1)}%`);
           {{ bytes(engine.bytes) }}
         </span>
         <div class="ml-auto flex items-center gap-1.5">
-          <RouterLink to="/play" class="btn-sm">Play</RouterLink>
+          <RouterLink :to="{ path: '/play', query: { black: engine.id } }" class="btn-sm">
+            Play
+          </RouterLink>
         </div>
       </div>
 

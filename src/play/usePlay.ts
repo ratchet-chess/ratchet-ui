@@ -1,18 +1,36 @@
 import type { Color } from 'chessops/types';
 import { opposite } from 'chessops/util';
-import { onBeforeUnmount, reactive, ref, shallowRef, triggerRef } from 'vue';
-import { TIME_CONTROLS, pgnTimeControl, type Clock, type TimeControl } from '../chess/clock.ts';
+import { computed, onBeforeUnmount, reactive, ref, shallowRef, triggerRef } from 'vue';
+import { pgnTimeControl, resolveControl, type Clock, type TimeControl } from '../chess/clock.ts';
 import { Game } from '../chess/game.ts';
-import type { ServedEngine } from '../engine/manifest.ts';
 import type { Opening } from '../books/opening.ts';
 import type { Info } from '../engine/info.ts';
+import type { ServedEngine } from '../engine/manifest.ts';
+import {
+  formatSetOption,
+  isDefaultOptionValue,
+  isHiddenPlayOption,
+  optionBounds,
+  parseOptionsList,
+  type OptionValues,
+  type UciOption,
+} from '../engine/options.ts';
 import { UciEngine } from '../engine/uci.ts';
-import { clockFor, engineTurn } from '../match/referee.ts';
+import { clockForSides, engineTurn } from '../match/referee.ts';
 import { useEngines } from '../stores/engines.ts';
 import { useGames } from '../stores/games.ts';
+import { useSettings } from '../stores/settings.ts';
+import { canSpawnBrowserThreads } from '../../vendor/uci-over-wasi/check-browser.ts';
 
 /** who plays one side: a person at this board, or an engine by its id */
 export type Player = { kind: 'person' } | { kind: 'engine'; id: string };
+
+/** per-side UCI overrides and optional search limit for a Play game */
+export interface SideConfig {
+  options: OptionValues;
+  /** control label overriding Play's game time for this side; empty to match game time */
+  limit: string;
+}
 
 /** the latest search report of one side's engine, from White's point of view */
 export interface Thinking {
@@ -27,6 +45,12 @@ export interface Thinking {
 type Phase = 'setup' | 'starting' | 'playing' | 'over';
 
 const COLORS: Color[] = ['white', 'black'];
+/** fallback move search when Play's Time is No clock and an engine has no per-side limit */
+const UNCLOCKED_ENGINE_FALLBACK: TimeControl = {
+  kind: 'movetime',
+  label: '1s/move',
+  ms: 1_000,
+};
 
 /** White's view of a score that an engine gave for the side it moves */
 function scoreFor(info: Info, mover: Color): string | null {
@@ -38,23 +62,92 @@ function scoreFor(info: Info, mover: Color): string | null {
 }
 
 /**
+ * Builds the UCI `setoption` commands to send for `declared` options given `values`.
+ * Clamps `Threads` to `threadsCap` and skips hidden, undeclared, or default-valued options.
+ */
+export function buildSetOptions(
+  declared: readonly UciOption[],
+  values: OptionValues,
+  threadsCap: number,
+): string[] {
+  const cmds: string[] = [];
+  for (const opt of declared) {
+    if (isHiddenPlayOption(opt)) continue;
+    let val = values[opt.name];
+    if (val === undefined) continue;
+    if (opt.type === 'spin' && typeof val === 'number') {
+      const { min, max } = optionBounds(opt);
+      if (min !== undefined) val = Math.max(min, val);
+      if (max !== undefined) val = Math.min(max, val);
+      if (opt.name.toLowerCase() === 'threads') {
+        val = Math.max(1, Math.min(Math.floor(val), Math.max(1, threadsCap)));
+      }
+    }
+    if (isDefaultOptionValue(opt, val)) continue;
+    cmds.push(formatSetOption(opt.name, val));
+  }
+  return cmds;
+}
+
+/**
+ * Resolves the effective control for one side: per-side limit first, then game control,
+ * falling back to `1s/move` for an engine when neither sets a control.
+ */
+export function resolveSideControl(
+  player: Player,
+  sideLimit: string,
+  gameControlLabel: string,
+): TimeControl | null {
+  const side = sideLimit.trim() ? resolveControl(sideLimit.trim()) : null;
+  if (side) return side;
+  const shared = gameControlLabel.trim() ? resolveControl(gameControlLabel.trim()) : null;
+  if (shared) return shared;
+  return player.kind === 'engine' ? UNCLOCKED_ENGINE_FALLBACK : null;
+}
+
+/**
  * One board's play: a person against an engine, two engines, or two people. Each engine runs in
  * its own Worker, made fresh for each game, so the two sides never share a table.
  */
 export function usePlay() {
   const engines = useEngines();
   const games = useGames();
+  const settings = useSettings();
 
   const players = reactive<Record<Color, Player>>({
     white: { kind: 'person' },
     black: { kind: 'person' },
   });
-  const control = ref<TimeControl>(
-    TIME_CONTROLS[2] ?? { kind: 'clock', label: '2m+1', baseMs: 120_000, incMs: 1_000 },
-  );
+  const sideConfig = reactive<Record<Color, SideConfig>>({
+    white: { options: {}, limit: '' },
+    black: { options: {}, limit: '' },
+  });
+  /** game time control label (`2m+1`, `10+0.1`, etc.); empty string means No clock */
+  const controlLabel = ref('2m+1');
   const game = shallowRef(new Game());
   const phase = ref<Phase>('setup');
-  const names = reactive<Record<Color, string>>({ white: 'You', black: 'You' });
+  /** UCI `id name` resolved when a game starts; empty until that side runs in a game */
+  const liveNames = reactive<Record<Color, string>>({ white: '', black: '' });
+  /** player names shown on board bars and search panels, staying in sync with setup selects */
+  const names = computed<Record<Color, string>>(() => ({
+    white:
+      players.white.kind === 'person'
+        ? 'You'
+        : phase.value === 'setup'
+          ? players.white.id
+          : liveNames.white || players.white.id,
+    black:
+      players.black.kind === 'person'
+        ? 'You'
+        : phase.value === 'setup'
+          ? players.black.id
+          : liveNames.black || players.black.id,
+  }));
+  const canResign = computed(
+    () =>
+      phase.value === 'playing' &&
+      (players.white.kind === 'person' || players.black.kind === 'person'),
+  );
   const thinking = reactive<Record<Color, Thinking | null>>({ white: null, black: null });
   /** milliseconds left to each side, refreshed while a clock runs; null without a clock */
   const times = reactive<Record<Color, number | null>>({ white: null, black: null });
@@ -63,8 +156,15 @@ export function usePlay() {
   const saved = ref(false);
   /** the opening this game started from, as a reader sees it; empty for chess's start */
   const openingLabel = ref('');
+  /** ply shown on the board when reviewing earlier moves; null follows the live position */
+  const viewPly = ref<number | null>(null);
+  const currentPly = computed(() =>
+    viewPly.value === null ? game.value.san.length : Math.min(viewPly.value, game.value.san.length),
+  );
+  const viewingLive = computed(() => currentPly.value === game.value.san.length);
 
   let clock: Clock | null = null;
+  let activeControls: Record<Color, TimeControl | null> = { white: null, black: null };
   let workers: Partial<Record<Color, UciEngine>> = {};
   /** bumped by every new game and every end, so a search from an older one is dropped */
   let token = 0;
@@ -73,9 +173,47 @@ export function usePlay() {
   const entryOf = (p: Player): ServedEngine | undefined =>
     p.kind === 'engine' ? engines.list.find((e) => e.id === p.id) : undefined;
 
-  /** which side a person may move now */
+  /** Sets one side's player and seeds its in-game options from saved per-engine defaults. */
+  function setPlayer(color: Color, player: Player): void {
+    players[color] = player;
+    liveNames[color] = '';
+    if (player.kind === 'person') {
+      sideConfig[color] = { options: {}, limit: '' };
+      return;
+    }
+    const preset = settings.engineOptions[player.id];
+    sideConfig[color] = {
+      options: preset ? { ...preset.options } : {},
+      limit: preset?.limit ?? '',
+    };
+  }
+
+  /** Saves one side's current overrides as that engine's defaults in browser settings. */
+  function saveSideAsDefault(color: Color): void {
+    const p = players[color];
+    if (p.kind !== 'engine') return;
+    const cfg = sideConfig[color];
+    settings.saveEngineOptions(p.id, {
+      options: { ...cfg.options },
+      limit: cfg.limit.trim() || undefined,
+    });
+  }
+
+  /** Resets one side's in-game overrides and per-side search limit to defaults. */
+  function resetSideConfig(color: Color): void {
+    sideConfig[color] = { options: {}, limit: '' };
+  }
+
+  /** Steps the board preview to `ply`; jumping to the end returns to live play. */
+  function goTo(ply: number): void {
+    const last = game.value.san.length;
+    const clamped = Math.max(0, Math.min(ply, last));
+    viewPly.value = clamped === last ? null : clamped;
+  }
+
+  /** which side a person may move now (only when viewing the live position) */
   function personToMove(): Color | undefined {
-    if (phase.value !== 'playing') return undefined;
+    if (phase.value !== 'playing' || !viewingLive.value) return undefined;
     const turn = game.value.turn;
     return players[turn].kind === 'person' ? turn : undefined;
   }
@@ -86,7 +224,9 @@ export function usePlay() {
 
   function tick(): void {
     if (!clock) return;
-    for (const c of COLORS) times[c] = Math.max(0, clock.remaining(c));
+    for (const c of COLORS) {
+      times[c] = clock.hasClock(c) ? Math.max(0, clock.remaining(c)) : null;
+    }
     const side = clock.side;
     if (side !== null && clock.remaining(side) <= 0) {
       game.value.flag(side);
@@ -115,12 +255,14 @@ export function usePlay() {
   function pgn(): string {
     const d = new Date();
     const date = `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+    const shared = controlLabel.value.trim() ? resolveControl(controlLabel.value) : null;
+    const asymmetric = sideConfig.white.limit.trim() || sideConfig.black.limit.trim();
     return game.value.pgn({
       Event: 'ratchet-ui game',
       Date: date,
-      White: names.white,
-      Black: names.black,
-      TimeControl: pgnTimeControl(control.value),
+      White: names.value.white,
+      Black: names.value.black,
+      TimeControl: !asymmetric && shared ? pgnTimeControl(shared) : '-',
     });
   }
 
@@ -150,12 +292,13 @@ export function usePlay() {
 
   async function think(color: Color, w: UciEngine): Promise<void> {
     const mine = token;
+    const control = activeControls[color] ?? UNCLOCKED_ENGINE_FALLBACK;
     await engineTurn({
       game: game.value,
       color,
       engine: w,
-      name: names[color],
-      control: control.value,
+      name: names.value[color],
+      control,
       clock,
       live: () => mine === token,
       onInfo: (info) => {
@@ -175,7 +318,7 @@ export function usePlay() {
     next();
   }
 
-  /** starts a new game with the chosen players and time control, from an opening if one is given */
+  /** starts a new game with the chosen players, options, limits, and warm-up before move 1 */
   async function start(opening?: Opening): Promise<void> {
     token++;
     const mine = token;
@@ -183,25 +326,57 @@ export function usePlay() {
     clock = null;
     error.value = '';
     saved.value = false;
+    viewPly.value = null;
     game.value = new Game(opening?.fen);
     for (const m of opening?.moves ?? []) game.value.play(m);
     openingLabel.value = opening?.label ?? '';
     thinking.white = thinking.black = null;
     times.white = times.black = null;
     phase.value = 'starting';
+
+    activeControls = {
+      white: resolveSideControl(players.white, sideConfig.white.limit, controlLabel.value),
+      black: resolveSideControl(players.black, sideConfig.black.limit, controlLabel.value),
+    };
+
+    const hc = navigator.hardwareConcurrency;
+    const threadsCap = canSpawnBrowserThreads() ? Math.max(1, Number.isFinite(hc) ? hc : 1) : 1;
+
     try {
       for (const c of COLORS) {
         const entry = entryOf(players[c]);
         if (!entry) {
-          names[c] = 'You';
+          liveNames[c] = 'You';
           continue;
         }
+        const t0 = performance.now();
         const w = new UciEngine(engines.workerUrl(entry));
         workers[c] = w;
         const id = await w.identify();
+        if (mine !== token) return;
+        const declared = parseOptionsList(id.options);
+        if (engines.inspections.get(entry.id)?.state !== 'done') {
+          engines.recordInspection(entry, {
+            state: 'done',
+            idName: id.name,
+            idAuthor: id.author,
+            startMs: performance.now() - t0,
+            options: declared,
+            error: '',
+          });
+        }
+        for (const cmd of buildSetOptions(declared, sideConfig[c].options, threadsCap)) {
+          w.send(cmd);
+        }
+        await w.ready();
+        if (mine !== token) return;
+        // Warm-up before move 1 removes cold WASM/JIT startup lag from the game clock
+        await w.go('startpos', 'depth 1');
+        if (mine !== token) return;
         w.send('ucinewgame');
         await w.ready();
-        names[c] = id.name || entry.id;
+        if (mine !== token) return;
+        liveNames[c] = id.name || entry.id;
       }
     } catch (e) {
       if (mine !== token) return;
@@ -211,8 +386,7 @@ export function usePlay() {
       return;
     }
     if (mine !== token) return;
-    const tc = control.value;
-    clock = clockFor(tc);
+    clock = clockForSides(activeControls);
     if (clock) {
       clock.start(game.value.turn);
       ticker = setInterval(tick, 100);
@@ -235,7 +409,7 @@ export function usePlay() {
 
   /** the side a person plays resigns; with two people, the side to move */
   function resign(): void {
-    if (phase.value !== 'playing') return;
+    if (!canResign.value) return;
     const person = COLORS.find(
       (c) =>
         players[c].kind === 'person' &&
@@ -263,15 +437,24 @@ export function usePlay() {
 
   return {
     players,
-    control,
+    sideConfig,
+    controlLabel,
     game,
     phase,
     names,
+    canResign,
     thinking,
     times,
     error,
     saved,
     openingLabel,
+    viewPly,
+    currentPly,
+    viewingLive,
+    setPlayer,
+    saveSideAsDefault,
+    resetSideConfig,
+    goTo,
     pgn,
     save,
     personToMove,

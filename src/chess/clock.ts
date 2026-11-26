@@ -95,71 +95,104 @@ export function pgnTimeControl(tc: TimeControl): string {
   return '-';
 }
 
-export interface ClockOptions {
+/** Clock settings for one side of a game. */
+export interface SideClock {
   baseMs: number;
   incMs?: number;
   /** moves in a period; 0 for no periods. The base time is added again after each period. */
   moves?: number;
-  /** the time source, for tests; the page's own time by default */
-  now?: () => number;
 }
 
+export type ClockOptions =
+  | (SideClock & {
+      /** the time source, for tests; the page's own time by default */
+      now?: () => number;
+    })
+  | {
+      /** independent clock per side; null leaves that side unclocked */
+      sides: Record<Color, SideClock | null>;
+      /** the time source, for tests; the page's own time by default */
+      now?: () => number;
+    };
+
 /**
- * A two-sided chess clock. The side to move runs; a press banks its time, adds its increment and,
- * at the end of a period, the period's time, then starts the other side.
+ * A two-sided chess clock, symmetric or per-side. Only a side with a clock ticks on its turn; a
+ * press banks its time, adds its increment and period time, then hands the turn to the other side.
  */
 export class Clock {
+  private readonly cfg: Record<Color, { baseMs: number; incMs: number; moves: number } | null>;
   private readonly left: Record<Color, number>;
   private readonly made: Record<Color, number> = { white: 0, black: 0 };
-  private running: Color | null = null;
-  /** when the running side's time last started */
+  /** the side whose turn is active, whether or not it has a clock; null when stopped */
+  private turn: Color | null = null;
+  /** when the current turn started */
   private since = 0;
-  private readonly baseMs: number;
-  private readonly incMs: number;
-  private readonly moves: number;
   private readonly now: () => number;
 
   constructor(o: ClockOptions) {
-    this.baseMs = o.baseMs;
-    this.incMs = o.incMs ?? 0;
-    this.moves = o.moves ?? 0;
     this.now = o.now ?? (() => performance.now());
-    this.left = { white: o.baseMs, black: o.baseMs };
+    const norm = (s: SideClock | null) =>
+      s ? { baseMs: s.baseMs, incMs: s.incMs ?? 0, moves: s.moves ?? 0 } : null;
+    if ('sides' in o) {
+      this.cfg = { white: norm(o.sides.white), black: norm(o.sides.black) };
+    } else {
+      const both = norm(o);
+      this.cfg = { white: both, black: both };
+    }
+    this.left = {
+      white: this.cfg.white?.baseMs ?? 0,
+      black: this.cfg.black?.baseMs ?? 0,
+    };
   }
 
-  /** milliseconds left to `color`, counting the running side's time up to now */
+  /** whether `color` plays on a clock */
+  hasClock(color: Color): boolean {
+    return this.cfg[color] !== null;
+  }
+
+  /** increment in milliseconds for `color`; 0 when unclocked */
+  increment(color: Color): number {
+    return this.cfg[color]?.incMs ?? 0;
+  }
+
+  /** milliseconds left to `color`, counting the running side's time up to now; 0 when unclocked */
   remaining(color: Color): number {
-    const used = this.running === color ? this.now() - this.since : 0;
+    if (!this.cfg[color]) return 0;
+    const used = this.turn === color ? this.now() - this.since : 0;
     return this.left[color] - used;
   }
 
   /** moves `color` has left in its period, for UCI's movestogo; undefined without periods */
   movesToGo(color: Color): number | undefined {
-    return this.moves > 0 ? this.moves - (this.made[color] % this.moves) : undefined;
+    const moves = this.cfg[color]?.moves ?? 0;
+    return moves > 0 ? moves - (this.made[color] % moves) : undefined;
   }
 
-  /** the side whose time runs, if any */
+  /** the side whose clock is currently ticking, if any */
   get side(): Color | null {
-    return this.running;
+    return this.turn !== null && this.cfg[this.turn] !== null ? this.turn : null;
   }
 
   start(color: Color): void {
-    this.running = color;
+    this.turn = color;
     this.since = this.now();
   }
 
   press(): void {
-    if (this.running === null) return;
-    const color = this.running;
-    this.made[color]++;
-    const period = this.moves > 0 && this.made[color] % this.moves === 0 ? this.baseMs : 0;
-    this.left[color] = this.remaining(color) + this.incMs + period;
+    if (this.turn === null) return;
+    const color = this.turn;
+    const c = this.cfg[color];
+    if (c) {
+      this.made[color]++;
+      const period = c.moves > 0 && this.made[color] % c.moves === 0 ? c.baseMs : 0;
+      this.left[color] = this.remaining(color) + c.incMs + period;
+    }
     this.start(opposite(color));
   }
 
   stop(): void {
-    if (this.running === null) return;
-    this.left[this.running] = this.remaining(this.running);
-    this.running = null;
+    if (this.turn === null) return;
+    if (this.cfg[this.turn]) this.left[this.turn] = this.remaining(this.turn);
+    this.turn = null;
   }
 }

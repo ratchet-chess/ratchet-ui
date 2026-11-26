@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { parseControl, type TimeControl } from '../chess/clock.ts';
 import { Game } from '../chess/game.ts';
-import { clockFor, forfeitReason, goLimits, problemOf, silenceLimit } from './referee.ts';
+import {
+  clockFor,
+  clockForSides,
+  forfeitReason,
+  goLimits,
+  problemOf,
+  silenceLimit,
+} from './referee.ts';
 
 const control = (text: string): TimeControl => {
   const tc = parseControl(text);
@@ -36,6 +43,17 @@ describe('the referee', () => {
     const clock = clockFor(tc);
     expect(goLimits(tc, clock, 'white')).toBe('wtime 10000 btime 10000 winc 100 binc 100');
     expect(silenceLimit(tc, clock, 'white')).toBe(15_000);
+  });
+
+  it('supports per-side limits alongside a clocked opponent', () => {
+    const whiteTc = control('2m+1');
+    const blackTc = control('depth 8');
+    const clock = clockForSides({ white: whiteTc, black: blackTc });
+    expect(clock).not.toBeNull();
+    expect(clock?.hasClock('white')).toBe(true);
+    expect(clock?.hasClock('black')).toBe(false);
+    expect(goLimits(blackTc, clock, 'black')).toBe('depth 8');
+    expect(goLimits(whiteTc, clock, 'white')).toBe('wtime 120000 btime 120000 winc 1000 binc 1000');
   });
 
   it('reads back what ended a game abnormally from its reason', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ANCHOR_RATING } from '../ratings/list.ts';
-import { settingsFileOf } from './settings.ts';
+import { settingsFileOf, unionOf } from './settings.ts';
 
 describe('settingsFileOf', () => {
   it('reads a file with no anchor rating as the default', () => {
@@ -13,5 +13,41 @@ describe('settingsFileOf', () => {
 
   it('keeps a rating the user set', () => {
     expect(settingsFileOf({ anchorRating: 2900 }).anchorRating).toBe(2900);
+  });
+
+  it('reads valid engineOptions and drops invalid limits or non-primitive values', () => {
+    const f = settingsFileOf({
+      engineOptions: {
+        'stockfish-10': {
+          options: { 'Skill Level': 8, UCI_LimitStrength: true, bad: { x: 1 } },
+          limit: 'depth 8',
+        },
+        'ratchet-0.3.14': {
+          options: { Hash: 32 },
+          limit: 'not a control',
+        },
+        empty: { options: {}, limit: '' },
+      },
+    });
+    expect(f.engineOptions).toEqual({
+      'stockfish-10': { options: { 'Skill Level': 8, UCI_LimitStrength: true }, limit: 'depth 8' },
+      'ratchet-0.3.14': { options: { Hash: 32 } },
+    });
+  });
+
+  it('merges engineOptions in unionOf, keeping local entries on conflict', () => {
+    const here = settingsFileOf({
+      engineOptions: { 'stockfish-10': { options: { 'Skill Level': 5 } } },
+    });
+    const there = settingsFileOf({
+      engineOptions: {
+        'stockfish-10': { options: { 'Skill Level': 12 } },
+        'ratchet-0.3.14': { options: { Hash: 64 }, limit: 'depth 10' },
+      },
+    });
+    expect(unionOf(here, there).engineOptions).toEqual({
+      'stockfish-10': { options: { 'Skill Level': 5 } },
+      'ratchet-0.3.14': { options: { Hash: 64 }, limit: 'depth 10' },
+    });
   });
 });

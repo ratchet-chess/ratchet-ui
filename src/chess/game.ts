@@ -59,6 +59,40 @@ export class Game {
     return move && 'from' in move ? [makeSquare(move.from), makeSquare(move.to)] : undefined;
   }
 
+  /** board snapshot after `ply` half-moves (0 is `startFen`), for stepping through played moves */
+  positionAt(ply: number): {
+    fen: string;
+    turn: Color;
+    lastMove: [SquareName, SquareName] | undefined;
+    check: boolean;
+  } {
+    const target = Math.max(0, Math.min(ply, this.uci.length));
+    if (target === this.uci.length) {
+      return {
+        fen: this.fen,
+        turn: this.turn,
+        lastMove: this.lastMove(),
+        check: this.pos.isCheck(),
+      };
+    }
+    const pos = Chess.fromSetup(parseFen(this.startFen).unwrap()).unwrap();
+    let last: [SquareName, SquareName] | undefined;
+    for (let i = 0; i < target; i++) {
+      const u = this.uci[i];
+      const parsed = u === undefined ? undefined : parseUci(u);
+      if (!parsed) break;
+      const move = normalizeMove(pos, parsed);
+      pos.play(move);
+      last = 'from' in move ? [makeSquare(move.from), makeSquare(move.to)] : undefined;
+    }
+    return {
+      fen: makeFen(pos.toSetup()),
+      turn: pos.turn,
+      lastMove: last,
+      check: pos.isCheck(),
+    };
+  }
+
   /** whether a move from `orig` to `dest` is a pawn reaching the last rank, so it needs a piece */
   isPromotion(orig: string, dest: string): boolean {
     const move = parseUci(orig + dest);

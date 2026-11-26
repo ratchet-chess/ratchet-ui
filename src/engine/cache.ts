@@ -148,6 +148,21 @@ export function saveEngineCache(data: Record<string, PersistedEngineData>): void
   }
 }
 
+/** Merges one engine's completed UCI inspection into the persisted cache without dropping probe/WASI data. */
+export function persistEngineInspection(
+  id: string,
+  sha256: string,
+  inspection: EngineInspection,
+): void {
+  if (inspection.state !== 'done') return;
+  const saved = loadEngineCache();
+  const prev = saved[id];
+  const next: PersistedEngineData = prev?.sha256 === sha256 ? { ...prev } : { sha256 };
+  next.inspection = inspection;
+  saved[id] = next;
+  saveEngineCache(saved);
+}
+
 /** Converts an Inspection into a JSON-serializable WasiStaticInfo. */
 export function staticInfoOf(insp: Inspection): WasiStaticInfo {
   return {

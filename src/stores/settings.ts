@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref, watch } from 'vue';
 import { parseControl } from '../chess/clock.ts';
+import type { EngineOptionPreset, OptionValue } from '../engine/options.ts';
 import type { TournamentConfig } from '../match/format.ts';
 import { configOf } from '../match/records.ts';
 import { ANCHOR_RATING } from '../ratings/list.ts';
@@ -13,6 +14,7 @@ const START_KEY = 'ratchet-ui.template-start';
 const THEME_KEY = 'ratchet-ui.theme';
 const BACKUP_BOOKS_KEY = 'ratchet-ui.backup-books';
 const ANCHOR_KEY = 'ratchet-ui.anchor-rating';
+const ENGINE_OPTIONS_KEY = 'ratchet-ui.engine-options';
 
 /** light, dark, or as the system asks */
 export type Theme = 'light' | 'dark' | 'system';
@@ -69,6 +71,37 @@ function controlsOf(x: unknown): string[] {
 const ratingOf = (x: unknown): number | null =>
   typeof x === 'number' && Number.isFinite(x) ? x : null;
 
+function isOptionValue(x: unknown): x is OptionValue {
+  return (
+    typeof x === 'string' || typeof x === 'boolean' || (typeof x === 'number' && Number.isFinite(x))
+  );
+}
+
+const isRecord = (x: unknown): x is Record<string, unknown> =>
+  typeof x === 'object' && x !== null && !Array.isArray(x);
+
+function engineOptionsOf(x: unknown): Record<string, EngineOptionPreset> {
+  if (!isRecord(x)) return {};
+  const out: Record<string, EngineOptionPreset> = {};
+  for (const [id, raw] of Object.entries(x)) {
+    if (!id || !isRecord(raw)) continue;
+    const opts: Record<string, OptionValue> = {};
+    if (isRecord(raw.options)) {
+      for (const [k, v] of Object.entries(raw.options)) {
+        if (k && isOptionValue(v)) opts[k] = v;
+      }
+    }
+    const limit =
+      typeof raw.limit === 'string' && raw.limit.trim() && parseControl(raw.limit) !== null
+        ? raw.limit.trim()
+        : undefined;
+    if (Object.keys(opts).length > 0 || limit) {
+      out[id] = limit ? { options: opts, limit } : { options: opts };
+    }
+  }
+  return out;
+}
+
 /** the settings as a backup keeps them, in settings.json */
 export interface SettingsFile {
   manager: string;
@@ -79,6 +112,8 @@ export interface SettingsFile {
   backupBooks: boolean;
   /** the rating Ratings holds its anchor at; null, a rating cleared, leaves the ratings averaging 0 */
   anchorRating: number | null;
+  /** saved UCI option defaults and optional per-side limit, keyed by engine id */
+  engineOptions: Record<string, EngineOptionPreset>;
 }
 
 /** a settings.json read back; what does not read takes its default */
@@ -93,6 +128,7 @@ export function settingsFileOf(x: unknown): SettingsFile {
     theme: isTheme(r.theme) ? r.theme : 'system',
     backupBooks: r.backupBooks !== false,
     anchorRating: 'anchorRating' in r ? ratingOf(r.anchorRating) : ANCHOR_RATING,
+    engineOptions: engineOptionsOf(r.engineOptions),
   };
 }
 
@@ -114,6 +150,7 @@ export function unionOf(here: SettingsFile, there: SettingsFile): SettingsFile {
     ...here,
     controls: [...new Set([...here.controls, ...there.controls])],
     templates: [...here.templates, ...added].toSorted((a, b) => a.name.localeCompare(b.name)),
+    engineOptions: { ...there.engineOptions, ...here.engineOptions },
   };
 }
 
@@ -169,6 +206,19 @@ export const useSettings = defineStore('settings', () => {
     else localStorage.setItem(ANCHOR_KEY, JSON.stringify(r));
   });
 
+  /** saved UCI option defaults and optional per-side limit, keyed by engine id */
+  const engineOptions = ref<Record<string, EngineOptionPreset>>(
+    engineOptionsOf(readJson(ENGINE_OPTIONS_KEY)),
+  );
+  watch(
+    engineOptions,
+    (m) => {
+      if (Object.keys(m).length === 0) localStorage.removeItem(ENGINE_OPTIONS_KEY);
+      else localStorage.setItem(ENGINE_OPTIONS_KEY, JSON.stringify(m));
+    },
+    { deep: true },
+  );
+
   /** the settings as a backup keeps them */
   function file(): SettingsFile {
     // a copy through JSON, which reactive proxies survive and structuredClone refuses
@@ -182,6 +232,7 @@ export const useSettings = defineStore('settings', () => {
           theme: theme.value,
           backupBooks: backupBooks.value,
           anchorRating: anchorRating.value,
+          engineOptions: engineOptions.value,
         }),
       ),
     );
@@ -197,6 +248,16 @@ export const useSettings = defineStore('settings', () => {
     theme.value = f.theme;
     backupBooks.value = f.backupBooks;
     anchorRating.value = f.anchorRating;
+    engineOptions.value = f.engineOptions;
+  }
+
+  /** keeps an engine's default options and optional search limit; clears the entry when empty */
+  function saveEngineOptions(engineId: string, preset: EngineOptionPreset): void {
+    const next = { ...engineOptions.value };
+    const clean = engineOptionsOf({ [engineId]: preset })[engineId];
+    if (clean) next[engineId] = clean;
+    else delete next[engineId];
+    engineOptions.value = next;
   }
 
   /** keeps a setup under a name, replacing a template of that name */
@@ -220,8 +281,10 @@ export const useSettings = defineStore('settings', () => {
     theme,
     backupBooks,
     anchorRating,
+    engineOptions,
     file,
     restore,
+    saveEngineOptions,
     saveTemplate,
     removeTemplate,
   };

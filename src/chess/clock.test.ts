@@ -42,6 +42,49 @@ describe('Clock', () => {
     expect(c.remaining('white')).toBe(800 + 1_000);
     expect(c.movesToGo('white')).toBe(2);
   });
+
+  it('supports one-sided clocks where the unclocked side never ticks', () => {
+    let t = 0;
+    const c = new Clock({
+      sides: { white: { baseMs: 60_000, incMs: 1_000 }, black: null },
+      now: () => t,
+    });
+    expect(c.hasClock('white')).toBe(true);
+    expect(c.hasClock('black')).toBe(false);
+    c.start('white');
+    expect(c.side).toBe('white');
+    t = 5_000;
+    c.press();
+    expect(c.remaining('white')).toBe(56_000);
+    expect(c.side).toBeNull();
+    t = 25_000;
+    expect(c.remaining('white')).toBe(56_000);
+    expect(c.remaining('black')).toBe(0);
+    c.press(); // black finishes unclocked move
+    expect(c.side).toBe('white');
+    t = 30_000;
+    expect(c.remaining('white')).toBe(51_000);
+  });
+
+  it('supports asymmetric per-side clocks with distinct increments', () => {
+    let t = 0;
+    const c = new Clock({
+      sides: {
+        white: { baseMs: 300_000, incMs: 2_000 },
+        black: { baseMs: 60_000, incMs: 0 },
+      },
+      now: () => t,
+    });
+    expect(c.increment('white')).toBe(2_000);
+    expect(c.increment('black')).toBe(0);
+    c.start('white');
+    t = 10_000;
+    c.press();
+    expect(c.remaining('white')).toBe(292_000);
+    t = 15_000;
+    c.press();
+    expect(c.remaining('black')).toBe(55_000);
+  });
 });
 
 describe('pgnTimeControl', () => {

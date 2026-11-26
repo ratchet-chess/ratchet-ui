@@ -7,19 +7,12 @@ import {
   executeWasiCheck,
   loadEngineCache,
   saveEngineCache,
-  type EngineInspection,
   type EngineProbe,
   type PersistedEngineData,
   type WasiCheckReport,
 } from '../engine/cache.ts';
 import type { ServedEngine } from '../engine/manifest.ts';
-import {
-  PROBE_SUITES,
-  parseOption,
-  sortOptions,
-  type ProbeSuite,
-  type UciOption,
-} from '../engine/options.ts';
+import { PROBE_SUITES, parseOptionsList, type ProbeSuite } from '../engine/options.ts';
 import { UciEngine } from '../engine/uci.ts';
 import { useEngines } from '../stores/engines.ts';
 import { useTournaments } from '../stores/tournaments.ts';
@@ -38,7 +31,7 @@ const picker = ref<HTMLInputElement | null>(null);
 const dragDepth = ref(0);
 const dragOver = computed(() => dragDepth.value > 0);
 
-const inspections = reactive(new Map<string, EngineInspection>());
+const inspections = engines.inspections;
 const probes = reactive(new Map<string, EngineProbe>());
 const wasiReports = reactive(new Map<string, WasiCheckReport>());
 const wasiLoading = reactive(new Set<string>());
@@ -47,7 +40,6 @@ const wasiLoading = reactive(new Set<string>());
 const uploadedBytes = ref<Uint8Array | null>(null);
 const uploadedReport = ref<WasiCheckReport | undefined>(undefined);
 
-const liveInspect = new Map<string, UciEngine>();
 const liveProbe = new Map<string, UciEngine>();
 const liveWasi = new Map<string, AbortController>();
 
@@ -134,45 +126,8 @@ watch(
   { immediate: true },
 );
 
-function parseOptionsList(raw: readonly string[]): UciOption[] {
-  const out: UciOption[] = [];
-  for (const line of raw) {
-    const parsed = parseOption(line);
-    if (parsed) out.push(parsed);
-  }
-  return sortOptions(out);
-}
-
 async function inspectEngine(e: ServedEngine): Promise<void> {
-  liveInspect.get(e.id)?.terminate();
-  const state: EngineInspection = reactive({
-    state: 'loading',
-    idName: '',
-    idAuthor: '',
-    startMs: null,
-    options: [],
-    error: '',
-  });
-  inspections.set(e.id, state);
-  const t0 = performance.now();
-  const engine = new UciEngine(engines.workerUrl(e));
-  liveInspect.set(e.id, engine);
-  try {
-    const id = await engine.identify();
-    await engine.ready();
-    state.idName = id.name;
-    state.idAuthor = id.author;
-    state.startMs = performance.now() - t0;
-    state.options = parseOptionsList(id.options);
-    state.state = 'done';
-    persistServed();
-  } catch (err) {
-    state.error = err instanceof Error ? err.message : String(err);
-    state.state = 'failed';
-  } finally {
-    engine.terminate();
-    liveInspect.delete(e.id);
-  }
+  await engines.inspect(e, true);
 }
 
 async function runProbe(e: ServedEngine, suite: ProbeSuite, depth: number): Promise<void> {
@@ -204,17 +159,14 @@ async function runProbe(e: ServedEngine, suite: ProbeSuite, depth: number): Prom
     const startMs = performance.now() - t0;
     state.startMs = startMs;
     if (!inspections.has(e.id) || inspections.get(e.id)?.state === 'failed') {
-      inspections.set(
-        e.id,
-        reactive({
-          state: 'done',
-          idName: id.name,
-          idAuthor: id.author,
-          startMs,
-          options: parseOptionsList(id.options),
-          error: '',
-        }),
-      );
+      engines.recordInspection(e, {
+        state: 'done',
+        idName: id.name,
+        idAuthor: id.author,
+        startMs,
+        options: parseOptionsList(id.options),
+        error: '',
+      });
     }
     state.state = 'running';
 
@@ -425,7 +377,6 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
-  for (const e of liveInspect.values()) e.terminate();
   for (const e of liveProbe.values()) e.terminate();
   for (const ac of liveWasi.values()) ac.abort();
   window.removeEventListener('dragenter', onWindowDragEnter);

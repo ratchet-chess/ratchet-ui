@@ -1,7 +1,7 @@
 import type { Color } from 'chessops/types';
 import { opposite } from 'chessops/util';
 import { Adjudicator, type Adjudication } from './adjudicate.ts';
-import { Clock, type TimeControl } from '../chess/clock.ts';
+import { Clock, type SideClock, type TimeControl } from '../chess/clock.ts';
 import type { Game } from '../chess/game.ts';
 import type { Info } from '../engine/info.ts';
 import type { UciEngine } from '../engine/uci.ts';
@@ -23,19 +23,36 @@ function positionCommand(game: Game): string {
 export function goLimits(tc: TimeControl, clock: Clock | null, turn: Color): string {
   if (tc.kind === 'movetime') return `movetime ${tc.ms}`;
   if (tc.kind === 'depth') return `depth ${tc.depth}`;
-  if (tc.kind === 'nodes' || !clock) return `nodes ${tc.kind === 'nodes' ? tc.nodes : 200_000}`;
-  const w = Math.max(1, Math.round(clock.remaining('white')));
-  const b = Math.max(1, Math.round(clock.remaining('black')));
+  if (tc.kind === 'nodes' || !clock || !clock.hasClock(turn))
+    return `nodes ${tc.kind === 'nodes' ? tc.nodes : 200_000}`;
+  const own = Math.max(1, Math.round(clock.remaining(turn)));
+  const w = clock.hasClock('white') ? Math.max(1, Math.round(clock.remaining('white'))) : own;
+  const b = clock.hasClock('black') ? Math.max(1, Math.round(clock.remaining('black'))) : own;
   if (tc.kind === 'moves')
     return `wtime ${w} btime ${b} movestogo ${clock.movesToGo(turn) ?? tc.moves}`;
-  return `wtime ${w} btime ${b} winc ${tc.incMs} binc ${tc.incMs}`;
+  const winc = clock.hasClock('white') ? clock.increment('white') : tc.incMs;
+  const binc = clock.hasClock('black') ? clock.increment('black') : tc.incMs;
+  return `wtime ${w} btime ${b} winc ${winc} binc ${binc}`;
+}
+
+function sideClockOf(tc: TimeControl | null): SideClock | null {
+  if (!tc) return null;
+  if (tc.kind === 'clock') return { baseMs: tc.baseMs, incMs: tc.incMs };
+  if (tc.kind === 'moves') return { baseMs: tc.periodMs, moves: tc.moves };
+  return null;
 }
 
 /** a clock for a control, or null for one with no clock: a node budget, a fixed time a move or a depth */
 export function clockFor(tc: TimeControl): Clock | null {
-  if (tc.kind === 'clock') return new Clock({ baseMs: tc.baseMs, incMs: tc.incMs });
-  if (tc.kind === 'moves') return new Clock({ baseMs: tc.periodMs, moves: tc.moves });
-  return null;
+  const s = sideClockOf(tc);
+  return s ? new Clock(s) : null;
+}
+
+/** a clock for per-side controls, or null when neither side plays on a clock */
+export function clockForSides(sides: Record<Color, TimeControl | null>): Clock | null {
+  const white = sideClockOf(sides.white);
+  const black = sideClockOf(sides.black);
+  return white || black ? new Clock({ sides: { white, black } }) : null;
 }
 
 /** an engine's score as fastchess writes it in a PGN comment: `+0.35` or `+M3`, for the side that moved */
@@ -118,6 +135,10 @@ export interface Turn {
  */
 export async function engineTurn(t: Turn): Promise<Info | null> {
   const { game, color, engine, name, control, clock } = t;
+  const timed =
+    clock !== null &&
+    clock.hasClock(color) &&
+    (control.kind === 'clock' || control.kind === 'moves');
   const started = performance.now();
   /** the search's last report with a depth and a score; a holder, as the callback sets it */
   const seen: { last: Info | null } = { last: null };
@@ -138,13 +159,13 @@ export async function engineTurn(t: Turn): Promise<Info | null> {
     if (!t.live()) return null;
     if (answer === 'silent') {
       engine.stop();
-      if (clock) game.flag(color);
+      if (timed) game.flag(color);
       else {
         game.forfeit(color, forfeitReason.silent(name, limit, control.kind), 'rules infraction');
       }
       return null;
     }
-    if (clock && clock.remaining(color) < 0) {
+    if (timed && clock.remaining(color) < 0) {
       game.flag(color);
       return null;
     }
