@@ -2,6 +2,7 @@
 import { Check, Copy, Play, RotateCw, Search, Square } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import Panel from '../../components/Panel.vue';
+import Segmented from '../../components/Segmented.vue';
 import type { EngineInspection, EngineProbe, WasiCheckReport } from '../../engine/cache.ts';
 import type { Info } from '../../engine/info.ts';
 import type { ServedEngine } from '../../engine/manifest.ts';
@@ -9,7 +10,7 @@ import { buildBasisLabel, cpwUrl, kindLabel } from '../../engine/meta.ts';
 import { engineResults, type ProbeSuite } from '../../engine/options.ts';
 import { inputMode } from '../../engine/uci.ts';
 import { useTournaments } from '../../stores/tournaments.ts';
-import { bytes, count, thousands } from '../../ui/format.ts';
+import { bytes, count, sentence, thousands } from '../../ui/format.ts';
 import { formatShort } from '../tourneys/show.ts';
 import { canSpawnBrowserThreads } from '../../../vendor/uci-over-wasi/check-browser.ts';
 import EngineHistory from './EngineHistory.vue';
@@ -36,6 +37,10 @@ const mode = inputMode();
 const threadsOk = canSpawnBrowserThreads();
 
 const DEFAULT_DEPTHS = [8, 10, 12, 14, 16];
+const SUITE_OPTIONS = [
+  { value: 'startpos' as const, label: 'Startpos' },
+  { value: 'three' as const, label: '3 positions' },
+];
 
 const probeDepths = computed(() => props.engine.meta?.probe?.depths ?? DEFAULT_DEPTHS);
 const defaultProbeDepth = computed(() => props.engine.meta?.probe?.defaultDepth ?? 12);
@@ -128,7 +133,7 @@ const pctText = (v: number | null) => (v === null ? '—' : `${v.toFixed(1)}%`);
           {{ kindLabel(engine.meta.kind) }}
         </span>
         <span v-if="engine.meta" class="tag tone-dim">{{ engine.meta.year }}</span>
-        <span class="tag tone-dim">{{ engine.source }}</span>
+        <span class="tag tone-dim">{{ engine.source === 'local' ? 'Local' : engine.source }}</span>
         <span v-if="engine.license" class="tag tone-dim">{{ engine.license }}</span>
         <span v-if="engine.bytes !== null" class="num text-small text-dim">
           {{ bytes(engine.bytes) }}
@@ -142,16 +147,16 @@ const pctText = (v: number | null) => (v === null ? '—' : `${v.toFixed(1)}%`);
 
       <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 px-3 py-2 text-dense">
         <dt class="text-dim">File</dt>
-        <dd class="num text-text">
-          {{ engine.wasm }}
-          <span v-if="engine.bytes !== null" class="text-dim">
+        <dd class="text-text">
+          <span class="mono">{{ engine.wasm }}</span>
+          <span v-if="engine.bytes !== null" class="num text-dim">
             ({{ count(engine.bytes) }} bytes)
           </span>
         </dd>
         <dt class="text-dim">Source</dt>
-        <dd class="num text-text">{{ engine.source }}</dd>
+        <dd class="text-text">{{ engine.source }}</dd>
         <dt class="text-dim">{{ hasDualLicense ? 'Build license' : 'License' }}</dt>
-        <dd class="num text-text">
+        <dd class="text-text">
           {{ engine.license ?? '—' }}
           <span
             v-if="engine.meta?.buildBasis === 'written-from-record'"
@@ -162,7 +167,7 @@ const pctText = (v: number | null) => (v === null ? '—' : `${v.toFixed(1)}%`);
         </dd>
         <dt class="text-dim">SHA-256</dt>
         <dd class="flex min-w-0 items-center gap-2">
-          <span class="num truncate text-small text-dim" :title="engine.sha256">
+          <span class="mono truncate text-small text-dim" :title="engine.sha256">
             {{ engine.sha256 }}
           </span>
           <button class="btn-sm shrink-0" title="Copy SHA-256" @click="copySha">
@@ -172,20 +177,18 @@ const pctText = (v: number | null) => (v === null ? '—' : `${v.toFixed(1)}%`);
           </button>
         </dd>
         <dt class="text-dim">Browser</dt>
-        <dd class="num text-small text-dim">
+        <dd class="text-small text-dim">
           input <span class="text-text">{{ mode }}</span> · threads
           <span class="text-text">{{ threadsOk ? 'available' : 'unavailable' }}</span>
         </dd>
 
         <template v-if="engine.meta">
-          <div
-            class="col-span-2 mt-1.5 flex items-center gap-2 border-t border-row pt-1.5 text-label tracking-widest text-faint uppercase"
-          >
+          <div class="subhead col-span-2 mt-1.5 flex items-center gap-2 border-t border-row pt-1.5">
             <span>{{
               engine.meta.kind === 'release' ? 'Original program' : 'Upstream engine'
             }}</span>
             <span
-              class="tag tracking-normal normal-case"
+              class="tag"
               :class="engine.meta.buildBasis === 'written-from-record' ? 'tone-warn' : 'tone-dim'"
             >
               {{ buildBasisLabel(engine.meta.buildBasis) }}
@@ -227,10 +230,10 @@ const pctText = (v: number | null) => (v === null ? '—' : `${v.toFixed(1)}%`);
               <a :href="s.url" target="_blank" rel="noopener" class="text-accent hover:underline">{{
                 s.label
               }}</a>
-              <span v-if="s.sha256" class="num text-label text-dim">
+              <span v-if="s.sha256" class="mono text-label text-dim">
                 (sha256 {{ s.sha256.slice(0, 8) }}…)
               </span>
-              <span v-else-if="s.commit" class="num text-label text-dim">
+              <span v-else-if="s.commit" class="mono text-label text-dim">
                 (commit {{ s.commit.slice(0, 8) }})
               </span>
               <span v-else-if="s.note" class="text-label text-dim">({{ s.note }})</span>
@@ -239,7 +242,7 @@ const pctText = (v: number | null) => (v === null ? '—' : `${v.toFixed(1)}%`);
 
           <dt v-if="hasDualLicense" class="text-dim">Original license</dt>
           <dd v-if="hasDualLicense" class="text-text">
-            <span class="num">{{ engine.meta.originalLicense }}</span>
+            <span>{{ engine.meta.originalLicense }}</span>
             <span v-if="engine.meta.originalLicenseNote" class="text-small text-dim">
               · {{ engine.meta.originalLicenseNote }}
             </span>
@@ -247,7 +250,7 @@ const pctText = (v: number | null) => (v === null ? '—' : `${v.toFixed(1)}%`);
 
           <dt v-if="engine.meta.fidelity" class="text-dim">Fidelity</dt>
           <dd v-if="engine.meta.fidelity" class="flex flex-wrap items-center gap-1.5 text-text">
-            <span class="tag tone-good">{{ engine.meta.fidelity.status }}</span>
+            <span class="tag tone-good">{{ sentence(engine.meta.fidelity.status) }}</span>
             <span>{{ engine.meta.fidelity.headline }}</span>
           </dd>
         </template>
@@ -332,24 +335,7 @@ const pctText = (v: number | null) => (v === null ? '—' : `${v.toFixed(1)}%`);
       <div
         class="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-row px-3 py-2 text-dense"
       >
-        <div class="inline-flex overflow-hidden rounded border border-line bg-panel2">
-          <button
-            class="px-2 py-0.5 text-small"
-            :class="suite === 'startpos' ? 'bg-active text-text' : 'text-dim hover:text-text'"
-            :disabled="probeBusy"
-            @click="suite = 'startpos'"
-          >
-            Startpos
-          </button>
-          <button
-            class="border-l border-line px-2 py-0.5 text-small"
-            :class="suite === 'three' ? 'bg-active text-text' : 'text-dim hover:text-text'"
-            :disabled="probeBusy"
-            @click="suite = 'three'"
-          >
-            3 positions
-          </button>
-        </div>
+        <Segmented v-model="suite" size="sm" :options="SUITE_OPTIONS" :disabled="probeBusy" />
 
         <label class="text-dim">
           Depth
@@ -397,7 +383,7 @@ const pctText = (v: number | null) => (v === null ? '—' : `${v.toFixed(1)}%`);
             <span class="text-text">{{ kn(probeTotals.nps) }} nps</span> ·
             {{ Math.round(probeTotals.ms) }} ms
           </span>
-          <span v-if="probe.state === 'stopped'" class="tag tone-warn ml-auto">stopped</span>
+          <span v-if="probe.state === 'stopped'" class="tag tone-warn ml-auto">Stopped</span>
         </div>
 
         <div v-if="probe.rows.length > 0" class="overflow-x-auto">

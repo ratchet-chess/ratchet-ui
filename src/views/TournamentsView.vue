@@ -102,10 +102,12 @@ const pauseAction = computed<'pause' | 'resume' | ''>(() => {
         <template v-for="group in listed.groups" :key="group.g">
           <div
             v-if="group.items.length > 0"
-            class="border-b border-line bg-panel2 px-3 py-1 text-label tracking-widest text-dim uppercase"
+            class="subhead border-b border-line bg-panel2 px-3 py-1 first:rounded-t-md"
           >
             {{ group.name }}
-            <span class="tracking-normal text-faint">{{ group.count ?? group.items.length }}</span>
+            <span class="num ml-1 font-normal text-faint">{{
+              group.count ?? group.items.length
+            }}</span>
           </div>
           <div
             v-for="i in group.items"

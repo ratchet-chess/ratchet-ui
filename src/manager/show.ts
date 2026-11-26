@@ -1,6 +1,6 @@
 /** How the manager view writes a host and a job for a reader: shared by Jobs, Hosts and the header. */
 import type { Host, Job, Summary, TunedValue, Wait } from './api.ts';
-import { clockText, count, signed } from '../ui/format.ts';
+import { clockText, count, sentence, signed } from '../ui/format.ts';
 
 type Tone = 'accent' | 'live' | 'bad' | 'good' | 'warn';
 
@@ -104,6 +104,13 @@ export function outcomeText(j: Job): string {
     : `nElo ${signed(s.nelo.value)} ± ${s.nelo.ci.toFixed(1)} · ${games}`;
 }
 
+/** a job kind formatted for a tag: uppercase acronyms (`SPRT`, `SPSA`), else sentence case */
+export function kindTag(kind: string): string {
+  const lower = kind.toLowerCase();
+  if (lower === 'sprt' || lower === 'spsa') return lower.toUpperCase();
+  return sentence(kind);
+}
+
 /** an ended run's verdict in its producer's word, with its tag's tone; null while it runs, and with no summary */
 export function verdictTag(j: Job): { text: string; tone: string } | null {
   const v = j.summary?.verdict ?? '';
@@ -116,14 +123,14 @@ export function verdictTag(j: Job): { text: string; tone: string } | null {
         : v === 'interrupted'
           ? 'tone-warn'
           : 'tone-dim';
-  return { text: v, tone };
+  return { text: sentence(v), tone };
 }
 
-/** a job's one word for a tag: its run's verdict, or else its state, with `stopped` for a job whose queued units were dropped */
+/** a job's one word for a tag: its run's verdict, or else its state, with `Stopped` for a job whose queued units were dropped */
 export function statusTag(j: Job): { text: string; tone: string } {
   return (
     verdictTag(j) ?? {
-      text: j.state === 'cancelled' ? 'stopped' : j.state,
+      text: j.state === 'cancelled' ? 'Stopped' : sentence(j.state),
       tone: j.state === 'running' ? 'tone-accent' : 'tone-dim',
     }
   );

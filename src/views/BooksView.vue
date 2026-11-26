@@ -77,7 +77,7 @@ function dropped(e: DragEvent): void {
         <tbody>
           <tr v-for="b in listedRows" :key="b.id" class="border-b border-row last:border-0">
             <td
-              class="num px-2 py-1.5 whitespace-nowrap"
+              class="px-2 py-1.5 whitespace-nowrap"
               :title="`${b.repo} @ ${b.commit.slice(0, 7)} · ${b.license}`"
             >
               {{ b.id }}
@@ -90,10 +90,10 @@ function dropped(e: DragEvent): void {
               {{ bytes(b.bytes) }}
             </td>
             <td
-              class="num hidden px-2 py-1.5 text-small whitespace-nowrap text-dim @4xl:table-cell"
+              class="hidden px-2 py-1.5 text-small whitespace-nowrap text-dim @4xl:table-cell"
               :title="`sha256 ${b.sha256}`"
             >
-              {{ b.repo }} @ {{ b.commit.slice(0, 7) }} · {{ b.license }}
+              {{ b.repo }} @ <span class="mono">{{ b.commit.slice(0, 7) }}</span> · {{ b.license }}
             </td>
             <td class="px-2 py-1.5 text-right whitespace-nowrap">
               <template v-if="books.progress.has(b.id)">

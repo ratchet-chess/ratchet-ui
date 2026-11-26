@@ -53,6 +53,12 @@ export const libraries: Credit[] = [
     license: 'ISC',
   },
   {
+    name: '@fontsource-variable/geist',
+    url: 'https://fontsource.org/fonts/geist',
+    use: 'the Geist UI typeface',
+    license: 'OFL-1.1',
+  },
+  {
     name: 'uci-over-wasi',
     use: 'the host every engine runs in, copied into vendor/',
     license: 'MIT',

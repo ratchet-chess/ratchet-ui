@@ -1,6 +1,10 @@
 <script setup lang="ts" generic="V extends string | number">
 /** One choice of a few, side by side; the chosen one underlined. `sm` fits a table's row. */
-defineProps<{ options: readonly { value: V; label: string; title?: string }[]; size?: 'sm' }>();
+defineProps<{
+  options: readonly { value: V; label: string; title?: string }[];
+  size?: 'sm';
+  disabled?: boolean;
+}>();
 const model = defineModel<V>({ required: true });
 </script>
 
@@ -16,8 +20,9 @@ const model = defineModel<V>({ required: true });
       type="button"
       role="radio"
       :aria-checked="model === o.value"
+      :disabled="disabled"
       :title="o.title"
-      class="border-r border-line text-dense last:border-r-0"
+      class="border-r border-line text-dense last:border-r-0 disabled:cursor-not-allowed disabled:opacity-50"
       :class="[
         size === 'sm' ? 'px-2 py-px whitespace-nowrap' : 'px-2.5 py-[5px]',
         model === o.value

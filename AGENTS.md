@@ -27,7 +27,8 @@ The rows for **release**, **own engine**, **WASI build** and **condition** quote
 ### UI wording and casing
 
 - **Verbosity:** On-page text (rows, panel notes, inline labels) is terse, flexible by context and density. Tooltips, notices, and `?` help notes use plain technical prose.
-- **Casing:** Sentence case (uppercase first letter) on labels, buttons, and segmented options. Lowercase on table headers, keeping proper nouns and standard chess abbreviations (`W`, `D`, `L`, `Elo`, `White`, `Black`).
+- **Casing:** Sentence case (uppercase first letter) on labels, panel headings, section headings, tags, buttons, and segmented options, keeping exact domain casing (`nElo`, `Elo`, `LLR`, `LOS`, `H1`, `H0`, `SPRT`, `WASI`). Lowercase on table headers, keeping proper nouns and standard chess abbreviations (`W`, `D`, `L`, `Elo`, `White`, `Black`). Avoid CSS `uppercase`.
+- **Fonts:** Use bundled Geist (`--font-sans`) across the UI, with `.num` for proportional tabular figures (tables, clocks, stats, SAN moves, time controls, UCI options). Reserve `.mono` for code literals (hashes, commits, CLI commands, `.wasm` filenames, raw FEN/PGN, license text).
 - **Standard words:**
 
 | Concept                | Use                                       | Avoid                                  |

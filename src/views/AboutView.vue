@@ -33,7 +33,7 @@ const groups: { title: string; note: string; rows: Credit[] }[] = [
   </Panel>
 
   <Panel title="fastchess license" note="covers the ported SPRT and Elo code">
-    <pre class="num overflow-x-auto px-3 py-2 text-small whitespace-pre-wrap text-dim">{{
+    <pre class="mono overflow-x-auto px-3 py-2 text-small whitespace-pre-wrap text-dim">{{
       fastchessLicense
     }}</pre>
   </Panel>

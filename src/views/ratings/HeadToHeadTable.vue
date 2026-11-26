@@ -54,8 +54,8 @@ const score = (m: HeadToHead) => ((100 * (m.wins + m.draws / 2)) / m.games).toFi
           :key="`${m.a} ${m.b}`"
           class="border-b border-row last:border-b-0 hover:bg-hover"
         >
-          <td class="num max-w-0 truncate px-2 py-1" :title="m.a">{{ m.a }}</td>
-          <td class="num max-w-0 truncate px-2 py-1" :title="m.b">{{ m.b }}</td>
+          <td class="max-w-0 truncate px-2 py-1" :title="m.a">{{ m.a }}</td>
+          <td class="max-w-0 truncate px-2 py-1" :title="m.b">{{ m.b }}</td>
           <td class="num px-2 py-1 text-right">{{ count(m.games) }}</td>
           <td class="num px-2 py-1 text-right text-good">{{ count(m.wins) }}</td>
           <td class="num px-2 py-1 text-right text-dim">{{ count(m.draws) }}</td>

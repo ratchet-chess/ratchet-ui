@@ -25,6 +25,7 @@
     "*.{ts,vue,js,json,css,md,yaml,yml}": "oxfmt --no-error-on-unmatched-pattern"
   },
   "dependencies": {
+    "@fontsource-variable/geist": "^5.3.0",
     "@lucide/vue": "^1.74.0",
     "chessground": "^9.2.1",
     "chessops": "^0.15.1",

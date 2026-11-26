@@ -16,7 +16,7 @@ import { PROBE_SUITES, parseOptionsList, type ProbeSuite } from '../engine/optio
 import { UciEngine } from '../engine/uci.ts';
 import { useEngines } from '../stores/engines.ts';
 import { useTournaments } from '../stores/tournaments.ts';
-import { bytes, thousands } from '../ui/format.ts';
+import { bytes, sentence, thousands } from '../ui/format.ts';
 import EngineDetail from './engines/EngineDetail.vue';
 import WasiChecker from './engines/WasiChecker.vue';
 
@@ -316,15 +316,15 @@ function picked(e: Event): void {
 function uploadVerdict(state: WasiCheckReport['state']): { text: string; tone: string } {
   switch (state) {
     case 'running':
-      return { text: 'checking', tone: 'tone-accent' };
+      return { text: 'Checking', tone: 'tone-accent' };
     case 'pass':
-      return { text: 'passes', tone: 'tone-good' };
+      return { text: 'Passes', tone: 'tone-good' };
     case 'fail':
-      return { text: 'fails', tone: 'tone-bad' };
+      return { text: 'Fails', tone: 'tone-bad' };
     case 'invalid':
-      return { text: 'invalid', tone: 'tone-bad' };
+      return { text: 'Invalid', tone: 'tone-bad' };
     default:
-      return { text: state, tone: 'tone-warn' };
+      return { text: sentence(state), tone: 'tone-warn' };
   }
 }
 
@@ -392,7 +392,7 @@ onUnmounted(() => {
 
   <Panel v-if="engines.error" title="engines.json">
     <div class="px-3 py-2.5 text-bad">
-      {{ engines.error }} · run <span class="num">bun run engines</span>
+      {{ engines.error }} · run <span class="mono">bun run engines</span>
     </div>
   </Panel>
 
@@ -417,19 +417,21 @@ onUnmounted(() => {
             @click="selectedId = e.id"
           >
             <div class="flex items-baseline gap-2">
-              <span class="num min-w-0 flex-1 truncate text-dense text-text">{{ e.id }}</span>
+              <span class="min-w-0 flex-1 truncate text-dense font-medium text-text">{{
+                e.id
+              }}</span>
               <span v-if="listHint(e.id)" class="num shrink-0 text-label text-good">
                 {{ listHint(e.id) }}
               </span>
             </div>
             <div class="mt-0.5 flex items-center gap-2 text-label text-dim">
-              <span class="num truncate">{{ e.source }}</span>
+              <span class="truncate">{{ e.source }}</span>
               <span
                 v-if="e.meta"
                 class="tag shrink-0"
                 :class="e.meta.kind === 'release' ? 'tone-accent' : 'tone-dim'"
               >
-                {{ e.meta.year }} · {{ e.meta.kind }}
+                {{ e.meta.year }} · {{ sentence(e.meta.kind) }}
               </span>
               <span v-if="e.bytes !== null" class="num ml-auto shrink-0">
                 {{ bytes(e.bytes) }}
@@ -441,7 +443,7 @@ onUnmounted(() => {
             v-if="engines.loaded && engines.list.length === 0"
             class="px-3 py-3 text-dense text-dim"
           >
-            No engines yet. Run <span class="num">bun run engines</span>.
+            No engines yet. Run <span class="mono">bun run engines</span>.
           </div>
           <div
             v-else-if="engines.loaded && filtered.length === 0"
@@ -452,10 +454,8 @@ onUnmounted(() => {
         </div>
 
         <template v-if="uploadedReport">
-          <div
-            class="border-y border-line bg-panel2 px-3 py-1 text-label tracking-widest text-dim uppercase"
-          >
-            Checked file <span class="tracking-normal text-faint normal-case">report only</span>
+          <div class="subhead border-y border-line bg-panel2 px-3 py-1">
+            Checked file <span class="ml-1 font-normal text-faint">report only</span>
           </div>
           <div
             class="row px-3 py-2"
@@ -463,7 +463,7 @@ onUnmounted(() => {
             @click="selectedId = UPLOAD_KEY"
           >
             <div class="flex items-center gap-2">
-              <span class="num min-w-0 flex-1 truncate text-dense text-text">
+              <span class="mono min-w-0 flex-1 truncate text-dense text-text">
                 {{ uploadedReport.fileName }}
               </span>
               <span class="tag shrink-0" :class="uploadVerdict(uploadedReport.state).tone">

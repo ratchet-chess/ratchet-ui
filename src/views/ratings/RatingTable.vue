@@ -87,10 +87,10 @@ const pct = (x: number) => (100 * x).toFixed(1);
             :class="r.anchor && 'bg-selected'"
           >
             <td class="num px-2 py-1 text-right text-faint">{{ place(k) }}</td>
-            <td class="num max-w-0 px-2 py-1">
+            <td class="max-w-0 px-2 py-1">
               <span class="flex items-center gap-1.5">
                 <span class="truncate" :title="r.name">{{ r.name }}</span>
-                <span v-if="r.anchor" class="tag tone-accent">anchor</span>
+                <span v-if="r.anchor" class="tag tone-accent">Anchor</span>
                 <span
                   v-if="forfeitShare(r)"
                   class="tag tone-warn"

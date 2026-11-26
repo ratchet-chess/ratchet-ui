@@ -234,15 +234,15 @@ export function cpwUrl(key: string): string {
 export function buildBasisLabel(basis: BuildBasis): string {
   switch (basis) {
     case 'written-from-record':
-      return 'written from record';
+      return 'Written from record';
     case 'ported-from-code':
-      return 'ported from code';
+      return 'Ported from code';
     case 'adapted-from-code':
       return 'WASI adaptation';
     case 'reconstructed-from-papers':
-      return 'reconstruction';
+      return 'Reconstruction';
     case 'original':
-      return 'original';
+      return 'Original';
   }
 }
 
@@ -250,10 +250,10 @@ export function buildBasisLabel(basis: BuildBasis): string {
 export function kindLabel(kind: EngineKind): string {
   switch (kind) {
     case 'release':
-      return 'historical release';
+      return 'Historical release';
     case 'adapted':
-      return 'adapted engine';
+      return 'Adapted engine';
     case 'own':
-      return 'own engine';
+      return 'Own engine';
   }
 }

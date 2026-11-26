@@ -17,10 +17,10 @@ const empty = computed(() =>
 );
 
 const KIND: Record<Row['kind'], string> = {
-  tournament: 'tournament',
-  collection: 'games',
-  book: 'book',
-  settings: 'settings',
+  tournament: 'Tournament',
+  collection: 'Games',
+  book: 'Book',
+  settings: 'Settings',
 };
 
 const relation = (r: Relation) =>
@@ -171,7 +171,7 @@ function all(how: 'theirs' | 'here' | 'safe'): void {
             class="border-b border-row last:border-0"
           >
             <td class="px-2 py-1">
-              <span v-if="row.kind !== 'settings'" class="caps mr-1.5 text-label text-faint">
+              <span v-if="row.kind !== 'settings'" class="tag tone-dim mr-1.5">
                 {{ KIND[row.kind] }}
               </span>
               {{ row.name }}

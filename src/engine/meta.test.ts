@@ -85,9 +85,9 @@ describe('EngineMeta and manifest parsing', () => {
     expect(cpwUrl('Move_Generation#Staged_Move_Generation')).toBe(
       'https://www.chessprogramming.org/Move_Generation#Staged_Move_Generation',
     );
-    expect(buildBasisLabel('written-from-record')).toBe('written from record');
+    expect(buildBasisLabel('written-from-record')).toBe('Written from record');
     expect(buildBasisLabel('adapted-from-code')).toBe('WASI adaptation');
-    expect(kindLabel('release')).toBe('historical release');
-    expect(kindLabel('adapted')).toBe('adapted engine');
+    expect(kindLabel('release')).toBe('Historical release');
+    expect(kindLabel('adapted')).toBe('Adapted engine');
   });
 });

@@ -156,7 +156,7 @@ async function copy(markdown: boolean): Promise<void> {
     <span
       class="flex flex-1 items-center justify-end gap-1.5 text-dense whitespace-nowrap text-dim"
     >
-      Anchor <span class="num text-text">{{ ANCHOR_NAME }}</span>
+      Anchor <span class="font-medium text-text">{{ ANCHOR_NAME }}</span>
       <template v-if="anchorPlayed">
         at
         <input

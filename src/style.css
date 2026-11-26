@@ -41,19 +41,21 @@
 
   /* the type scale; nothing else sets a size */
   --text-*: initial;
-  --text-label: 10.5px;
-  --text-small: 11.5px;
-  --text-dense: 12.5px;
+  --text-label: 11px;
+  --text-small: 12px;
+  --text-dense: 13px;
   --text-base: 14px;
   --text-base--line-height: calc(20 / 14);
-  --text-title: 15px;
+  --text-title: 16px;
   --text-stat: 18px;
-  --text-stat--line-height: 1.5;
+  --text-stat--line-height: 1.45;
   --text-hero: 22px;
-  --text-hero--line-height: 1.4;
+  --text-hero--line-height: 1.35;
   --text-glyph: 36px;
   --text-glyph--line-height: 1;
 
+  --font-sans:
+    'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-mono: ui-monospace, 'JetBrains Mono', 'Cascadia Mono', Menlo, Consolas, monospace;
   --breakpoint-wide: 1100px;
 }
@@ -61,9 +63,13 @@
 @layer base {
   :root {
     color-scheme: dark;
+    --tag-tint: 13%;
+    --tag-border: 32%;
   }
   :root[data-theme='light'] {
     color-scheme: light;
+    --tag-tint: 11%;
+    --tag-border: 28%;
     --color-bg: #f4f6f9;
     --color-bar: #e9edf2;
     --color-panel: #ffffff;
@@ -92,18 +98,24 @@
     --color-live: #8dbbe3;
   }
   body {
-    @apply bg-bg text-base text-text;
+    @apply bg-bg font-sans text-base text-text antialiased;
   }
 }
 
+/* proportional tabular figures: tables, clocks, stats, SAN moves, time controls */
 @utility num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* monospace literals: hashes, commits, CLI commands, .wasm filenames, raw PGN/FEN, license text */
+@utility mono {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 
-/* a label in capitals: a panel's title (text-small), a card's or a group's (text-label) */
-@utility caps {
-  @apply tracking-widest text-dim uppercase;
+/* a quiet section, group, or panel heading, in sentence case */
+@utility subhead {
+  @apply text-small font-semibold text-dim;
 }
 
 /*
@@ -140,24 +152,34 @@
   }
 }
 
-/* a short status word in a box; a tone class gives its color */
+/* a short status or category chip; a tone class gives its soft tint and border */
 @utility tag {
-  @apply num inline-block rounded border px-1.5 text-label whitespace-nowrap;
+  @apply inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-label leading-tight font-medium whitespace-nowrap tabular-nums;
 }
 @utility tone-dim {
-  @apply border-line text-dim;
+  color: var(--color-dim);
+  background-color: color-mix(in srgb, var(--color-dim) var(--tag-tint), transparent);
+  border-color: color-mix(in srgb, var(--color-dim) var(--tag-border), transparent);
 }
 @utility tone-accent {
-  @apply border-accent-line text-accent;
+  color: var(--color-accent);
+  background-color: color-mix(in srgb, var(--color-accent) var(--tag-tint), transparent);
+  border-color: color-mix(in srgb, var(--color-accent) var(--tag-border), transparent);
 }
 @utility tone-good {
-  @apply border-good-line text-good;
+  color: var(--color-good);
+  background-color: color-mix(in srgb, var(--color-good) var(--tag-tint), transparent);
+  border-color: color-mix(in srgb, var(--color-good) var(--tag-border), transparent);
 }
 @utility tone-bad {
-  @apply border-bad-line text-bad;
+  color: var(--color-bad);
+  background-color: color-mix(in srgb, var(--color-bad) var(--tag-tint), transparent);
+  border-color: color-mix(in srgb, var(--color-bad) var(--tag-border), transparent);
 }
 @utility tone-warn {
-  @apply border-warn-line text-warn;
+  color: var(--color-warn);
+  background-color: color-mix(in srgb, var(--color-warn) var(--tag-tint), transparent);
+  border-color: color-mix(in srgb, var(--color-warn) var(--tag-border), transparent);
 }
 
 /* a table's header cell, and a row of a list a click opens */

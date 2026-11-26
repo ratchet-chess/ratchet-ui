@@ -3,6 +3,10 @@
 /** a count with thousands marked, as 5,120 */
 export const count = (n: number): string => n.toLocaleString('en-US');
 
+/** first character uppercased for sentence-case labels and tags, leaving acronyms intact */
+export const sentence = (s: string): string =>
+  s ? `${s.charAt(0).toUpperCase()}${s.slice(1)}` : '';
+
 /** a size in bytes as a reader reads it: `808 KB`, `8.0 MB`, `10.7 GB` */
 export const bytes = (b: number): string =>
   b >= 1e9

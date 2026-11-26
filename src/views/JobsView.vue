@@ -14,6 +14,7 @@ import {
   finishingText,
   headline,
   jobTitle,
+  kindTag,
   notices,
   outcomeText,
   statusTag,
@@ -87,8 +88,8 @@ const hostsOf = (j: Job) => j.hosts.join(' ');
         <div :class="line1">
           <span class="num shrink-0 text-dim">{{ j.id }}</span>
           <span class="min-w-0 flex-1 truncate font-medium" :title="j.name">{{ jobTitle(j) }}</span>
-          <span v-if="j.allocation" class="tag tone-dim">allocation</span>
-          <span v-if="j.priority !== 0" class="tag tone-warn">priority {{ j.priority }}</span>
+          <span v-if="j.allocation" class="tag tone-dim">Allocation</span>
+          <span v-if="j.priority !== 0" class="tag tone-warn">Priority {{ j.priority }}</span>
           <span class="num shrink-0 text-small text-dim">{{ endText(j, now) }}</span>
         </div>
         <ProgressBar v-if="!j.allocation" class="mt-1.5" :parts="unitParts(j)" />
@@ -124,8 +125,8 @@ const hostsOf = (j: Job) => j.hosts.join(' ');
         <div :class="line1">
           <span class="num shrink-0 text-dim">{{ j.id }}</span>
           <span class="min-w-0 flex-1 truncate font-medium" :title="j.name">{{ jobTitle(j) }}</span>
-          <span v-if="j.priority !== 0" class="tag tone-warn">priority {{ j.priority }}</span>
-          <span class="tag tone-dim">{{ j.kind }}</span>
+          <span v-if="j.priority !== 0" class="tag tone-warn">Priority {{ j.priority }}</span>
+          <span class="tag tone-dim">{{ kindTag(j.kind) }}</span>
         </div>
         <div :class="line2">
           <span class="shrink-0">{{ hostsOf(j) }}</span>
@@ -155,7 +156,7 @@ const hostsOf = (j: Job) => j.hosts.join(' ');
             :title="
               j.state === 'cancelled' ? 'Stopped early (stop rule or manual cancel)' : undefined
             "
-            >{{ j.state === 'cancelled' ? 'stopped' : j.state }}</span
+            >{{ j.state === 'cancelled' ? 'Stopped' : 'Done' }}</span
           >
           <span class="num w-28 shrink-0 text-right text-small text-dim">{{
             j.ended === null ? '' : clockText(j.ended, now)
@@ -181,10 +182,10 @@ const hostsOf = (j: Job) => j.hosts.join(' ');
         <template v-for="g in groups" :key="g.name">
           <div
             v-if="g.jobs.length > 0"
-            class="border-b border-line bg-panel2 px-3 py-1 text-label tracking-widest text-dim uppercase"
+            class="subhead border-b border-line bg-panel2 px-3 py-1 first:rounded-t-md"
           >
             {{ g.name }}
-            <span class="tracking-normal text-faint">{{ g.jobs.length }}</span>
+            <span class="num ml-1 font-normal text-faint">{{ g.jobs.length }}</span>
           </div>
           <div
             v-for="j in g.jobs"

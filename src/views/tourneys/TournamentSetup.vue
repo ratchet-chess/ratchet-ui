@@ -347,7 +347,7 @@ const blocked = computed(() => {
 
 // ── looks ──────────────────────────────────────────────────────────────────
 const section = 'border-b border-row px-3.5 py-3 last:border-b-0';
-const sectionTitle = 'caps mb-2.5 text-label font-semibold';
+const sectionTitle = 'subhead mb-2.5';
 const row = 'mb-3 grid grid-cols-[7.5rem_minmax(0,1fr)] items-start gap-3 last:mb-0';
 const label = 'flex items-center justify-between gap-2 pt-1.5 text-dense text-dim';
 const terse = 'text-dense text-dim';
@@ -359,10 +359,12 @@ const terse = 'text-dense text-dim';
       >‹ Tourneys</RouterLink
     >
     <div class="grid items-start gap-4 @5xl:grid-cols-[minmax(0,1fr)_17rem]">
-      <section class="min-w-0 rounded-lg border border-line bg-panel">
+      <section class="min-w-0 rounded-md border border-line bg-panel">
         <!-- ── templates ─────────────────────────────────────────────────── -->
-        <div class="flex flex-wrap items-center gap-2 border-b border-line px-3.5 py-2">
-          <span class="caps text-label font-semibold">New</span>
+        <div
+          class="flex flex-wrap items-center gap-2 rounded-t-md border-b border-line bg-panel2 px-3.5 py-2"
+        >
+          <span class="subhead">New</span>
           <span class="flex-1" />
           <select
             :value="template"
@@ -617,7 +619,7 @@ const terse = 'text-dense text-dim';
       </section>
 
       <!-- ── the summary and Start ─────────────────────────────────────── -->
-      <aside class="rounded-lg border border-line bg-panel p-3.5 @5xl:sticky @5xl:top-3">
+      <aside class="rounded-md border border-line bg-panel p-3.5 @5xl:sticky @5xl:top-3">
         <div class="mb-2.5 text-title font-semibold break-words">
           {{ name.trim() || defaultName }}
         </div>

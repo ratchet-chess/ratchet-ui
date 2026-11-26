@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight, RotateCw, ShieldCheck, Square, Upload } from
 import { computed, ref, watch } from 'vue';
 import Panel from '../../components/Panel.vue';
 import type { WasiCheckReport } from '../../engine/cache.ts';
-import { bytes } from '../../ui/format.ts';
+import { bytes, sentence } from '../../ui/format.ts';
 import type { CheckResult } from '../../../vendor/uci-over-wasi/check.ts';
 
 const props = defineProps<{
@@ -81,17 +81,17 @@ const counts = computed(() => {
 const verdict = computed(() => {
   switch (props.report?.state) {
     case 'running':
-      return { text: 'checking', tone: 'tone-accent' };
+      return { text: 'Checking', tone: 'tone-accent' };
     case 'pass':
-      return { text: 'passes', tone: 'tone-good' };
+      return { text: 'Passes', tone: 'tone-good' };
     case 'fail':
-      return { text: 'fails', tone: 'tone-bad' };
+      return { text: 'Fails', tone: 'tone-bad' };
     case 'invalid':
-      return { text: 'invalid', tone: 'tone-bad' };
+      return { text: 'Invalid', tone: 'tone-bad' };
     case 'static':
-      return { text: 'static only', tone: 'tone-warn' };
+      return { text: 'Static only', tone: 'tone-warn' };
     case 'cancelled':
-      return { text: 'cancelled', tone: 'tone-warn' };
+      return { text: 'Cancelled', tone: 'tone-warn' };
     default:
       return null;
   }
@@ -141,7 +141,7 @@ function rowTone(status: CheckResult['status']): string {
           <ChevronRight v-else :size="14" />
         </button>
         <span v-if="verdict" class="tag" :class="verdict.tone">{{ verdict.text }}</span>
-        <span class="num text-text">{{ report.fileName }}</span>
+        <span class="mono text-text">{{ report.fileName }}</span>
         <span class="num text-small text-dim">{{ bytes(report.size) }}</span>
         <span
           v-if="report.identity?.name"
@@ -216,7 +216,7 @@ function rowTone(status: CheckResult['status']): string {
                 class="border-b border-row last:border-0"
               >
                 <td class="px-2 py-1.5 whitespace-nowrap">
-                  <span class="tag" :class="rowTone(r.status)">{{ r.status }}</span>
+                  <span class="tag" :class="rowTone(r.status)">{{ sentence(r.status) }}</span>
                 </td>
                 <td class="num px-2 py-1.5 whitespace-nowrap text-text">{{ r.name }}</td>
                 <td class="px-2 py-1.5" :class="r.status === 'fail' ? 'text-bad' : 'text-dim'">

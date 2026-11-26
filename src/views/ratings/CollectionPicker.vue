@@ -54,7 +54,7 @@ const shown = computed(() => groups.value.flatMap((g) => g.items.map((c) => c.id
         </span>
         <span class="max-h-72 overflow-auto py-1">
           <template v-for="g in groups" :key="g.source">
-            <span class="caps block px-2.5 pt-1.5 pb-0.5 text-label">{{ g.name }}</span>
+            <span class="subhead block px-2.5 pt-1.5 pb-0.5">{{ g.name }}</span>
             <label
               v-for="c in g.items"
               :key="c.id"

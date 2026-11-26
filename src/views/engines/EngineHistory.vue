@@ -98,7 +98,7 @@ const stripColsClass = computed(() =>
         :class="stripColsClass"
       >
         <div v-if="meta.hardware?.length">
-          <div class="caps mb-1 text-label">Period hardware</div>
+          <div class="subhead mb-1">Period hardware</div>
           <ul class="space-y-1 text-small text-dim">
             <li v-for="h in meta.hardware" :key="h.platform">
               <div class="font-medium text-text">{{ h.platform }}</div>
@@ -108,7 +108,7 @@ const stripColsClass = computed(() =>
         </div>
 
         <div v-if="meta.results?.length">
-          <div class="caps mb-1 text-label">Historical record</div>
+          <div class="subhead mb-1">Historical record</div>
           <ul class="space-y-1 text-small text-dim">
             <li v-for="r in meta.results" :key="`${r.date}-${r.where}`">
               <span class="num">{{ r.date }}</span> ·
@@ -118,7 +118,7 @@ const stripColsClass = computed(() =>
         </div>
 
         <div v-if="meta.ratings?.length">
-          <div class="caps mb-1 text-label">Calibrated ratings</div>
+          <div class="subhead mb-1">Calibrated ratings</div>
           <ul class="space-y-1 text-small text-dim">
             <li v-for="rt in meta.ratings" :key="rt.label">
               <span class="num font-medium text-text">{{ rt.label }}</span>:
@@ -149,7 +149,7 @@ const stripColsClass = computed(() =>
                   class="text-accent hover:underline"
                   >{{ f.label }}</a
                 >
-                <span v-if="f.landmark" class="tag tone-good ml-1.5">early</span>
+                <span v-if="f.landmark" class="tag tone-good ml-1.5">Early</span>
               </td>
               <td class="num px-2 py-1.5 whitespace-nowrap text-dim">{{ f.group }}</td>
               <td class="px-2 py-1.5 text-dim">{{ f.implementation }}</td>

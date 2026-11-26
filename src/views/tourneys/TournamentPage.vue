@@ -21,7 +21,7 @@ import { useGames } from '../../stores/games.ts';
 import { collectionOf, useTournaments, type Item } from '../../stores/tournaments.ts';
 import MatchChart, { type ChartPoint } from './MatchChart.vue';
 import { endsText, problemsLine, queuePlace } from './overview.ts';
-import { count, signed, whenText } from '../../ui/format.ts';
+import { count, sentence, signed, whenText } from '../../ui/format.ts';
 import { formatText, label, progress, roundName, statusClass, statusText } from './show.ts';
 
 const props = defineProps<{ item: Item }>();
@@ -45,7 +45,7 @@ const idle = (i: Item) => !tournaments.running(i.config.id) && !i.elsewhere;
 
 /** where a queued tournament stands in the queue; null once it runs */
 const queued = computed(() =>
-  props.item.queued !== null && statusText(props.item) === 'queued'
+  props.item.queued !== null && statusText(props.item) === 'Queued'
     ? queuePlace(props.item, tournaments.items, tournaments.paused.length > 0)
     : null,
 );
@@ -97,21 +97,21 @@ const setupRows = computed<[string, string][]>(() => {
   const i = props.item;
   const c = i.config;
   const rows: [string, string][] = [
-    ['format', formatText(c.format, c.paired)],
-    ['control', c.control],
-    ['book', c.book || 'start position'],
+    ['Format', formatText(c.format, c.paired)],
+    ['Control', c.control],
+    ['Book', c.book || 'Start position'],
     [
-      'adjudication',
-      c.adjudication ? (c.adjudication.resign ? 'draw and resign' : 'draw') : 'none',
+      'Adjudication',
+      c.adjudication ? (c.adjudication.resign ? 'Draw and resign' : 'Draw') : 'None',
     ],
-    ['concurrent', String(c.concurrency)],
-    ['games', progress(i)],
-    ['created', whenText(c.created, now.value)],
+    ['Concurrent', String(c.concurrency)],
+    ['Games', progress(i)],
+    ['Created', whenText(c.created, now.value)],
   ];
   const ends = endsText(i, Math.max(now.value, Date.now()));
-  if (ends) rows.push(['ends', ends]);
-  else if (i.endedAt && statusText(i) !== 'running')
-    rows.push([i.ended === 'done' ? 'ended' : 'stopped', whenText(i.endedAt, now.value)]);
+  if (ends) rows.push(['Ends', ends]);
+  else if (i.endedAt && statusText(i) !== 'Running')
+    rows.push([i.ended === 'done' ? 'Ended' : 'Stopped', whenText(i.endedAt, now.value)]);
   return rows;
 });
 
@@ -400,7 +400,7 @@ async function copy(): Promise<void> {
               class="border-b border-row last:border-0"
             >
               <td class="num px-2 py-1 text-faint">{{ n + 1 }}</td>
-              <td class="num px-2 py-1 whitespace-nowrap">{{ label(item, r.entrant) }}</td>
+              <td class="px-2 py-1 whitespace-nowrap">{{ label(item, r.entrant) }}</td>
               <td class="num px-2 py-1 text-right">{{ r.games }}</td>
               <td class="num px-2 py-1 text-right">{{ r.wins }}</td>
               <td class="num px-2 py-1 text-right">{{ r.draws }}</td>
@@ -466,8 +466,8 @@ async function copy(): Promise<void> {
       <Panel v-if="bracketRounds.length > 0" title="Bracket" note="points over finished pairs">
         <div class="grid gap-3 px-3 py-2 text-dense @3xl:grid-flow-col">
           <div v-for="(round, r) in bracketRounds" :key="r">
-            <div class="caps mb-1 text-label">
-              {{ roundName(r, bracketRounds.length) }}
+            <div class="subhead mb-1">
+              {{ sentence(roundName(r, bracketRounds.length)) }}
             </div>
             <div
               v-for="(t, k) in round"
@@ -517,7 +517,7 @@ async function copy(): Promise<void> {
                 <td class="num px-2 py-0.5 text-right text-faint">
                   {{ n + 1 }}
                 </td>
-                <td class="num px-2 py-0.5 whitespace-nowrap text-dim">
+                <td class="px-2 py-0.5 whitespace-nowrap text-dim">
                   {{ label(item, i) }}
                 </td>
                 <td
@@ -560,12 +560,12 @@ async function copy(): Promise<void> {
             >
               <div
                 v-if="byRound && (k === 0 || scheduleRows[k - 1]?.round !== p.round)"
-                class="caps col-span-4 mt-1.5 text-label"
+                class="subhead col-span-4 mt-1.5"
               >
                 {{
                   item.config.format.kind === 'knockout'
-                    ? roundName(p.round, bracketRounds.length)
-                    : `round ${p.round + 1}`
+                    ? sentence(roundName(p.round, bracketRounds.length))
+                    : `Round ${p.round + 1}`
                 }}
               </div>
               <span class="text-faint">{{ p.pair + 1 }}</span>

@@ -150,12 +150,7 @@ const icon = 'px-0.5 text-dense text-faint hover:text-text';
           >
             <span class="text-faint">{{ i + 1 }}</span>
             <span class="truncate"
-              >{{ e }}
-              <span
-                v-if="i < seeds"
-                class="rounded border border-accent-line px-1 font-sans text-label text-accent"
-                >seed</span
-              ></span
+              >{{ e }} <span v-if="i < seeds" class="tag tone-accent ml-1">Seed</span></span
             >
             <span class="whitespace-nowrap">
               <button :class="icon" title="Up" @click="move(i, i - 1)">↑</button>

@@ -113,8 +113,8 @@ const hoverLeft = computed(() => (hover.value ? (100 * x(hover.value.pairs)) / W
 
 <template>
   <figure class="min-w-0">
-    <figcaption class="mb-1 flex items-baseline gap-3 text-label text-dim">
-      <span class="tracking-wider uppercase">{{ title }}</span>
+    <figcaption class="mb-1 flex items-baseline gap-3 text-small text-dim">
+      <span class="font-medium">{{ title }}</span>
       <template v-if="bounds">
         <span class="flex items-center gap-1"
           ><i class="inline-block h-0 w-3 border-t border-dashed border-good" />H1</span

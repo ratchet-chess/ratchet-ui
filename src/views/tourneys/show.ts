@@ -84,13 +84,13 @@ export const pct = (i: Item): number =>
   i.ended === 'done' ? 100 : Math.min(100, (100 * i.state.games.length) / Math.max(1, planned(i)));
 
 export function statusText(i: Item): string {
-  if (i.elsewhere) return 'in another tab';
+  if (i.elsewhere) return 'In another tab';
   if (i.queued !== null && i.state.status !== 'running' && i.state.status !== 'stopping')
-    return 'queued';
-  if (i.state.status === 'running') return 'running';
-  if (i.state.status === 'stopping') return 'stopping';
-  if (i.ended === 'done') return i.state.summary.match?.verdict ?? 'done';
-  return i.ended === 'stopped' ? 'stopped' : 'interrupted';
+    return 'Queued';
+  if (i.state.status === 'running') return 'Running';
+  if (i.state.status === 'stopping') return 'Stopping';
+  if (i.ended === 'done') return i.state.summary.match?.verdict ?? 'Done';
+  return i.ended === 'stopped' ? 'Stopped' : 'Interrupted';
 }
 
 /** the tone of a status's tag: a verdict's color, running in the accent, interrupted as a warning */
@@ -99,9 +99,9 @@ export const statusClass = (s: string): string =>
     ? 'tone-good'
     : s === 'H0'
       ? 'tone-bad'
-      : s === 'running' || s === 'in another tab'
+      : s === 'Running' || s === 'In another tab'
         ? 'tone-accent'
-        : s === 'interrupted'
+        : s === 'Interrupted'
           ? 'tone-warn'
           : 'tone-dim';
 

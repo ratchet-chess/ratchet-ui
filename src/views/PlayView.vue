@@ -566,10 +566,12 @@ function savePgn(): void {
         </Panel>
 
         <section class="mb-3 rounded-md border border-line bg-panel">
-          <div class="flex items-center justify-between gap-2 border-b border-line px-3 py-1.5">
-            <h2 class="caps flex items-baseline gap-2 text-small">
+          <div
+            class="flex items-center justify-between gap-2 rounded-t-md border-b border-line bg-panel2 px-3 py-1.5"
+          >
+            <h2 class="subhead flex items-baseline gap-2">
               Moves
-              <span v-if="!viewingLive" class="text-small tracking-normal text-warn normal-case">
+              <span v-if="!viewingLive" class="text-small font-normal text-warn">
                 ply {{ currentPly }} of {{ game.san.length }}
               </span>
             </h2>

@@ -23,7 +23,7 @@ import {
 } from '../games/index.ts';
 import { parseSingleGame } from '../games/pgn.ts';
 import { PLAYED, useGames, type Collection } from '../stores/games.ts';
-import { bytes, count } from '../ui/format.ts';
+import { bytes, count, sentence } from '../ui/format.ts';
 import GamesFilterBar from './games/GamesFilterBar.vue';
 
 const games = useGames();
@@ -332,7 +332,7 @@ const rangeLabel = computed(() => {
         class="mb-2.5 flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-panel px-2.5 py-1.5 text-dense"
       >
         <div class="flex min-w-0 items-center gap-2">
-          <span class="caps text-label">Collection</span>
+          <span class="text-small font-medium text-dim">Collection</span>
           <span class="truncate font-semibold" :title="open.name">{{ open.name }}</span>
           <span class="num whitespace-nowrap text-dim">
             · {{ count(index.count) }} games · {{ bytes(open.bytes) }}
@@ -415,7 +415,7 @@ const rangeLabel = computed(() => {
                   <span class="text-faint">#{{ count(r.index + 1) }}</span>
                   <span v-if="r.eco" class="tag tone-dim">{{ r.eco }}</span>
                   <span>{{ r.plies }}p</span>
-                  <span v-if="r.forfeit" class="tag tone-bad">{{ r.termination }}</span>
+                  <span v-if="r.forfeit" class="tag tone-bad">{{ sentence(r.termination) }}</span>
                   <span class="ml-auto">{{ r.date }}</span>
                 </div>
               </div>
@@ -558,7 +558,7 @@ const rangeLabel = computed(() => {
           class="flex flex-wrap items-center justify-between gap-2 border-t border-dashed border-line bg-panel2 px-3 py-1.5 text-small text-dim"
         >
           <span>Drop .pgn or .zip files anywhere on this page to import</span>
-          <span class="num text-faint">Stored in browser</span>
+          <span class="text-faint">Stored in browser</span>
         </div>
       </Panel>
 
@@ -612,7 +612,7 @@ const rangeLabel = computed(() => {
                   </td>
                   <td class="num px-2 py-1 text-right text-dim">{{ r.plies }}</td>
                   <td class="px-2 py-1 whitespace-nowrap text-dim">
-                    <span v-if="r.forfeit" class="tag tone-bad">{{ r.termination }}</span>
+                    <span v-if="r.forfeit" class="tag tone-bad">{{ sentence(r.termination) }}</span>
                     <template v-else>{{ r.termination }}</template>
                   </td>
                   <td class="num px-2 py-1 whitespace-nowrap text-dim">{{ r.date }}</td>

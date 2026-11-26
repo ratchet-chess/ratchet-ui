@@ -17,6 +17,7 @@ import {
   endsText,
   finishingText,
   jobTitle,
+  kindTag,
   setupText,
   unitParts,
   unitsText,
@@ -84,12 +85,12 @@ const showWaits = computed(() => hosts.value.some((h) => (waits.value.get(h.host
       <span class="num text-title text-dim">{{ job.id }}</span>
       <h2 class="min-w-0 text-title font-semibold break-words">{{ jobTitle(job) }}</h2>
       <span class="tag" :class="tag.tone">{{ tag.text }}</span>
-      <span class="tag tone-dim">{{ job.kind }}</span>
-      <span v-if="job.allocation" class="tag tone-dim">allocation</span>
-      <span v-if="job.priority !== 0" class="tag tone-warn">priority {{ job.priority }}</span>
+      <span class="tag tone-dim">{{ kindTag(job.kind) }}</span>
+      <span v-if="job.allocation" class="tag tone-dim">Allocation</span>
+      <span v-if="job.priority !== 0" class="tag tone-warn">Priority {{ job.priority }}</span>
     </div>
     <div v-if="s && setupText(s)" class="num mb-1 text-dense text-dim">{{ setupText(s) }}</div>
-    <div class="num mb-3 text-small text-faint">{{ job.name }}</div>
+    <div class="mb-3 text-small text-faint">{{ job.name }}</div>
 
     <template v-if="!job.allocation">
       <ProgressBar class="mb-1.5" size="thick" :parts="unitParts(job)" />
@@ -109,7 +110,7 @@ const showWaits = computed(() => hosts.value.some((h) => (waits.value.get(h.host
     <template v-if="s">
       <MatchCards v-if="s.nelo" :llr="verdictLlr(s)" :nelo="s.nelo" :elo="s.elo">
         <template v-if="decisionText(s)" #llr>{{ decisionText(s) }}</template>
-        <StatCard label="games · pairs">
+        <StatCard label="Games · pairs">
           <template #help>
             <HelpTip side="left"
               >Games played. Below: pentanomial pair counts (0, ½, 1, 1½, 2 pts for
@@ -121,7 +122,7 @@ const showWaits = computed(() => hosts.value.some((h) => (waits.value.get(h.host
         </StatCard>
       </MatchCards>
       <div v-else-if="s.values" class="mb-3 grid grid-cols-2 gap-2 @4xl:grid-cols-5">
-        <StatCard label="games · pairs" class="@4xl:col-span-2">
+        <StatCard label="Games · pairs" class="@4xl:col-span-2">
           <template #help>
             <HelpTip
               >Games played. Below: pentanomial pair counts (0, ½, 1, 1½, 2 pts for the
@@ -131,7 +132,7 @@ const showWaits = computed(() => hosts.value.some((h) => (waits.value.get(h.host
           <span class="text-title">{{ count(s.games ?? 0) }}</span>
           <template v-if="s.ptnml" #sub><PentaCounts :counts="s.ptnml" /></template>
         </StatCard>
-        <StatCard label="resolution">
+        <StatCard label="Resolution">
           <template #help>
             <HelpTip
               >95% confidence interval for a head-to-head over all games so far. Effects smaller

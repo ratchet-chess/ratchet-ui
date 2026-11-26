@@ -434,8 +434,8 @@ describe("a job's page", () => {
       text: 'H0',
       tone: 'tone-bad',
     });
-    expect(statusTag(job({}))).toEqual({ text: 'running', tone: 'tone-accent' });
-    expect(statusTag(job({ state: 'cancelled' }))).toEqual({ text: 'stopped', tone: 'tone-dim' });
+    expect(statusTag(job({}))).toEqual({ text: 'Running', tone: 'tone-accent' });
+    expect(statusTag(job({ state: 'cancelled' }))).toEqual({ text: 'Stopped', tone: 'tone-dim' });
   });
 });
 

@@ -165,11 +165,13 @@ function saveDefault(): void {
 
 <template>
   <section class="flex flex-col overflow-hidden rounded-md border border-accent-line bg-panel">
-    <header class="flex items-center justify-between gap-2 border-b border-line px-3 py-1.5">
-      <div class="flex min-w-0 items-baseline gap-2">
-        <span class="caps truncate text-small">{{ engine.id }}</span>
+    <header
+      class="flex items-center justify-between gap-2 rounded-t-md border-b border-line bg-panel2 px-3 py-1.5"
+    >
+      <div class="flex min-w-0 items-center gap-2">
+        <span class="truncate text-small font-semibold text-text">{{ engine.id }}</span>
         <span class="shrink-0 text-small text-faint">{{ color }} options</span>
-        <span v-if="locked" class="tag tone-warn">read-only</span>
+        <span v-if="locked" class="tag tone-warn">Read-only</span>
       </div>
       <button
         type="button"
@@ -186,7 +188,7 @@ function saveDefault(): void {
       <!-- ── Search limit ────────────────────────────────────────────── -->
       <div class="border-b border-row px-3 py-2.5">
         <div class="mb-1.5 flex items-center justify-between gap-2">
-          <span class="caps text-label font-semibold">Search limit</span>
+          <span class="subhead">Search limit</span>
           <span v-if="parsedLimit" class="tag tone-good">{{ parsedLimit.label }}</span>
         </div>
         <input
@@ -256,7 +258,7 @@ function saveDefault(): void {
 
         <!-- Strength -->
         <div v-if="grouped.strength.length > 0" class="border-b border-row px-3 py-2.5">
-          <div class="caps mb-1.5 text-label font-semibold">Strength</div>
+          <div class="subhead mb-1.5">Strength</div>
           <div v-for="opt in grouped.strength" :key="opt.name" class="py-1">
             <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 text-dense">
               <span class="flex min-w-0 items-center gap-1.5">
@@ -310,7 +312,7 @@ function saveDefault(): void {
 
         <!-- Resources (Hash & Threads) -->
         <div v-if="grouped.core.length > 0" class="border-b border-row px-3 py-2.5">
-          <div class="caps mb-1.5 text-label font-semibold">Resources</div>
+          <div class="subhead mb-1.5">Resources</div>
           <div v-for="opt in grouped.core" :key="opt.name" class="py-1">
             <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 text-dense">
               <span class="flex min-w-0 items-center gap-1.5">

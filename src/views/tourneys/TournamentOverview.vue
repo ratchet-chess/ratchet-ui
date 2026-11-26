@@ -229,7 +229,7 @@ const icon = 'btn-sm w-[21px] px-0';
           <div class="flex items-baseline gap-2">
             <span class="min-w-0 flex-1 truncate font-medium">{{ i.config.name }}</span>
             <span
-              v-if="statusText(i) !== 'running'"
+              v-if="statusText(i) !== 'Running'"
               class="tag"
               :class="statusClass(statusText(i))"
               >{{ statusText(i) }}</span
@@ -298,7 +298,7 @@ const icon = 'btn-sm w-[21px] px-0';
           }}</span>
           <span class="min-w-0 flex-1 truncate">{{ i.config.name }}</span>
           <span v-if="blocked(i)" class="tag tone-bad" title="Missing engine or book (see Notices)"
-            >cannot start</span
+            >Cannot start</span
           >
           <span class="flex shrink-0 gap-0.5" @click.stop>
             <button

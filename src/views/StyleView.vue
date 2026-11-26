@@ -20,21 +20,21 @@ import { count, signed } from '../ui/format.ts';
 const settings = useSettings();
 
 const COLORS: { group: string; names: string[] }[] = [
-  { group: 'surfaces', names: ['bg', 'bar', 'panel', 'panel2', 'popover'] },
-  { group: 'lines', names: ['line', 'line-strong', 'row'] },
-  { group: 'text', names: ['text', 'dim', 'faint', 'on-accent'] },
-  { group: 'states', names: ['hover', 'active', 'selected', 'chosen'] },
+  { group: 'Surfaces', names: ['bg', 'bar', 'panel', 'panel2', 'popover'] },
+  { group: 'Lines', names: ['line', 'line-strong', 'row'] },
+  { group: 'Text', names: ['text', 'dim', 'faint', 'on-accent'] },
+  { group: 'States', names: ['hover', 'active', 'selected', 'chosen'] },
   {
-    group: 'tones',
+    group: 'Tones',
     names: ['accent', 'accent-line', 'good', 'good-line', 'bad', 'bad-line', 'warn', 'warn-line'],
   },
-  { group: 'bars', names: ['track', 'live'] },
+  { group: 'Bars', names: ['track', 'live'] },
 ];
 
 /** literal class names, so Tailwind finds them */
 const SIZES = [
-  { cls: 'text-label', use: 'tags, card labels, the icon bar' },
-  { cls: 'text-small', use: "a row's second line, notes, panel titles" },
+  { cls: 'text-label', use: 'tags, the icon bar, chart axis labels' },
+  { cls: 'text-small', use: "a row's second line, notes, quiet headers" },
   { cls: 'text-dense', use: 'tables, controls, buttons' },
   { cls: 'text-base', use: "the page's own text" },
   { cls: 'text-title', use: "a page's title" },
@@ -42,7 +42,13 @@ const SIZES = [
   { cls: 'text-hero', use: 'the one figure a form sums up to' },
 ] as const;
 
-const TONES = ['tone-dim', 'tone-accent', 'tone-good', 'tone-bad', 'tone-warn'] as const;
+const TONES = [
+  { cls: 'tone-dim', label: 'Dim' },
+  { cls: 'tone-accent', label: 'Accent' },
+  { cls: 'tone-good', label: 'Good' },
+  { cls: 'tone-bad', label: 'Bad' },
+  { cls: 'tone-warn', label: 'Warn' },
+] as const;
 
 const tab = ref<'' | 'running' | 'finished'>('');
 const page = ref(1);
@@ -55,9 +61,9 @@ const selected = ref(1);
     <Segmented
       v-model="settings.theme"
       :options="[
-        { value: 'system', label: 'system' },
-        { value: 'light', label: 'light' },
-        { value: 'dark', label: 'dark' },
+        { value: 'system', label: 'System' },
+        { value: 'light', label: 'Light' },
+        { value: 'dark', label: 'Dark' },
       ]"
     />
   </PageHeader>
@@ -67,35 +73,41 @@ const selected = ref(1);
       <Panel title="Colors" note="by role; style.css holds each theme's values">
         <div class="grid gap-3 px-3 py-2.5">
           <div v-for="g in COLORS" :key="g.group">
-            <div class="caps mb-1 text-label">{{ g.group }}</div>
+            <div class="subhead mb-1.5">{{ g.group }}</div>
             <div class="flex flex-wrap gap-2">
               <div v-for="n in g.names" :key="n" class="w-24">
                 <div
                   class="h-8 rounded border border-line"
                   :style="{ background: `var(--color-${n})` }"
                 />
-                <div class="num mt-0.5 truncate text-small text-dim">{{ n }}</div>
+                <div class="mono mt-0.5 truncate text-small text-dim">{{ n }}</div>
               </div>
             </div>
           </div>
         </div>
       </Panel>
 
-      <Panel title="Type" note="the scale; nothing else sets a size">
+      <Panel title="Type" note="Geist Variable · integer scale">
         <div class="grid gap-1.5 px-3 py-2.5">
           <div v-for="s in SIZES" :key="s.cls" class="flex items-baseline gap-3">
-            <span class="num w-20 shrink-0 text-small text-faint">{{ s.cls.slice(5) }}</span>
+            <span class="mono w-20 shrink-0 text-small text-faint">{{ s.cls.slice(5) }}</span>
             <span :class="s.cls">Ratchet 0.3.14 +4.8</span>
             <span class="min-w-0 truncate text-small text-dim">{{ s.use }}</span>
           </div>
           <div class="flex items-baseline gap-3">
-            <span class="num w-20 shrink-0 text-small text-faint">num</span>
+            <span class="mono w-20 shrink-0 text-small text-faint">num</span>
             <span class="num">{{ count(52000) }} games · {{ signed(4.81, 2) }}</span>
-            <span class="text-small text-dim">numbers line up; counts keep commas</span>
+            <span class="text-small text-dim">tabular figures in Geist</span>
           </div>
           <div class="flex items-baseline gap-3">
-            <span class="num w-20 shrink-0 text-small text-faint">caps</span>
-            <span class="caps text-label">Over the pairs</span>
+            <span class="mono w-20 shrink-0 text-small text-faint">mono</span>
+            <span class="mono text-dense">chess-4.6.wasm · 8a4f2c91</span>
+            <span class="text-small text-dim">hashes, files, CLI commands</span>
+          </div>
+          <div class="flex items-baseline gap-3">
+            <span class="mono w-20 shrink-0 text-small text-faint">subhead</span>
+            <span class="subhead">Over pairs</span>
+            <span class="text-small text-dim">quiet section and panel headings</span>
           </div>
         </div>
       </Panel>
@@ -155,8 +167,8 @@ const selected = ref(1);
 
       <Panel title="Tags and bars">
         <div class="grid gap-3 px-3 py-2.5">
-          <div class="flex flex-wrap gap-2">
-            <span v-for="t in TONES" :key="t" class="tag" :class="t">{{ t.slice(5) }}</span>
+          <div class="flex flex-wrap items-center gap-2">
+            <span v-for="t in TONES" :key="t.cls" class="tag" :class="t.cls">{{ t.label }}</span>
           </div>
           <div class="grid gap-1.5">
             <ProgressBar :parts="[{ share: 40, tone: 'accent' }]" />
@@ -201,8 +213,8 @@ const selected = ref(1);
           <tr
             v-for="(r, k) in [
               ['SPRT accepted', 6000, 'H1', 'tone-good'],
-              ['Swiss of 5', 16, 'running', 'tone-accent'],
-              ['Interrupted match', 80, 'interrupted', 'tone-warn'],
+              ['Swiss of 5', 16, 'Running', 'tone-accent'],
+              ['Interrupted match', 80, 'Interrupted', 'tone-warn'],
             ]"
             :key="k"
             class="row"
