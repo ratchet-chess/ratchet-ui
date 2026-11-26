@@ -28,6 +28,11 @@ export function parseCollection(text: string): Parsed {
   return { summaries, games };
 }
 
+/** Parses one sliced PGN game, returning null when the text holds no game. */
+export function parseSingleGame(text: string): PgnGame<PgnNodeData> | null {
+  return parsePgn(text)[0] ?? null;
+}
+
 /** One position of a replay: the start, or the position after a move. */
 interface Step {
   fen: string;

@@ -42,19 +42,21 @@ function changed(path: string[], name: string): void {
   for (const fn of watchers) fn(at);
 }
 
-/** a file's text, or null when the file or a folder on its path does not exist */
-export async function readText(path: string[], file: string): Promise<string | null> {
+/** a file handle's `File` (a `Blob` readable by byte slice), or null when missing */
+export async function readFile(path: string[], file: string): Promise<File | null> {
   try {
-    return await (
-      await (await folder(path, false)).getFileHandle(file)
-    )
-      .getFile()
-      .then((f) => f.text());
+    return await (await (await folder(path, false)).getFileHandle(file)).getFile();
   } catch (e) {
     if (e instanceof DOMException && (e.name === 'NotFoundError' || e.name === 'TypeMismatchError'))
       return null;
     throw e;
   }
+}
+
+/** a file's text, or null when the file or a folder on its path does not exist */
+export async function readText(path: string[], file: string): Promise<string | null> {
+  const f = await readFile(path, file);
+  return f ? f.text() : null;
 }
 
 export function writeText(path: string[], file: string, text: string): Promise<void> {

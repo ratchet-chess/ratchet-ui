@@ -123,4 +123,6 @@ fastchess's own. The adjudication and the PGN comments follow fastchess. The Abo
 GPL-3.0-or-later. See `LICENSE`.
 
 The code ported from fastchess is under fastchess's MIT License, in `src/match/fastchess-LICENSE.txt`. The
-`vendor/uci-over-wasi/` copy is under the MIT License in its own `LICENSE`.
+`vendor/uci-over-wasi/` copy is under the MIT License in its own `LICENSE`. Opening names and ECO codes in
+`src/chess/openings.tsv` come from [lichess-org/chess-openings](https://github.com/lichess-org/chess-openings) under
+CC0-1.0.

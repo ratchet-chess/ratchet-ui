@@ -57,4 +57,10 @@ export const libraries: Credit[] = [
     use: 'the host every engine runs in, copied into vendor/',
     license: 'MIT',
   },
+  {
+    name: 'lichess-org/chess-openings',
+    url: 'https://github.com/lichess-org/chess-openings',
+    use: 'opening names and ECO codes',
+    license: 'CC0-1.0',
+  },
 ];
