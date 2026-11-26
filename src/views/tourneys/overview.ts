@@ -201,6 +201,14 @@ export function noticesOf(items: readonly Item[], served: Served): Notice[] {
   return out.toSorted((a, b) => (a.severity === b.severity ? 0 : a.severity === 'bad' ? -1 : 1));
 }
 
+/** what the Tourneys icon shows: the tournaments running in this browser, and whether a notice is bad */
+export function badgeOf(items: readonly Item[], served: Served): { running: number; bad: boolean } {
+  return {
+    running: items.filter((i) => groupOf(i) === 'running').length,
+    bad: noticesOf(items, served).some((n) => n.severity === 'bad'),
+  };
+}
+
 // ── the queue ──────────────────────────────────────────────────────────────
 
 /** what the queue waits for, in a few words; empty when nothing is queued */

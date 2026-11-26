@@ -14,6 +14,7 @@ import Panel from '../../components/Panel.vue';
 import ProgressBar from '../../components/ProgressBar.vue';
 import Tabs from '../../components/Tabs.vue';
 import FinishedRow from './FinishedRow.vue';
+import { useServed } from './served.ts';
 import { useBooks } from '../../stores/books.ts';
 import { useEngines } from '../../stores/engines.ts';
 import { lacking } from '../../stores/queue.ts';
@@ -96,11 +97,7 @@ const tabs = computed(() =>
   })),
 );
 
-const served = computed<Served>(() => ({
-  engines: new Set(engines.list.map((e) => e.id)),
-  books: new Set(books.usable.map((b) => b.id)),
-  storage: books.storage,
-}));
+const served = useServed();
 /** the notices of the tab's group; the browser's own on All */
 const notices = computed(() => {
   const groups = new Map(items.value.map((i) => [i.config.id, groupOf(i)]));

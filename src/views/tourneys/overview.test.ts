@@ -8,6 +8,7 @@ import type { Item } from '../../stores/tournaments.ts';
 import { clockText } from '../../ui/format.ts';
 import {
   archiveMonths,
+  badgeOf,
   endsText,
   etaOf,
   groupOf,
@@ -200,6 +201,16 @@ describe('the overview', () => {
       ['warn', 's', 'Interrupted (tab closed)'],
       ['warn', '', 'Storage 95% full'],
     ]);
+  });
+
+  it('badges Tourneys with the runs in this browser, and a dot only for a bad notice', () => {
+    const run = item({ ended: null, config: { id: 'r' } });
+    run.state.status = 'running';
+    const elsewhere = item({ ended: null, elsewhere: true, config: { id: 'e' } });
+    const interrupted = item({ ended: null, config: { id: 'i' } });
+    expect(badgeOf([run, elsewhere, interrupted], served)).toEqual({ running: 2, bad: false });
+    interrupted.state.games.push(game(0, forfeitReason.failed('x-1', 'trap')));
+    expect(badgeOf([run, interrupted], served)).toEqual({ running: 1, bad: true });
   });
 
   it('times a run by its pace once enough games finished, bounded for an SPRT', () => {

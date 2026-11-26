@@ -3,8 +3,15 @@ import { Info } from '@lucide/vue';
 import { computed } from 'vue';
 import { sections } from '../sections.ts';
 import { useManager } from '../stores/manager.ts';
+import { useTournaments } from '../stores/tournaments.ts';
+import { badgeOf } from '../views/tourneys/overview.ts';
+import { useServed } from '../views/tourneys/served.ts';
 
 const manager = useManager();
+const tournaments = useTournaments();
+const served = useServed();
+/** Tourneys' badge: how many tournaments run in this browser, and a dot when a notice is bad */
+const tourneys = computed(() => badgeOf(tournaments.items, served.value));
 const visible = computed(() => sections.filter((s) => !s.manager || manager.link !== 'none'));
 /** the manager's dot and word: green while its reads arrive, red when the last one failed */
 const dot = computed(() =>
@@ -31,6 +38,19 @@ const word = computed(() => (manager.link === 'unreachable' ? 'Manager offline' 
         active-class="!bg-active !text-text"
       >
         <component :is="s.icon" :size="20" :stroke-width="1.7" />
+        <template v-if="s.path === '/tournaments'">
+          <span
+            v-if="tourneys.running > 0"
+            class="num absolute -top-1 -right-1 min-w-4 rounded-full wide:top-0 wide:right-0 bg-accent px-1 text-center text-label leading-4 text-bg"
+            :title="`${tourneys.running} running`"
+            >{{ tourneys.running }}</span
+          >
+          <span
+            v-if="tourneys.bad"
+            class="absolute right-0 bottom-0.5 size-2 rounded-full bg-bad wide:top-0.5 wide:bottom-auto wide:left-0.5"
+            title="A notice wants a look"
+          />
+        </template>
         <span class="hidden wide:block">{{ s.label }}</span>
       </RouterLink>
     </div>

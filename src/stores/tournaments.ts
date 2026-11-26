@@ -122,7 +122,14 @@ export const useTournaments = defineStore('tournaments', () => {
     };
   }
 
-  async function load(): Promise<void> {
+  /** the read in flight; a second load meanwhile, as at a start on Tourneys, waits for it */
+  let loading: Promise<void> | null = null;
+  function load(): Promise<void> {
+    loading ??= readAll().finally(() => (loading = null));
+    return loading;
+  }
+
+  async function readAll(): Promise<void> {
     try {
       await engines.load();
       const held = await heldIds();
