@@ -10,6 +10,7 @@ import { QUEUED } from '../stores/queue.ts';
 import { GAMES, GAMES_INDEX, isCollection, type Collection } from '../stores/games.ts';
 import { settingsFileOf, unionOf, type SettingsFile } from '../stores/settings.ts';
 import { bytes, count } from '../ui/format.ts';
+import { makeId } from './id.ts';
 
 /** a backup's files, by their path in the layout, such as `tournaments/<id>/config.json` */
 export type Files = Map<string, Blob>;
@@ -386,12 +387,12 @@ async function renamed(
   item: Item,
   here: Contents,
   there: Contents,
-  fresh: () => string,
+  fresh: (name: string) => string,
 ): Promise<Item> {
   const names = new Set([...here.items.values(), ...there.items.values()].map((i) => i.name));
   const name = freeName(item.name, (n) => names.has(n));
   if (item.kind === 'tournament') {
-    const id = fresh();
+    const id = fresh(name);
     const files: Files = new Map();
     for (const [p, b] of item.files) {
       if (p.endsWith('/config.json')) {
@@ -407,7 +408,7 @@ async function renamed(
     return { ...item, id, name, files, collection };
   }
   if (item.kind === 'collection') {
-    const id = fresh();
+    const id = fresh(name);
     const [[, b] = ['', EMPTY]] = item.files;
     const collection = item.collection && { ...item.collection, id, name };
     return { ...item, id, name, files: new Map([[`${GAMES}/${id}.pgn`, b]]), collection };
@@ -454,7 +455,7 @@ export async function mergeOf(
   choices: ReadonlyMap<string, Choice>,
   here: Contents,
   there: Contents,
-  fresh: () => string = () => crypto.randomUUID(),
+  fresh: (name: string) => string = (name) => makeId(name),
 ): Promise<Merge> {
   const removes: Op[] = [];
   const writes: Op[] = [];

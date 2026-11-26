@@ -244,6 +244,21 @@ describe('merging', () => {
     expect(m.collections).toEqual({ put: ['t-n1 Gauntlet (2)'], drop: [] });
   });
 
+  it('mints a readable timestamped id by default when keeping both copies', async () => {
+    const other = tournament('x', 2);
+    other['tournaments/x/games.jsonl'] = '{"pair":9}\n{"pair":8}\n';
+    const h = await contentsOf(
+      files({ ...tournament('x', 2), 'games/index.json': index(['t-x', 'Gauntlet']) }),
+    );
+    const t = await contentsOf(files({ ...other, 'games/index.json': index(['t-x', 'Gauntlet']) }));
+    const rows = await rowsOf(h, t);
+    const m = await mergeOf(rows, new Map([['tournament:x', 'both']]), h, t);
+    const configOp = m.ops.find((o) => 'write' in o && o.write.endsWith('/config.json'));
+    expect(configOp && 'write' in configOp ? configOp.write : '').toMatch(
+      /^tournaments\/\d{8}-\d{6}-gauntlet-2-[0-9a-f]{4}\/config\.json$/,
+    );
+  });
+
   it("never writes a new tournament's games over a collection of the same file", async () => {
     // deleted here, its games kept in Games; the archive still holds the tournament
     const t = tournament('x', 3);

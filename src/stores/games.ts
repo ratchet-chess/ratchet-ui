@@ -8,6 +8,7 @@ import {
   type PgnIndex,
 } from '../games/index.ts';
 import { deleteValue, getValue, setValue } from '../storage/idb.ts';
+import { makeId } from '../storage/id.ts';
 import {
   appendText,
   readFile,
@@ -171,15 +172,17 @@ export const useGames = defineStore('games', () => {
   /** keeps an opened PGN file or Blob as a new collection; returns its id */
   async function addFile(name: string, data: string | Blob): Promise<string> {
     await load();
-    const id = crypto.randomUUID();
+    const clean = name.trim() || 'Untitled';
+    const now = new Date();
+    const id = makeId(clean, now);
     const blob =
       typeof data === 'string' ? new Blob([data], { type: 'application/x-chess-pgn' }) : data;
     await writeStream(DIR, `${id}.pgn`, blob.stream());
     const index = await buildIndex(blob);
-    const updated = new Date().toISOString();
+    const updated = now.toISOString();
     const col: Collection = {
       id,
-      name: name.trim() || 'Untitled',
+      name: clean,
       source: 'file',
       games: index.count,
       bytes: blob.size,

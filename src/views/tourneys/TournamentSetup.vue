@@ -12,6 +12,7 @@ import { resolveControl } from '../../chess/clock.ts';
 import { STANDARD_ADJUDICATION, type Adjudication } from '../../match/adjudicate.ts';
 import { mayUnpair, plannedGames, type Format, type TournamentConfig } from '../../match/format.ts';
 import { sprtGames } from '../../match/stats.ts';
+import { makeId } from '../../storage/id.ts';
 import { useBooks } from '../../stores/books.ts';
 import { useEngines } from '../../stores/engines.ts';
 import { useSettings, type Setup } from '../../stores/settings.ts';
@@ -286,13 +287,17 @@ function deleteTemplate(): void {
 }
 
 /** the form as a new tournament, with its own id and seed */
-const newConfig = (): TournamentConfig => ({
-  ...setup.value,
-  id: crypto.randomUUID(),
-  name: name.value.trim() || defaultName.value,
-  created: new Date().toISOString(),
-  seed: Math.floor(Math.random() * 2 ** 31),
-});
+const newConfig = (): TournamentConfig => {
+  const now = new Date();
+  const title = name.value.trim() || defaultName.value;
+  return {
+    ...setup.value,
+    id: makeId(title, now),
+    name: title,
+    created: now.toISOString(),
+    seed: Math.floor(Math.random() * 2 ** 31),
+  };
+};
 
 async function startNew(): Promise<void> {
   const config = newConfig();
