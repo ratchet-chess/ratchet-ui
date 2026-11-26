@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Game } from '../chess/game.ts';
 import { parseOptionsList } from '../engine/options.ts';
-import { buildSetOptions, resolveSideControl } from './usePlay.ts';
+import { buildSetOptions, resolveSideControl, takebackPlies } from './usePlay.ts';
 
 describe('buildSetOptions', () => {
   const declared = parseOptionsList([
@@ -76,5 +76,34 @@ describe('Game.positionAt', () => {
     const live = g.positionAt(3);
     expect(live.fen).toBe(g.fen);
     expect(live.lastMove).toEqual(['g1', 'f3']);
+  });
+});
+
+describe('takebackPlies', () => {
+  const person = { kind: 'person' as const };
+  const engine = { kind: 'engine' as const, id: 'sf' };
+
+  it('disallows takeback in engine vs engine', () => {
+    expect(takebackPlies({ white: engine, black: engine }, 'white', 4)).toBe(0);
+    expect(takebackPlies({ white: engine, black: engine }, 'black', 5)).toBe(0);
+  });
+
+  it('undoes 1 ply in person vs person once a move is played', () => {
+    expect(takebackPlies({ white: person, black: person }, 'white', 0)).toBe(0);
+    expect(takebackPlies({ white: person, black: person }, 'black', 1)).toBe(1);
+    expect(takebackPlies({ white: person, black: person }, 'white', 2)).toBe(1);
+  });
+
+  it('undoes 2 plies on the person turn and 1 ply while the engine thinks', () => {
+    const pve = { white: person, black: engine };
+    expect(takebackPlies(pve, 'white', 0)).toBe(0);
+    expect(takebackPlies(pve, 'black', 1)).toBe(1);
+    expect(takebackPlies(pve, 'white', 2)).toBe(2);
+
+    const evp = { white: engine, black: person };
+    expect(takebackPlies(evp, 'white', 0)).toBe(0);
+    expect(takebackPlies(evp, 'black', 1)).toBe(0);
+    expect(takebackPlies(evp, 'white', 2)).toBe(1);
+    expect(takebackPlies(evp, 'black', 3)).toBe(2);
   });
 });

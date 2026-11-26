@@ -3,6 +3,7 @@ import { opposite } from 'chessops/util';
 import { computed, onBeforeUnmount, reactive, ref, shallowRef, triggerRef } from 'vue';
 import { pgnTimeControl, resolveControl, type Clock, type TimeControl } from '../chess/clock.ts';
 import { Game } from '../chess/game.ts';
+import { findOpening } from '../chess/openings.ts';
 import type { Opening } from '../books/opening.ts';
 import type { Info } from '../engine/info.ts';
 import type { ServedEngine } from '../engine/manifest.ts';
@@ -106,6 +107,25 @@ export function resolveSideControl(
 }
 
 /**
+ * How many plies a Takeback removes in an active game, or 0 when takeback is unavailable.
+ * Against an engine: 2 plies on the person's turn (undoing the engine's reply and the person's
+ * move), or 1 ply while the engine thinks (stopping its search and undoing the person's move).
+ * Between two people: 1 ply. Between two engines: 0.
+ */
+export function takebackPlies(
+  players: Record<Color, Player>,
+  turn: Color,
+  playedPlies: number,
+): number {
+  const whitePerson = players.white.kind === 'person';
+  const blackPerson = players.black.kind === 'person';
+  if (!whitePerson && !blackPerson) return 0;
+  if (whitePerson && blackPerson) return playedPlies >= 1 ? 1 : 0;
+  if (players[turn].kind === 'engine') return playedPlies >= 1 ? 1 : 0;
+  return playedPlies >= 2 ? 2 : 0;
+}
+
+/**
  * One board's play: a person against an engine, two engines, or two people. Each engine runs in
  * its own Worker, made fresh for each game, so the two sides never share a table.
  */
@@ -156,6 +176,15 @@ export function usePlay() {
   const saved = ref(false);
   /** the opening this game started from, as a reader sees it; empty for chess's start */
   const openingLabel = ref('');
+  /** half-moves played from the opening book at start, which Takeback does not undo past */
+  const bookPlies = ref(0);
+  /** deepest ECO opening recognized along the game's positions */
+  const opening = computed(() => findOpening(game.value.fens));
+  const canTakeback = computed(
+    () =>
+      phase.value === 'playing' &&
+      takebackPlies(players, game.value.turn, game.value.san.length - bookPlies.value) > 0,
+  );
   /** ply shown on the board when reviewing earlier moves; null follows the live position */
   const viewPly = ref<number | null>(null);
   const currentPly = computed(() =>
@@ -166,6 +195,8 @@ export function usePlay() {
   let clock: Clock | null = null;
   let activeControls: Record<Color, TimeControl | null> = { white: null, black: null };
   let workers: Partial<Record<Color, UciEngine>> = {};
+  /** active `engineTurn` per side, so a search started right after `stop` waits for its `bestmove` */
+  let inFlight: Partial<Record<Color, Promise<unknown>>> = {};
   /** bumped by every new game and every end, so a search from an older one is dropped */
   let token = 0;
   let ticker: ReturnType<typeof setInterval> | undefined;
@@ -237,6 +268,7 @@ export function usePlay() {
   function shutDown(): void {
     for (const w of Object.values(workers)) w.terminate();
     workers = {};
+    inFlight = {};
     if (ticker !== undefined) clearInterval(ticker);
     ticker = undefined;
   }
@@ -257,11 +289,13 @@ export function usePlay() {
     const date = `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
     const shared = controlLabel.value.trim() ? resolveControl(controlLabel.value) : null;
     const asymmetric = sideConfig.white.limit.trim() || sideConfig.black.limit.trim();
+    const hit = opening.value;
     return game.value.pgn({
       Event: 'ratchet-ui game',
       Date: date,
       White: names.value.white,
       Black: names.value.black,
+      ...(hit ? { ECO: hit.eco, Opening: hit.name } : {}),
       TimeControl: !asymmetric && shared ? pgnTimeControl(shared) : '-',
     });
   }
@@ -292,8 +326,15 @@ export function usePlay() {
 
   async function think(color: Color, w: UciEngine): Promise<void> {
     const mine = token;
+    const prev = inFlight[color];
+    if (prev) {
+      await prev.catch(() => {});
+      if (mine !== token) return;
+      await w.ready().catch(() => {});
+      if (mine !== token) return;
+    }
     const control = activeControls[color] ?? UNCLOCKED_ENGINE_FALLBACK;
-    await engineTurn({
+    const p = engineTurn({
       game: game.value,
       color,
       engine: w,
@@ -314,12 +355,15 @@ export function usePlay() {
         };
       },
     });
+    inFlight[color] = p;
+    await p;
+    if (inFlight[color] === p) delete inFlight[color];
     if (mine !== token) return;
     next();
   }
 
   /** starts a new game with the chosen players, options, limits, and warm-up before move 1 */
-  async function start(opening?: Opening): Promise<void> {
+  async function start(bookOpening?: Opening): Promise<void> {
     token++;
     const mine = token;
     shutDown();
@@ -327,9 +371,12 @@ export function usePlay() {
     error.value = '';
     saved.value = false;
     viewPly.value = null;
-    game.value = new Game(opening?.fen);
-    for (const m of opening?.moves ?? []) game.value.play(m);
-    openingLabel.value = opening?.label ?? '';
+    game.value = new Game(bookOpening?.fen);
+    for (const m of bookOpening?.moves ?? []) {
+      if (game.value.play(m)) game.value.annotate('book');
+    }
+    bookPlies.value = game.value.san.length;
+    openingLabel.value = bookOpening?.label ?? '';
     thinking.white = thinking.black = null;
     times.white = times.black = null;
     phase.value = 'starting';
@@ -407,6 +454,27 @@ export function usePlay() {
     next();
   }
 
+  /** undoes the last turn in a game with a person, stopping any active engine search first */
+  function takeback(): void {
+    if (phase.value !== 'playing') return;
+    const plies = takebackPlies(players, game.value.turn, game.value.san.length - bookPlies.value);
+    if (plies === 0) return;
+    const turn = game.value.turn;
+    if (players[turn].kind === 'engine') {
+      token++;
+      workers[turn]?.stop();
+      thinking[turn] = null;
+    }
+    game.value.undo(plies);
+    viewPly.value = null;
+    if (clock) {
+      clock.stop();
+      clock.start(game.value.turn);
+      tick();
+    }
+    changed();
+  }
+
   /** the side a person plays resigns; with two people, the side to move */
   function resign(): void {
     if (!canResign.value) return;
@@ -443,10 +511,12 @@ export function usePlay() {
     phase,
     names,
     canResign,
+    canTakeback,
     thinking,
     times,
     error,
     saved,
+    opening,
     openingLabel,
     viewPly,
     currentPly,
@@ -460,6 +530,7 @@ export function usePlay() {
     personToMove,
     start,
     move,
+    takeback,
     resign,
     abort,
     /** redraws the board from the game, as after a move the person took back */

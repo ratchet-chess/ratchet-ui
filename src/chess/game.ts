@@ -29,6 +29,8 @@ export class Game {
   readonly san: string[] = [];
   /** each move's PGN comment, such as an engine's score, depth and time; empty for none */
   readonly comments: string[] = [];
+  /** normalized FEN after each ply (`fens[0]` is the start position, `fens[n]` is after ply `n`) */
+  readonly fens: string[] = [];
   outcome: Outcome | null = null;
   /** how often each position has occurred, keyed as the repetition rule compares positions */
   private readonly seen = new Map<string, number>();
@@ -36,6 +38,7 @@ export class Game {
   constructor(fen: string = INITIAL_FEN) {
     this.startFen = fen;
     this.pos = Chess.fromSetup(parseFen(fen).unwrap()).unwrap();
+    this.fens.push(this.fen);
     this.count();
   }
 
@@ -115,8 +118,34 @@ export class Game {
     this.san.push(makeSanAndPlay(this.pos, move));
     this.uci.push(standard);
     this.comments.push('');
+    this.fens.push(this.fen);
     this.settle();
     return true;
+  }
+
+  /**
+   * Takes back up to `plies` half-moves, rebuilding the live position and repetition counts.
+   * @returns the number of half-moves actually removed
+   */
+  undo(plies = 1): number {
+    const count = Math.max(0, Math.min(Math.floor(plies), this.uci.length));
+    if (count === 0) return 0;
+    const keep = this.uci.length - count;
+    this.uci.length = keep;
+    this.san.length = keep;
+    this.comments.length = keep;
+    this.fens.length = keep + 1;
+    this.outcome = null;
+    this.pos = Chess.fromSetup(parseFen(this.startFen).unwrap()).unwrap();
+    this.seen.clear();
+    this.count();
+    for (const u of this.uci) {
+      const parsed = parseUci(u);
+      if (!parsed) break;
+      this.pos.play(normalizeMove(this.pos, parsed));
+      this.count();
+    }
+    return count;
   }
 
   /** ends the game on the engines' scores: a draw, or a win for `winner` */

@@ -9,13 +9,15 @@ import {
 import type { Key } from 'chessground/types';
 import type { Color } from 'chessops/types';
 import { opposite } from 'chessops/util';
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import Board from '../components/Board.vue';
+import EvalGraph from '../components/EvalGraph.vue';
 import OpeningSelect from '../components/OpeningSelect.vue';
 import Panel from '../components/Panel.vue';
 import { TIME_CONTROLS, describeControl, parseControl } from '../chess/clock.ts';
 import { summarizeOverrides, type OptionValue } from '../engine/options.ts';
+import { extractGameEval, formatEval } from '../games/eval.ts';
 import { usePlay, type Player } from '../play/usePlay.ts';
 import { useBooks } from '../stores/books.ts';
 import { useEngines } from '../stores/engines.ts';
@@ -39,10 +41,12 @@ const {
   phase,
   names,
   canResign,
+  canTakeback,
   thinking,
   times,
   error,
   saved,
+  opening,
   openingLabel,
   currentPly,
   viewingLive,
@@ -216,13 +220,37 @@ function cancelPromotion(): void {
   play.redraw();
 }
 
+const blackFirst = computed(() => game.value.startFen.split(' ')[1] === 'b');
+const firstNumber = computed(() => Number(game.value.startFen.split(' ')[5] ?? 1));
+/** SAN per ply (`sans[1]` is ply 1's SAN), matching EvalGraph's indexing */
+const sans = computed(() => ['', ...game.value.san]);
+const gameEval = computed(() => {
+  const g = game.value;
+  const steps = g.fens.map((fen, i) => {
+    const comment = i > 0 ? g.comments[i - 1] : undefined;
+    return { fen, comments: comment ? [comment] : [] };
+  });
+  return extractGameEval(steps);
+});
+
 /** the moves as numbered pairs, each storing its 1-based ply index for board navigation */
 const moveRows = computed(() => {
   const san = game.value.san;
-  const rows: { n: number; wPly: number; white: string; bPly: number | null; black: string }[] = [];
-  for (let i = 0; i < san.length; i += 2) {
+  const rows: {
+    n: number;
+    wPly: number | null;
+    white: string;
+    bPly: number | null;
+    black: string;
+  }[] = [];
+  let i = 0;
+  if (blackFirst.value && san.length > 0) {
+    rows.push({ n: firstNumber.value, wPly: null, white: '', bPly: 1, black: san[0] ?? '' });
+    i = 1;
+  }
+  for (; i < san.length; i += 2) {
     rows.push({
-      n: i / 2 + 1,
+      n: firstNumber.value + rows.length,
       wPly: i + 1,
       white: san[i] ?? '',
       bPly: i + 1 < san.length ? i + 2 : null,
@@ -232,16 +260,42 @@ const moveRows = computed(() => {
   return rows;
 });
 
+function rowEvalText(wPly: number | null, bPly: number | null): string {
+  const lastIdx = bPly ?? wPly;
+  if (lastIdx === null) return '';
+  const p = gameEval.value.points[lastIdx - 1];
+  return p ? formatEval(p) : '';
+}
+
+const movesBox = ref<HTMLElement | null>(null);
+watch([currentPly, () => game.value.san.length], async ([p]) => {
+  await nextTick();
+  const box = movesBox.value;
+  if (!box) return;
+  if (p === 0) {
+    box.scrollTop = 0;
+    return;
+  }
+  const el = box.querySelector<HTMLElement>(`[data-ply="${p}"]`);
+  el?.scrollIntoView?.({ block: 'nearest' });
+});
+
 function onKey(e: KeyboardEvent): void {
   if (e.key === 'Escape' && editingSide.value !== null) {
     editingSide.value = null;
     return;
   }
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (
     e.target instanceof HTMLInputElement ||
     e.target instanceof HTMLSelectElement ||
     e.target instanceof HTMLTextAreaElement
   ) {
+    return;
+  }
+  if (e.key === 'f' || e.key === 'F') {
+    e.preventDefault();
+    orientation.value = opposite(orientation.value);
     return;
   }
   const last = game.value.san.length;
@@ -274,6 +328,7 @@ const sides = computed(() => {
 
 /** starts a game, from a random opening of the chosen book */
 async function newGame(): Promise<void> {
+  promoting.value = null;
   if (!book.value) {
     await play.start();
     return;
@@ -283,6 +338,11 @@ async function newGame(): Promise<void> {
   } catch (e) {
     error.value = `No opening from ${book.value}: ${e instanceof Error ? e.message : String(e)}`;
   }
+}
+
+function onTakeback(): void {
+  promoting.value = null;
+  play.takeback();
 }
 
 /** the copy button's label for a moment after a click */
@@ -388,6 +448,17 @@ function savePgn(): void {
             </span>
           </div>
         </template>
+
+        <div v-if="gameEval.hasEval || gameEval.hasTime" class="mt-3">
+          <EvalGraph
+            :game-eval="gameEval"
+            :ply="currentPly"
+            :sans="sans"
+            :first-move="firstNumber"
+            :black-first="blackFirst"
+            @select="play.goTo"
+          />
+        </div>
       </div>
 
       <!-- ── Controls, Thinking, Moves column ──────────────────────────── -->
@@ -505,6 +576,7 @@ function savePgn(): void {
 
           <div class="flex flex-wrap gap-1.5 border-t border-row px-3 py-2">
             <button class="btn" :disabled="phase === 'starting'" @click="newGame">New game</button>
+            <button class="btn" :disabled="!canTakeback" @click="onTakeback">Takeback</button>
             <button class="btn" :disabled="!canResign" @click="play.resign()">Resign</button>
             <button
               class="btn"
@@ -513,7 +585,9 @@ function savePgn(): void {
             >
               Abort
             </button>
-            <button class="btn" @click="orientation = opposite(orientation)">Flip</button>
+            <button class="btn" title="Flip board (F)" @click="orientation = opposite(orientation)">
+              Flip
+            </button>
             <button class="btn" :disabled="game.san.length === 0" @click="copyPgn">
               {{ copyNote || 'Copy PGN' }}
             </button>
@@ -618,31 +692,45 @@ function savePgn(): void {
               </button>
             </div>
           </div>
-          <div class="num max-h-60 overflow-auto px-3 py-2 text-dense">
+          <div
+            v-if="opening"
+            class="flex items-baseline gap-2 border-b border-row bg-panel2 px-3 py-1.5 text-small"
+          >
+            <span v-if="opening.eco" class="tag tone-accent">{{ opening.eco }}</span>
+            <span class="truncate text-text" :title="opening.name">{{ opening.name }}</span>
+          </div>
+          <div ref="movesBox" class="num max-h-60 overflow-auto px-3 py-2 text-dense">
             <div
               v-for="r in moveRows"
               :key="r.n"
-              class="grid grid-cols-[2.2rem_5.5rem_5.5rem] items-center"
+              class="grid grid-cols-[2.2rem_5.2rem_5.2rem_1fr] items-baseline"
             >
               <span class="text-faint">{{ r.n }}.</span>
               <button
+                v-if="r.wPly !== null"
+                :data-ply="r.wPly"
                 type="button"
                 class="w-fit rounded px-1 text-left hover:bg-active"
-                :class="r.wPly === currentPly ? 'bg-accent-line text-text' : ''"
+                :class="r.wPly === currentPly ? 'bg-accent-line font-semibold text-text' : ''"
                 @click="play.goTo(r.wPly)"
               >
                 {{ r.white }}
               </button>
+              <span v-else class="px-1 text-faint">…</span>
               <button
                 v-if="r.bPly !== null"
+                :data-ply="r.bPly"
                 type="button"
                 class="w-fit rounded px-1 text-left hover:bg-active"
-                :class="r.bPly === currentPly ? 'bg-accent-line text-text' : ''"
+                :class="r.bPly === currentPly ? 'bg-accent-line font-semibold text-text' : ''"
                 @click="play.goTo(r.bPly)"
               >
                 {{ r.black }}
               </button>
               <span v-else />
+              <span class="text-right text-label text-faint">
+                {{ rowEvalText(r.wPly, r.bPly) }}
+              </span>
             </div>
             <span v-if="moveRows.length === 0" class="text-faint">No moves</span>
           </div>

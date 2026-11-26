@@ -76,6 +76,32 @@ describe('Game', () => {
     expect(g.pgn({}).split('\n').at(-2)).toBe('1. e4 {+0.25/12 0.500s} e5 *');
   });
 
+  it('tracks fens per ply and undoes moves while restoring position and repetition counts', () => {
+    const g = new Game();
+    expect(g.fens).toHaveLength(1);
+    playAll(g, 'g1f3 g8f6 f3g1 f6g8');
+    expect(g.fens).toHaveLength(5);
+    g.annotate('+0.10/10 0.050s');
+    expect(g.undo(2)).toBe(2);
+    expect(g.san).toEqual(['Nf3', 'Nf6']);
+    expect(g.uci).toEqual(['g1f3', 'g8f6']);
+    expect(g.comments).toEqual(['', '']);
+    expect(g.fens).toHaveLength(3);
+    expect(g.fen).toBe(g.fens.at(-1));
+    expect(g.turn).toBe('white');
+    // repetition counts were rebuilt: returning to start once more is only occurrence #2, not #3
+    playAll(g, 'f3g1 f6g8');
+    expect(g.outcome).toBeNull();
+    // undoing past start clamps to available plies and clears an ended outcome
+    playAll(g, 'g1f3 g8f6 f3g1 f6g8');
+    expect(g.outcome?.reason).toBe('threefold repetition');
+    expect(g.undo(1)).toBe(1);
+    expect(g.outcome).toBeNull();
+    expect(g.undo(50)).toBe(7);
+    expect(g.san).toEqual([]);
+    expect(g.fens).toHaveLength(1);
+  });
+
   it('writes PGN with the tag roster and the result', () => {
     const g = new Game();
     playAll(g, 'f2f3 e7e5 g2g4 d8h4');
