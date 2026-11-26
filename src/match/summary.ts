@@ -1,5 +1,15 @@
 import { BYE, gamesPerPair, type Format } from './format.ts';
-import { bounds, bucket, elo, gameBucket, llr, nelo, type Ptnml, type Trinomial } from './stats.ts';
+import {
+  bounds,
+  bucket,
+  elo,
+  gameBucket,
+  llr,
+  los,
+  nelo,
+  type Ptnml,
+  type Trinomial,
+} from './stats.ts';
 
 /** One pair as issued: who meets, in which round, and on which opening; with one game per opening, one game. */
 export interface PairRecord {
@@ -55,6 +65,8 @@ export interface MatchStats {
   wdl: [number, number, number];
   nelo: { value: number; ci: number };
   elo: { value: number; ci: number };
+  /** the likelihood that the tested engine is the stronger, from the same counts as nElo */
+  los: number;
   /** null without an SPRT */
   llr: number | null;
   bounds: { lower: number; upper: number } | null;
@@ -167,6 +179,7 @@ export function summarize(
       wdl: [t?.wins ?? 0, t?.draws ?? 0, t?.losses ?? 0],
       nelo: nelo(counts),
       elo: elo(counts),
+      los: los(counts),
       llr: value,
       bounds: b,
       verdict:

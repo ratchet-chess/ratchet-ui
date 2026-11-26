@@ -4,9 +4,12 @@ import {
   bucket,
   elo,
   gameBucket,
+  likelihoodOfSuperiority,
   llr,
+  los,
   nelo,
   sprtGames,
+  Z95,
   type Ptnml,
   type Trinomial,
 } from './stats.ts';
@@ -111,5 +114,28 @@ describe('the trinomial statistics match fastchess’s tests', () => {
 
   it('a game falls in the bucket of its points', () => {
     expect([gameBucket(0), gameBucket(0.5), gameBucket(1)]).toEqual([0, 1, 2]);
+  });
+});
+
+describe('likelihoodOfSuperiority', () => {
+  it('is a half at no difference and follows the normal law', () => {
+    expect(likelihoodOfSuperiority(0, 20)).toBeCloseTo(0.5, 7);
+    // a difference of one standard error (the 95% half-interval over 1.96) is 84.13%
+    expect(likelihoodOfSuperiority(10, 19.59963984540054)).toBeCloseTo(0.841345, 5);
+    expect(likelihoodOfSuperiority(5, 0)).toBe(1);
+  });
+});
+
+describe('los', () => {
+  it('reads the same z as nElo, mirrors, and settles a one-bucket match', () => {
+    const counts: Ptnml = [3, 20, 50, 25, 2];
+    const n = nelo(counts);
+    expect(los(counts)).toBeCloseTo(likelihoodOfSuperiority(n.value, (n.ci * Z95) / 1.96), 9);
+    expect(los(counts) + los([2, 25, 50, 20, 3])).toBeCloseTo(1, 12);
+    expect(los([0, 0, 0, 0, 7])).toBe(1);
+    expect(los([7, 0, 0, 0, 0])).toBe(0);
+    expect(los([0, 0, 7, 0, 0])).toBe(0.5);
+    expect(los([0, 0, 0, 0, 0])).toBe(0.5);
+    expect(los([10, 30, 40] as Trinomial)).toBeGreaterThan(0.5);
   });
 });

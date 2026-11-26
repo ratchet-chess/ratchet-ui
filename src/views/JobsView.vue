@@ -10,7 +10,6 @@ import ProgressBar from '../components/ProgressBar.vue';
 import type { Job } from '../manager/api.ts';
 import JobPage from './jobs/JobPage.vue';
 import {
-  clockText,
   endText,
   finishingText,
   headline,
@@ -28,7 +27,7 @@ import {
   waitingText,
 } from '../manager/show.ts';
 import { useManager } from '../stores/manager.ts';
-import { count } from '../ui/format.ts';
+import { clockText, count } from '../ui/format.ts';
 
 const manager = useManager();
 const route = useRoute();

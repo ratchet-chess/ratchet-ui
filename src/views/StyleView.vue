@@ -10,6 +10,7 @@ import PageHeader from '../components/PageHeader.vue';
 import Pager from '../components/Pager.vue';
 import Panel from '../components/Panel.vue';
 import ProgressBar from '../components/ProgressBar.vue';
+import PentaCounts from '../components/PentaCounts.vue';
 import Segmented from '../components/Segmented.vue';
 import StatCard from '../components/StatCard.vue';
 import Tabs from '../components/Tabs.vue';
@@ -178,7 +179,10 @@ const selected = ref(1);
               +3.3
               <template #sub>± 2.7</template>
             </StatCard>
-            <StatCard label="W D L"><span class="text-title">812 2,904 788</span></StatCard>
+            <StatCard label="W D L · pairs">
+              <span class="text-title">812 2,904 788</span>
+              <template #sub><PentaCounts :counts="[61, 402, 902, 425, 56]" /></template>
+            </StatCard>
           </div>
         </div>
       </Panel>

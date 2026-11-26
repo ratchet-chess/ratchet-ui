@@ -29,6 +29,9 @@ const NELO_SCALE = 800 / Math.log(10);
 const sum = (xs: readonly number[]) => xs.reduce((a, b) => a + b, 0);
 const at = (xs: readonly number[], i: number) => xs[i] ?? 0;
 
+/** the normal quantile at 97.5%: a 95% half-interval over this is one standard error */
+export const Z95 = 1.959963984540054;
+
 /** the SPRT's stopping bounds on the LLR for error rates alpha and beta */
 export function bounds(alpha = 0.05, beta = 0.05): { lower: number; upper: number } {
   return { lower: Math.log(beta / (1 - alpha)), upper: Math.log((1 - beta) / alpha) };
@@ -162,6 +165,16 @@ export function elo(counts: Ptnml | Trinomial): { value: number; ci: number } {
 }
 
 /**
+ * The likelihood of superiority: the probability that the tested engine is the stronger, from the
+ * same mean score and spread as nElo, so it agrees with nElo's interval. With every sample in one
+ * bucket it is 1, 0 or a half.
+ */
+export function los(counts: Ptnml | Trinomial): number {
+  const { pairs, mean, sd } = moments(counts);
+  return likelihoodOfSuperiority(mean - 0.5, pairs === 0 ? 0 : (Z95 * sd) / Math.sqrt(pairs));
+}
+
+/**
  * The bucket of a pair from one side's view: its points over the two games, 0 to 2 in halves.
  * @param first that side's points in the pair's first game: 1, 0.5 or 0
  * @param second its points in the second
@@ -173,3 +186,22 @@ export function bucket(first: number, second: number): 0 | 1 | 2 | 3 | 4 {
 
 /** The bucket of one game from one side's view, in `Trinomial` order: 0 lost, 1 drawn, 2 won. */
 export const gameBucket = (points: number): 0 | 1 | 2 => (points >= 1 ? 2 : points > 0 ? 1 : 0);
+
+/** the probability that a rating difference known within `error` (95% half-interval) is above 0 */
+export function likelihoodOfSuperiority(difference: number, error: number): number {
+  if (!(error > 0)) return difference > 0 ? 1 : difference < 0 ? 0 : 0.5;
+  return 0.5 * (1 + erf(difference / (error / Z95) / Math.SQRT2));
+}
+
+/** Numerical Recipes' erfc coefficients, lowest power first */
+const ERFC = [
+  -1.26551223, 1.00002368, 0.37409196, 0.09678418, -0.18628806, 0.27886807, -1.13520398, 1.48851587,
+  -0.82215223, 0.17087277,
+];
+/** the error function, to 1.2e-7 */
+function erf(x: number): number {
+  const z = Math.abs(x);
+  const t = 1 / (1 + 0.5 * z);
+  const c = t * Math.exp(-z * z + ERFC.reduceRight((acc, k) => k + t * acc, 0));
+  return x >= 0 ? 1 - c : c - 1;
+}

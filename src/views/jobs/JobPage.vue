@@ -7,12 +7,12 @@
 import { computed } from 'vue';
 import HelpTip from '../../components/HelpTip.vue';
 import MatchCards from '../../components/MatchCards.vue';
+import PentaCounts from '../../components/PentaCounts.vue';
 import Panel from '../../components/Panel.vue';
 import ProgressBar from '../../components/ProgressBar.vue';
 import StatCard from '../../components/StatCard.vue';
 import type { JobDetail } from '../../manager/api.ts';
 import {
-  clockText,
   decisionText,
   endsText,
   finishingText,
@@ -25,7 +25,7 @@ import {
   verdictLlr,
   waitCell,
 } from '../../manager/show.ts';
-import { count, signed } from '../../ui/format.ts';
+import { clockText, count, signed } from '../../ui/format.ts';
 import MatchChart, { type ChartPoint } from '../tourneys/MatchChart.vue';
 import TuneValues from './TuneValues.vue';
 
@@ -117,11 +117,11 @@ const showWaits = computed(() => hosts.value.some((h) => (waits.value.get(h.host
             >
           </template>
           <span class="text-title">{{ count(s.games ?? 0) }}</span>
-          <template v-if="s.ptnml" #sub>{{ s.ptnml.join(' ') }}</template>
+          <template v-if="s.ptnml" #sub><PentaCounts :counts="s.ptnml" /></template>
         </StatCard>
       </MatchCards>
       <div v-else-if="s.values" class="mb-3 grid grid-cols-2 gap-2 @4xl:grid-cols-5">
-        <StatCard label="games · pairs">
+        <StatCard label="games · pairs" class="@4xl:col-span-2">
           <template #help>
             <HelpTip
               >Games played. Below: pentanomial pair counts (0, ½, 1, 1½, 2 pts for the
@@ -129,7 +129,7 @@ const showWaits = computed(() => hosts.value.some((h) => (waits.value.get(h.host
             >
           </template>
           <span class="text-title">{{ count(s.games ?? 0) }}</span>
-          <template v-if="s.ptnml" #sub>{{ s.ptnml.join(' ') }}</template>
+          <template v-if="s.ptnml" #sub><PentaCounts :counts="s.ptnml" /></template>
         </StatCard>
         <StatCard label="resolution">
           <template #help>
@@ -157,7 +157,7 @@ const showWaits = computed(() => hosts.value.some((h) => (waits.value.get(h.host
           title="LLR"
           unit="pairs"
           :points="llrPoints"
-          :marks="[s.llr.lower, s.llr.upper]"
+          :bounds="s.llr"
           :at="decidedAt"
           :digits="2"
         />

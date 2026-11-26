@@ -4,11 +4,12 @@
  * the threads the running ones ask for.
  */
 import { bracket } from '../../match/director.ts';
+import { gamesPerPair } from '../../match/format.ts';
 import { problemOf, type Problem } from '../../match/referee.ts';
 import type { GameRecord } from '../../match/summary.ts';
 import { inOrder, lacking } from '../../stores/queue.ts';
 import type { Item } from '../../stores/tournaments.ts';
-import { count, signed, spanText, whenText } from '../../ui/format.ts';
+import { clockText, count, signed, spanText, whenText } from '../../ui/format.ts';
 import { label, planned, roundName } from './show.ts';
 
 export type Group = 'running' | 'queued' | 'stopped' | 'finished';
@@ -241,6 +242,8 @@ export function queuePlace(
 export interface Eta {
   /** milliseconds still to play at the pace so far */
   ms: number;
+  /** milliseconds of the run's time a game has taken, with its concurrent games */
+  perGame: number;
   /** an SPRT may stop sooner, a knockout's tied matches play on */
   bound: 'about' | 'at most' | 'at least';
 }
@@ -255,8 +258,10 @@ export function etaOf(i: Item, now: number): Eta | null {
   if (done < Math.max(2, Math.min(i.config.concurrency, 8))) return null;
   const left = Math.max(0, planned(i) - i.state.games.length);
   const f = i.config.format;
+  const perGame = Math.max(1000, now - i.since.at) / done;
   return {
-    ms: (left * Math.max(1000, now - i.since.at)) / done,
+    ms: left * perGame,
+    perGame,
     bound: f.kind === 'match' && f.sprt ? 'at most' : f.kind === 'knockout' ? 'at least' : 'about',
   };
 }
@@ -264,6 +269,37 @@ export function etaOf(i: Item, now: number): Eta | null {
 const BOUND_MARK: Record<Eta['bound'], string> = { about: '≈', 'at most': '≤', 'at least': '≥' };
 
 export const etaText = (e: Eta): string => `${BOUND_MARK[e.bound]} ${spanText(e.ms)} left`;
+
+/**
+ * the pairs an SPRT still needs to reach the bound its LLR drifts toward, at the drift so far; null
+ * before any drift shows. ratchet-bench's tools/pool.ts estimates a job's end the same way.
+ */
+export function pairsToBound(
+  llr: number,
+  pairs: number,
+  b: { lower: number; upper: number },
+): number | null {
+  if (pairs === 0 || llr === 0 || !Number.isFinite(llr)) return null;
+  return Math.max(0, (pairs * ((llr > 0 ? b.upper : b.lower) - llr)) / llr);
+}
+
+/**
+ * when a run in this tab ends, as clock times: for an SPRT by the LLR's pace and at the latest, else
+ * by the game pace; '' without an estimate
+ */
+export function endsText(i: Item, now: number): string {
+  const eta = etaOf(i, now);
+  if (!eta) return '';
+  const at = clockText(now + eta.ms, now);
+  const m = i.state.summary.match;
+  if (eta.bound !== 'at most' || !m?.bounds || m.llr === null)
+    return `${BOUND_MARK[eta.bound]} ${at}`;
+  const left = pairsToBound(m.llr, i.state.summary.pairsDone, m.bounds);
+  const per = gamesPerPair(i.config.format, i.config.paired);
+  const byPace = left === null ? null : left * per * eta.perGame;
+  if (byPace === null || byPace >= eta.ms) return `${at} at the latest`;
+  return `≈ ${clockText(now + byPace, now)} by the LLR's pace · ${at} at the latest`;
+}
 
 // ── threads ────────────────────────────────────────────────────────────────
 

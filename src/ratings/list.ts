@@ -1,5 +1,6 @@
 import { TIME_CONTROLS, resolveControl, type TimeControl } from '../chess/clock.ts';
-import { fitRatings, likelihoodOfSuperiority, type FitGame } from './fit.ts';
+import { likelihoodOfSuperiority } from '../match/stats.ts';
+import { fitRatings, type FitGame } from './fit.ts';
 import type { ScannedGame } from './scan.ts';
 
 /**

@@ -1,30 +1,38 @@
 <script setup lang="ts">
 /**
- * One match's or tournament's page: its statistics, standings, bracket and games; for a queued one,
- * its place in the queue and its field.
+ * One match's or tournament's page: its statistics, standings, setup, abnormal endings, bracket and
+ * games; for a queued one, its place in the queue and its field.
  */
-import { computed, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import HelpTip from '../../components/HelpTip.vue';
 import Pager from '../../components/Pager.vue';
 import Panel from '../../components/Panel.vue';
 import MatchCards from '../../components/MatchCards.vue';
+import PentaCounts from '../../components/PentaCounts.vue';
 import StatCard from '../../components/StatCard.vue';
 import { bracket } from '../../match/director.ts';
 import { BYE, gameNumber, gamesPerPair, plannedGames } from '../../match/format.ts';
 import { matchText, score, standingsText, TIEBREAK_NAMES, tiebreaks } from '../../match/report.ts';
 import { matchSeries } from '../../match/series.ts';
+import { problemOf } from '../../match/referee.ts';
 import { pointsOf, type GameRecord, type PairRecord } from '../../match/summary.ts';
 import { useGames } from '../../stores/games.ts';
 import { collectionOf, useTournaments, type Item } from '../../stores/tournaments.ts';
 import MatchChart, { type ChartPoint } from './MatchChart.vue';
-import { queuePlace } from './overview.ts';
-import { signed, whenText } from '../../ui/format.ts';
+import { endsText, problemsLine, queuePlace } from './overview.ts';
+import { count, signed, whenText } from '../../ui/format.ts';
 import { formatText, label, progress, roundName, statusClass, statusText } from './show.ts';
 
 const props = defineProps<{ item: Item }>();
 const tournaments = useTournaments();
 const router = useRouter();
+
+/** the clock the end estimate reads, moved on every few seconds */
+const now = ref(Date.now());
+let ticker: ReturnType<typeof setInterval> | undefined;
+onMounted(() => (ticker = setInterval(() => (now.value = Date.now()), 10_000)));
+onBeforeUnmount(() => clearInterval(ticker));
 
 /** a knockout's bracket, round by round */
 const bracketRounds = computed(() => {
@@ -83,6 +91,42 @@ async function exportPgn(): Promise<void> {
   }
   await games.download(id, props.item.config.name);
 }
+
+// ── setup and health ───────────────────────────────────────────────────────
+const setupRows = computed<[string, string][]>(() => {
+  const i = props.item;
+  const c = i.config;
+  const rows: [string, string][] = [
+    ['format', formatText(c.format, c.paired)],
+    ['control', c.control],
+    ['book', c.book || 'start position'],
+    [
+      'adjudication',
+      c.adjudication ? (c.adjudication.resign ? 'draw and resign' : 'draw') : 'none',
+    ],
+    ['concurrent', String(c.concurrency)],
+    ['games', progress(i)],
+    ['created', whenText(c.created, now.value)],
+  ];
+  const ends = endsText(i, Math.max(now.value, Date.now()));
+  if (ends) rows.push(['ends', ends]);
+  else if (i.endedAt && statusText(i) !== 'running')
+    rows.push([i.ended === 'done' ? 'ended' : 'stopped', whenText(i.endedAt, now.value)]);
+  return rows;
+});
+
+const HEALTH_PAGE = 40;
+const healthPage = ref(0);
+/** the games that ended abnormally, newest first */
+const faulted = computed(() =>
+  props.item.state.games
+    .filter((g) => problemOf(g.reason) !== null)
+    .toSorted((a, b) => number(b) - number(a)),
+);
+const healthPages = computed(() => Math.max(1, Math.ceil(faulted.value.length / HEALTH_PAGE)));
+const healthRows = computed(() =>
+  faulted.value.slice(healthPage.value * HEALTH_PAGE, (healthPage.value + 1) * HEALTH_PAGE),
+);
 
 // ── statistics over the pairs ──────────────────────────────────────────────
 const series = computed(() => {
@@ -253,18 +297,6 @@ async function copy(): Promise<void> {
         Copy
       </button>
     </div>
-    <div class="num mb-3 text-dense text-dim">
-      {{ formatText(item.config.format, item.config.paired) }} · {{ item.config.control }} ·
-      {{ item.config.book || 'start position' }} ·
-      {{
-        item.config.adjudication
-          ? item.config.adjudication.resign
-            ? 'draw and resign adjudication'
-            : 'draw adjudication'
-          : 'no adjudication'
-      }}
-      · {{ item.config.concurrency }} concurrent · {{ progress(item) }} games
-    </div>
     <div v-if="item.state.error" class="mb-3 text-bad">{{ item.state.error }}</div>
 
     <template v-if="queued">
@@ -285,7 +317,6 @@ async function copy(): Promise<void> {
           </li>
         </ol>
       </Panel>
-      <div class="text-dense text-dim">Standings, schedule and games appear once it starts.</div>
     </template>
 
     <template v-else-if="item.state.summary.match">
@@ -301,6 +332,7 @@ async function copy(): Promise<void> {
         "
         :nelo="item.state.summary.match.nelo"
         :elo="item.state.summary.match.elo"
+        :los="item.state.summary.match.los"
       >
         <StatCard :label="per === 2 ? 'W D L · pairs' : 'W D L'">
           <template v-if="per === 2" #help>
@@ -309,10 +341,10 @@ async function copy(): Promise<void> {
               its side, 0, ½, 1, 1½ and 2 points (pentanomial).</HelpTip
             >
           </template>
-          <span class="text-title">{{ item.state.summary.match.wdl.join(' ') }}</span>
-          <template v-if="item.state.summary.match.model === 'pentanomial'" #sub>{{
-            item.state.summary.match.ptnml.join(' ')
-          }}</template>
+          <span class="text-title">{{ item.state.summary.match.wdl.map(count).join(' ') }}</span>
+          <template v-if="item.state.summary.match.model === 'pentanomial'" #sub>
+            <PentaCounts :counts="item.state.summary.match.ptnml" />
+          </template>
         </StatCard>
       </MatchCards>
       <Panel
@@ -326,7 +358,7 @@ async function copy(): Promise<void> {
             title="LLR"
             :unit="per === 2 ? 'pairs' : 'games'"
             :points="llrPoints"
-            :marks="[item.state.summary.match.bounds.lower, item.state.summary.match.bounds.upper]"
+            :bounds="item.state.summary.match.bounds"
             :digits="2"
           />
           <MatchChart
@@ -390,7 +422,47 @@ async function copy(): Promise<void> {
       </div>
     </Panel>
 
+    <Panel title="Setup">
+      <dl
+        class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 gap-y-1 px-3 py-2.5 text-dense @3xl:grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] @6xl:grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)]"
+      >
+        <template v-for="[k, v] in setupRows" :key="k">
+          <dt class="text-dim">{{ k }}</dt>
+          <dd class="num truncate" :title="v">{{ v }}</dd>
+        </template>
+      </dl>
+    </Panel>
+
+    <div v-if="queued" class="text-dense text-dim">
+      Standings, schedule and games appear once it starts.
+    </div>
+
     <template v-if="!queued">
+      <Panel v-if="faulted.length > 0" title="Health" :note="problemsLine(item.state.games)">
+        <div class="num px-1.5 py-1 text-dense">
+          <button
+            v-for="g in healthRows"
+            :key="`${g.pair}.${g.game}`"
+            class="grid w-full grid-cols-[3rem_minmax(0,1.2fr)_4.5rem_minmax(0,1fr)] gap-2 rounded px-1.5 py-0.5 text-left hover:bg-hover"
+            @click="openGame(g)"
+          >
+            <span class="text-faint">{{ number(g) }}</span>
+            <span class="truncate"
+              >{{ label(item, g.white) }} <span class="text-dim">vs</span>
+              {{ label(item, g.black) }}</span
+            >
+            <span class="text-right">{{ g.result }}</span>
+            <span
+              class="truncate"
+              :class="problemOf(g.reason) === 'time' ? 'text-warn' : 'text-bad'"
+              :title="g.reason"
+              >{{ g.reason }}</span
+            >
+          </button>
+          <Pager v-model="healthPage" :pages="healthPages" class="mt-1.5" />
+        </div>
+      </Panel>
+
       <Panel v-if="bracketRounds.length > 0" title="Bracket" note="points over finished pairs">
         <div class="grid gap-3 px-3 py-2 text-dense @3xl:grid-flow-col">
           <div v-for="(round, r) in bracketRounds" :key="r">

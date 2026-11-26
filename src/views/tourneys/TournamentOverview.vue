@@ -262,7 +262,7 @@ const icon = 'btn-sm w-[21px] px-0';
             :ptnml="
               i.state.summary.match.model === 'pentanomial' ? i.state.summary.match.ptnml : null
             "
-            :tail="`W D L ${i.state.summary.match.wdl.join(' ')}`"
+            :tail="`W D L ${i.state.summary.match.wdl.map(count).join(' ')}`"
           />
           <div v-else-if="standingText(i)" class="num mt-1.5 truncate text-small text-dim">
             {{ standingText(i) }}

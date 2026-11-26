@@ -17,8 +17,8 @@ export interface ChartPoint {
 const props = defineProps<{
   title: string;
   points: ChartPoint[];
-  /** dashed lines across the chart, such as an SPRT's bounds */
-  marks?: number[];
+  /** an SPRT's bounds, drawn dashed across the chart: the upper accepts H1, the lower H0 */
+  bounds?: { lower: number; upper: number };
   /** a dashed line down the chart at this many pairs, such as where an SPRT decided */
   at?: number | null;
   /** how a value is written, in the axis and the tooltip */
@@ -33,12 +33,12 @@ const finite = (v: number | undefined): v is number => v !== undefined && Number
 
 /**
  * The y range: the values and their intervals, past the first tenth of the pairs, where a few
- * games give intervals hundreds wide; and the marks, which must stay in view.
+ * games give intervals hundreds wide; and the bounds, which must stay in view.
  */
 const range = computed(() => {
   const last = props.points.at(-1)?.pairs ?? 1;
   const settled = props.points.filter((p) => p.pairs >= last / 10);
-  const ys: number[] = [...(props.marks ?? [])];
+  const ys: number[] = props.bounds ? [props.bounds.lower, props.bounds.upper] : [];
   for (const p of settled.length > 0 ? settled : props.points) {
     if (!finite(p.value)) continue;
     ys.push(p.value);
@@ -113,8 +113,16 @@ const hoverLeft = computed(() => (hover.value ? (100 * x(hover.value.pairs)) / W
 
 <template>
   <figure class="min-w-0">
-    <figcaption class="mb-1 text-label tracking-wider text-dim uppercase">
-      {{ title }}
+    <figcaption class="mb-1 flex items-baseline gap-3 text-label text-dim">
+      <span class="tracking-wider uppercase">{{ title }}</span>
+      <template v-if="bounds">
+        <span class="flex items-center gap-1"
+          ><i class="inline-block h-0 w-3 border-t border-dashed border-good" />H1</span
+        >
+        <span class="flex items-center gap-1"
+          ><i class="inline-block h-0 w-3 border-t border-dashed border-bad" />H0</span
+        >
+      </template>
     </figcaption>
     <div class="flex gap-1.5">
       <div class="num relative w-10 shrink-0 text-right text-label text-faint">
@@ -149,17 +157,22 @@ const hoverLeft = computed(() => (hover.value ? (100 * x(hover.value.pairs)) / W
             class="stroke-line"
             vector-effect="non-scaling-stroke"
           />
-          <line
-            v-for="m in marks ?? []"
-            :key="m"
-            :x1="0"
-            :x2="W"
-            :y1="y(m)"
-            :y2="y(m)"
-            class="stroke-faint"
-            stroke-dasharray="4 4"
-            vector-effect="non-scaling-stroke"
-          />
+          <template v-if="bounds">
+            <line
+              v-for="b in [
+                { at: bounds.upper, tone: 'stroke-good' },
+                { at: bounds.lower, tone: 'stroke-bad' },
+              ]"
+              :key="b.tone"
+              :x1="0"
+              :x2="W"
+              :y1="y(b.at)"
+              :y2="y(b.at)"
+              :class="b.tone"
+              stroke-dasharray="4 4"
+              vector-effect="non-scaling-stroke"
+            />
+          </template>
           <line
             v-if="at !== undefined && at !== null"
             :x1="x(at)"

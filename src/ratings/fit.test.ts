@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fitRatings, likelihoodOfSuperiority, type Fit, type FitGame, type Rated } from './fit.ts';
+import { fitRatings, type Fit, type FitGame, type Rated } from './fit.ts';
 import { pairUp } from './list.ts';
 import { scanHeaders } from './scan.ts';
 import fixture from './joint.fixture.pgn?raw';
@@ -186,14 +186,5 @@ describe('fitRatings', () => {
     expect(rated(fit, 0).elo + rated(fit, 1).elo).toBeCloseTo(0, 6);
     expect(fit.rated[4]).toBeNull();
     expect(fit.differenceError(0, 2)).toBeNaN();
-  });
-});
-
-describe('likelihoodOfSuperiority', () => {
-  it('is a half at no difference and follows the normal law', () => {
-    expect(likelihoodOfSuperiority(0, 20)).toBeCloseTo(0.5, 7);
-    // a difference of one standard error (the 95% half-interval over 1.96) is 84.13%
-    expect(likelihoodOfSuperiority(10, 19.59963984540054)).toBeCloseTo(0.841345, 5);
-    expect(likelihoodOfSuperiority(5, 0)).toBe(1);
   });
 });

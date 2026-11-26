@@ -1,8 +1,6 @@
 /** How the manager view writes a host and a job for a reader: shared by Jobs, Hosts and the header. */
 import type { Host, Job, Summary, TunedValue, Wait } from './api.ts';
-import { count, signed } from '../ui/format.ts';
-
-const DAY = 86_400_000;
+import { clockText, count, signed } from '../ui/format.ts';
 
 type Tone = 'accent' | 'live' | 'bad' | 'good' | 'warn';
 
@@ -25,22 +23,6 @@ export function unitParts(j: Job): { share: number; tone: Tone }[] {
 /** `923 of 6,252 units` */
 export const unitsText = (j: Job): string =>
   `${count(j.units.done ?? 0)} of ${count(unitsPlanned(j))} unit${unitsPlanned(j) === 1 ? '' : 's'}`;
-
-/** a clock time, with its day when that is not today: `10:05`, `tomorrow 02:10`, `Nov 22 09:00` */
-export function clockText(ms: number, now: number): string {
-  const t = new Date(ms);
-  const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-  const days = Math.round((day(t) - day(new Date(now))) / DAY);
-  const clock = t.toLocaleTimeString('en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  });
-  if (days === 0) return clock;
-  if (days === 1) return `tomorrow ${clock}`;
-  if (days === -1) return `yesterday ${clock}`;
-  return `${t.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ${clock}`;
-}
 
 /** when a running job should end: `≈ 10:05`, or `by 10:05` when its unit count is a ceiling; '' with no estimate */
 export const endText = (j: Job, now: number): string =>

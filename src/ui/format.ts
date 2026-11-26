@@ -36,6 +36,22 @@ export function whenText(iso: string, now: number): string {
   });
 }
 
+/** a clock time, with its day when that is not today: `10:05`, `tomorrow 02:10`, `Nov 22 09:00` */
+export function clockText(ms: number, now: number): string {
+  const t = new Date(ms);
+  const day = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((day(t) - day(new Date(now))) / DAY);
+  const clock = t.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  });
+  if (days === 0) return clock;
+  if (days === 1) return `tomorrow ${clock}`;
+  if (days === -1) return `yesterday ${clock}`;
+  return `${t.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} ${clock}`;
+}
+
 /** a span to come, as precise as it is worth: `8 min`, `3 h 10 min`, `14 h`, `4 d 14 h` */
 export function spanText(ms: number): string {
   const min = Math.max(1, Math.round(ms / 60_000));

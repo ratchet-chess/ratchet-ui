@@ -19,8 +19,8 @@ export function formatText(f: Format, paired = true): string {
   if (f.kind === 'match') {
     const games = f.pairs * gamesPerPair(f, paired);
     return f.sprt
-      ? `SPRT nElo [${f.sprt.elo0}, ${f.sprt.elo1}], up to ${games} games`
-      : `match of ${games} games`;
+      ? `SPRT nElo [${f.sprt.elo0}, ${f.sprt.elo1}], up to ${count(games)} games`
+      : `match of ${count(games)} games`;
   }
   if (f.kind === 'roundrobin') return `round robin, ${plural(f.cycles, 'cycle')}`;
   if (f.kind === 'swiss') return `Swiss, ${plural(f.rounds, 'round')}`;

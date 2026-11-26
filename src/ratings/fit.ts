@@ -18,6 +18,7 @@
  *   fitted alone, and a rating compares only within its pool. The anchor fixes its own pool's scale;
  *   every other pool averages 0.
  */
+import { Z95 } from '../match/stats.ts';
 
 /** one game: engines by index, White's points, and the pair it belongs to (a game alone is a pair of one) */
 export interface FitGame {
@@ -60,7 +61,6 @@ export interface Fit {
 
 const K = Math.LN10 / 400;
 const PRIOR = 1000;
-const Z95 = 1.959963984540054;
 /**
  * Below this many pairs the pair interval reads narrow: two equal engines at 50% draws miss their
  * 95% interval 22% of the time at 3 pairs, 13% at 5, 7% at 10 (4,000 trials each). There the
@@ -71,25 +71,6 @@ const FEW_PAIRS = 10;
 const at = (xs: ArrayLike<number>, i: number) => xs[i] ?? 0;
 /** the expected score of a rating difference, on the logistic Elo curve */
 const expected = (difference: number) => 1 / (1 + 10 ** (-difference / 400));
-
-/** the probability that a rating difference known within `error` (95% half-interval) is above 0 */
-export function likelihoodOfSuperiority(difference: number, error: number): number {
-  if (!(error > 0)) return difference > 0 ? 1 : difference < 0 ? 0 : 0.5;
-  return 0.5 * (1 + erf(difference / (error / Z95) / Math.SQRT2));
-}
-
-/** Numerical Recipes' erfc coefficients, lowest power first */
-const ERFC = [
-  -1.26551223, 1.00002368, 0.37409196, 0.09678418, -0.18628806, 0.27886807, -1.13520398, 1.48851587,
-  -0.82215223, 0.17087277,
-];
-/** the error function, to 1.2e-7 */
-function erf(x: number): number {
-  const z = Math.abs(x);
-  const t = 1 / (1 + 0.5 * z);
-  const c = t * Math.exp(-z * z + ERFC.reduceRight((sum, k) => k + t * sum, 0));
-  return x >= 0 ? 1 - c : c - 1;
-}
 
 /** a square matrix, row-major */
 class Square {
