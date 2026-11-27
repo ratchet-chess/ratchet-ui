@@ -16,7 +16,7 @@ const engines = useEngines();
 onMounted(() => {
   void backup.start();
   // the bar's Tourneys badge reads the tournaments before Tourneys is opened
-  void Promise.all([tournaments.load(), books.load(), engines.load()]);
+  void Promise.allSettled([tournaments.load(), books.load(), engines.load()]);
 });
 </script>
 

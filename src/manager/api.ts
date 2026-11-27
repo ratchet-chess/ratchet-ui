@@ -383,10 +383,22 @@ export function parseJobDetail(body: unknown): JobDetail {
   };
 }
 
-/** `url` with no slash at its end, or '' when it is no http address */
+/** `url` with no slash at its end, or '' when it is no valid http(s) base address */
 export function managerBase(url: string): string {
   const u = url.trim().replace(/\/+$/, '');
-  return /^https?:\/\/[^/\s]+/.test(u) ? u : '';
+  if (!/^https?:\/\//i.test(u) || /\s/.test(u)) return '';
+  try {
+    const parsed = new URL(u);
+    if (
+      (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
+      parsed.search ||
+      parsed.hash
+    )
+      return '';
+    return parsed.href.replace(/\/+$/, '');
+  } catch {
+    return '';
+  }
 }
 
 /** one read of the manager: its hosts and its jobs; it throws when either fails */

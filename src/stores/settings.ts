@@ -44,9 +44,33 @@ export function setupOf(x: unknown): Setup | null {
   }
 }
 
+function readStorage(key: string): string | null {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStorage(key: string, value: string): void {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // ignore storage quota or private-mode restrictions
+  }
+}
+
+function removeStorage(key: string): void {
+  try {
+    localStorage.removeItem(key);
+  } catch {
+    // ignore storage restrictions
+  }
+}
+
 function readJson(key: string): unknown {
   try {
-    return JSON.parse(localStorage.getItem(key) ?? 'null');
+    return JSON.parse(readStorage(key) ?? 'null');
   } catch {
     return null;
   }
@@ -164,56 +188,56 @@ export function unionOf(here: SettingsFile, there: SettingsFile): SettingsFile {
  */
 export const useSettings = defineStore('settings', () => {
   /** the manager's address, such as http://host:port; empty when none is set */
-  const managerUrl = ref(localStorage.getItem(MANAGER_KEY) ?? '');
+  const managerUrl = ref(readStorage(MANAGER_KEY) ?? '');
   watch(managerUrl, (url) => {
-    if (url) localStorage.setItem(MANAGER_KEY, url);
-    else localStorage.removeItem(MANAGER_KEY);
+    if (url) writeStorage(MANAGER_KEY, url);
+    else removeStorage(MANAGER_KEY);
   });
 
   /** the user's own time controls, as typed, beside the built-in ones */
   const controls = ref<string[]>(controlsOf(readJson(CONTROLS_KEY)));
-  watch(controls, (c) => localStorage.setItem(CONTROLS_KEY, JSON.stringify(c)), { deep: true });
+  watch(controls, (c) => writeStorage(CONTROLS_KEY, JSON.stringify(c)), { deep: true });
 
   const templates = ref<Template[]>(templatesOf(readJson(TEMPLATES_KEY)));
-  watch(templates, (t) => localStorage.setItem(TEMPLATES_KEY, JSON.stringify(t)), { deep: true });
+  watch(templates, (t) => writeStorage(TEMPLATES_KEY, JSON.stringify(t)), { deep: true });
 
   /** the template a New starts from; empty for the app's own defaults */
-  const startTemplate = ref(localStorage.getItem(START_KEY) ?? '');
+  const startTemplate = ref(readStorage(START_KEY) ?? '');
   watch(startTemplate, (name) => {
-    if (name) localStorage.setItem(START_KEY, name);
-    else localStorage.removeItem(START_KEY);
+    if (name) writeStorage(START_KEY, name);
+    else removeStorage(START_KEY);
   });
 
-  const stored = localStorage.getItem(THEME_KEY);
+  const stored = readStorage(THEME_KEY);
   const theme = ref<Theme>(isTheme(stored) ? stored : 'system');
   watch(theme, (t) => {
-    if (t === 'system') localStorage.removeItem(THEME_KEY);
-    else localStorage.setItem(THEME_KEY, t);
+    if (t === 'system') removeStorage(THEME_KEY);
+    else writeStorage(THEME_KEY, t);
   });
 
   /** whether a backup, the export and the mirror folder, holds the user's books */
-  const backupBooks = ref(localStorage.getItem(BACKUP_BOOKS_KEY) !== 'false');
+  const backupBooks = ref(readStorage(BACKUP_BOOKS_KEY) !== 'false');
   watch(backupBooks, (b) => {
-    if (b) localStorage.removeItem(BACKUP_BOOKS_KEY);
-    else localStorage.setItem(BACKUP_BOOKS_KEY, 'false');
+    if (b) removeStorage(BACKUP_BOOKS_KEY);
+    else writeStorage(BACKUP_BOOKS_KEY, 'false');
   });
 
   /** whether a backup, the export and the mirror folder, holds the user's in-browser engines */
-  const backupEngines = ref(localStorage.getItem(BACKUP_ENGINES_KEY) !== 'false');
+  const backupEngines = ref(readStorage(BACKUP_ENGINES_KEY) !== 'false');
   watch(backupEngines, (b) => {
-    if (b) localStorage.removeItem(BACKUP_ENGINES_KEY);
-    else localStorage.setItem(BACKUP_ENGINES_KEY, 'false');
+    if (b) removeStorage(BACKUP_ENGINES_KEY);
+    else writeStorage(BACKUP_ENGINES_KEY, 'false');
   });
 
   /** the rating Ratings holds its anchor at */
   const anchorRating = ref<number | null>(
-    localStorage.getItem(ANCHOR_KEY) === null ? ANCHOR_RATING : ratingOf(readJson(ANCHOR_KEY)),
+    readStorage(ANCHOR_KEY) === null ? ANCHOR_RATING : ratingOf(readJson(ANCHOR_KEY)),
   );
   // the default is not kept in browser storage, so a newer default reaches a user who never set one;
   // a cleared rating is kept as null
   watch(anchorRating, (r) => {
-    if (r === ANCHOR_RATING) localStorage.removeItem(ANCHOR_KEY);
-    else localStorage.setItem(ANCHOR_KEY, JSON.stringify(r));
+    if (r === ANCHOR_RATING) removeStorage(ANCHOR_KEY);
+    else writeStorage(ANCHOR_KEY, JSON.stringify(r));
   });
 
   /** saved UCI option defaults and optional per-side limit, keyed by engine id */
@@ -223,8 +247,8 @@ export const useSettings = defineStore('settings', () => {
   watch(
     engineOptions,
     (m) => {
-      if (Object.keys(m).length === 0) localStorage.removeItem(ENGINE_OPTIONS_KEY);
-      else localStorage.setItem(ENGINE_OPTIONS_KEY, JSON.stringify(m));
+      if (Object.keys(m).length === 0) removeStorage(ENGINE_OPTIONS_KEY);
+      else writeStorage(ENGINE_OPTIONS_KEY, JSON.stringify(m));
     },
     { deep: true },
   );
@@ -274,8 +298,10 @@ export const useSettings = defineStore('settings', () => {
 
   /** keeps a setup under a name, replacing a template of that name */
   function saveTemplate(name: string, setup: Setup): void {
+    const clean = setupOf(JSON.parse(JSON.stringify(setup)));
+    if (!clean) return;
     const rest = templates.value.filter((t) => t.name !== name);
-    templates.value = [...rest, { name, setup: structuredClone(setup) }].toSorted((a, b) =>
+    templates.value = [...rest, { name, setup: clean }].toSorted((a, b) =>
       a.name.localeCompare(b.name),
     );
   }

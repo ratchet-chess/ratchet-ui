@@ -4,10 +4,12 @@
  * it, because both have DecompressionStream.
  */
 
-/** an archive's file: its name, and its bytes as they are stored */
+/** an archive's file: its name, expected checksum/size, and bytes as stored */
 interface Entry {
   name: string;
   method: number;
+  crc: number;
+  uncompressed: number;
   data: Blob;
 }
 
@@ -31,7 +33,10 @@ async function findEntries(
   const tail = new DataView(await zip.slice(tailStart).arrayBuffer());
   let end = -1;
   for (let i = tail.byteLength - 22; i >= 0; i--) {
-    if (tail.getUint32(i, true) === EOCD) {
+    if (
+      tail.getUint32(i, true) === EOCD &&
+      tail.getUint16(i + 20, true) === tail.byteLength - i - 22
+    ) {
       end = i;
       break;
     }
@@ -40,6 +45,10 @@ async function findEntries(
   const count = tail.getUint16(end + 10, true);
   const centralSize = tail.getUint32(end + 12, true);
   const centralAt = tail.getUint32(end + 16, true);
+  if (count === 0xffff || centralSize === 0xffffffff || centralAt === 0xffffffff)
+    throw new Error('ZIP64 archives are not supported');
+  if (centralAt + centralSize > zip.size)
+    throw new Error('not a zip archive: truncated central directory');
 
   const central = new DataView(await zip.slice(centralAt, centralAt + centralSize).arrayBuffer());
   const out: Entry[] = [];
@@ -48,29 +57,59 @@ async function findEntries(
     if (at + 46 > central.byteLength || central.getUint32(at, true) !== CENTRAL)
       throw new Error('not a zip archive: no central directory');
     const method = central.getUint16(at + 10, true);
+    const crc = central.getUint32(at + 16, true);
     const compressed = central.getUint32(at + 20, true);
+    const uncompressed = central.getUint32(at + 24, true);
     const nameLength = central.getUint16(at + 28, true);
     const extraLength = central.getUint16(at + 30, true);
     const commentLength = central.getUint16(at + 32, true);
     const localAt = central.getUint32(at + 42, true);
-    const name = new TextDecoder().decode(
-      new Uint8Array(central.buffer, at + 46, Math.min(nameLength, central.byteLength - at - 46)),
-    );
+    if (compressed === 0xffffffff || uncompressed === 0xffffffff || localAt === 0xffffffff)
+      throw new Error('ZIP64 archives are not supported');
+    if (at + 46 + nameLength + extraLength + commentLength > central.byteLength)
+      throw new Error('not a zip archive: truncated central directory entry');
+    const name = new TextDecoder().decode(new Uint8Array(central.buffer, at + 46, nameLength));
     at += 46 + nameLength + extraLength + commentLength;
     if (!accept(name)) continue;
 
+    if (localAt + 30 > zip.size) throw new Error('not a zip archive: truncated local header');
     const local = new DataView(await zip.slice(localAt, localAt + 30).arrayBuffer());
     if (local.getUint32(0, true) !== LOCAL) throw new Error('not a zip archive: no local header');
     const dataAt = localAt + 30 + local.getUint16(26, true) + local.getUint16(28, true);
-    out.push({ name, method, data: zip.slice(dataAt, dataAt + compressed) });
+    if (dataAt + compressed > zip.size) throw new Error(`${name} is truncated in the archive`);
+    out.push({ name, method, crc, uncompressed, data: zip.slice(dataAt, dataAt + compressed) });
     if (first) break;
   }
   return out;
 }
 
+/** checks uncompressed byte count and CRC-32 as bytes stream through */
+function verifyStream(e: Entry): TransformStream<Uint8Array, Uint8Array> {
+  let c = 0xffffffff;
+  let size = 0;
+  return new TransformStream<Uint8Array, Uint8Array>({
+    transform(chunk, controller) {
+      size += chunk.length;
+      for (let i = 0; i < chunk.length; i++)
+        c = (CRC_TABLE[(c ^ (chunk[i] ?? 0)) & 0xff] ?? 0) ^ (c >>> 8);
+      controller.enqueue(chunk);
+    },
+    flush(controller) {
+      const actual = (c ^ 0xffffffff) >>> 0;
+      if (size !== e.uncompressed || actual !== e.crc) {
+        controller.error(new Error(`${e.name} is corrupt (checksum or size mismatch)`));
+      }
+    },
+  });
+}
+
 function unpacked(e: Entry): ReadableStream<Uint8Array> {
-  if (e.method === 0) return e.data.stream();
-  if (e.method === 8) return e.data.stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  if (e.method === 0) return e.data.stream().pipeThrough(verifyStream(e));
+  if (e.method === 8)
+    return e.data
+      .stream()
+      .pipeThrough(new DecompressionStream('deflate-raw'))
+      .pipeThrough(verifyStream(e));
   throw new Error(`${e.name} is compressed by method ${e.method}, which this reader does not know`);
 }
 
@@ -92,15 +131,22 @@ export async function unzipFirst(
 
 /**
  * Every file of a zip archive that `accept` takes, by name, as it was before zipping. A stored
- * file is a slice of the archive; a deflated one is inflated into memory.
+ * file is verified and returned as a slice of the archive; a deflated one is inflated and verified.
  */
 export async function unzipAll(
   zip: Blob,
   accept: (name: string) => boolean = () => true,
 ): Promise<Map<string, Blob>> {
   const out = new Map<string, Blob>();
-  for (const e of await findEntries(zip, (n) => !n.endsWith('/') && accept(n), false))
-    out.set(e.name, e.method === 0 ? e.data : await new Response(unpacked(e)).blob());
+  for (const e of await findEntries(zip, (n) => !n.endsWith('/') && accept(n), false)) {
+    if (e.method === 0) {
+      if (e.data.size !== e.uncompressed || (await crc32(e.data)) !== e.crc)
+        throw new Error(`${e.name} is corrupt (checksum or size mismatch)`);
+      out.set(e.name, e.data);
+    } else {
+      out.set(e.name, await new Response(unpacked(e)).blob());
+    }
+  }
   return out;
 }
 

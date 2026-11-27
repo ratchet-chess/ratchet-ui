@@ -102,24 +102,43 @@ export const useBackup = defineStore('backup', () => {
 
   // ── persistent storage ────────────────────────────────────────────────────
 
+  const storageApi = (): StorageManager | undefined => (navigator as Partial<Navigator>).storage;
+  const locksApi = (): LockManager | undefined => (navigator as Partial<Navigator>).locks;
+  const withMirrorLock = <T>(job: () => Promise<T>): Promise<T> => {
+    const lm = locksApi();
+    return lm ? lm.request(MIRROR_LOCK, job) : job();
+  };
+
   /** whether the browser keeps this site's storage under pressure; null before it is known */
   const persisted = ref<boolean | null>(null);
   const usage = ref<{ used: number; quota: number } | null>(null);
 
   async function readStorage(): Promise<void> {
-    const est = await navigator.storage.estimate().catch(() => undefined);
+    const api = storageApi();
+    if (!api) {
+      usage.value = null;
+      persisted.value = null;
+      return;
+    }
+    const est = await api.estimate().catch(() => undefined);
     usage.value =
       est?.usage !== undefined && est.quota !== undefined
         ? { used: est.usage, quota: est.quota }
         : null;
-    persisted.value = await navigator.storage.persisted().catch(() => null);
+    persisted.value = await api.persisted().catch(() => null);
   }
 
   async function askPersist(): Promise<void> {
-    persisted.value = await navigator.storage.persist();
+    const api = storageApi();
+    if (!api) return;
+    persisted.value = await api.persist().catch(() => persisted.value);
   }
 
   // ── this browser's files ──────────────────────────────────────────────────
+
+  const isStreamedPath = (p: string): boolean =>
+    (p.startsWith(`${USER}/`) && p !== `${USER}/${USER_LIST}`) ||
+    (p.startsWith(`${USER_ENGINES}/`) && p !== `${USER_ENGINES}/${USER_ENGINES_LIST}`);
 
   /**
    * This browser's data as a backup holds it, as it stood at one moment: the files are read in
@@ -127,14 +146,14 @@ export const useBackup = defineStore('backup', () => {
    * engine binary is never appended, so it is streamed from OPFS when it is used.
    */
   async function hereFiles(withBooks: boolean, withEngines: boolean): Promise<Files> {
-    const root = await navigator.storage.getDirectory();
+    const api = storageApi();
+    if (!api || typeof api.getDirectory !== 'function')
+      throw new Error('OPFS storage requires a secure context (HTTPS or localhost)');
+    const root = await api.getDirectory();
     const out = await exclusive(async () => {
       const files = await filesIn(root, withBooks, withEngines);
       for (const [p, f] of files) {
-        const streamed =
-          (p.startsWith(`${USER}/`) && p !== `${USER}/${USER_LIST}`) ||
-          (p.startsWith(`${USER_ENGINES}/`) && p !== `${USER_ENGINES}/${USER_ENGINES_LIST}`);
-        if (!streamed) files.set(p, new Blob([await f.arrayBuffer()]));
+        if (!isStreamedPath(p)) files.set(p, new Blob([await f.arrayBuffer()]));
       }
       return files;
     });
@@ -210,7 +229,9 @@ export const useBackup = defineStore('backup', () => {
 
   /** the tournaments a tab of this browser plays, by their Web Locks */
   async function playing(): Promise<Set<string>> {
-    const held = (await navigator.locks.query()).held ?? [];
+    const lm = locksApi();
+    if (!lm) return new Set();
+    const held = (await lm.query()).held ?? [];
     return new Set(held.flatMap((l) => (l.name ? (tournaments.idOfLock(l.name) ?? []) : [])));
   }
 
@@ -238,7 +259,7 @@ export const useBackup = defineStore('backup', () => {
         ? (before?.choices.get(r.key) ?? null)
         : r.kind === 'settings' && untouched
           ? 'replace'
-          : choiceOf(r, r.kind === 'tournament' && busySet.has(r.here?.id ?? ''));
+          : choiceOf(r, r.here?.kind === 'tournament' && busySet.has(r.here.id));
       if (c) choices.set(r.key, c);
     }
     return {
@@ -289,10 +310,21 @@ export const useBackup = defineStore('backup', () => {
     const shown = review.value;
     if (!shown || busy.value) return;
     busy.value = 'Merging…';
+    merging = true;
+    clearTimeout(timer);
+    timer = undefined;
     const held: string[] = [];
+    let shouldSync = false;
     try {
       const r = await reviewOf(shown.source, shown.name, shown.there, shown);
       if (!sameAsk(r, shown)) {
+        if (r.rows.length === 0) {
+          review.value = null;
+          if (r.source === 'folder') pending = null;
+          done('Browser storage is already up to date.');
+          shouldSync = r.source === 'folder' || mirror.state === 'on';
+          return;
+        }
         review.value = r;
         fail('Browser storage changed while review was open; check choices again.');
         return;
@@ -316,16 +348,18 @@ export const useBackup = defineStore('backup', () => {
       review.value = null;
       if (r.source === 'folder') pending = null;
       done(`Merged ${r.name}: ${taken} of ${r.rows.length} items applied.`);
-      if (r.source === 'folder') await sync();
+      shouldSync = r.source === 'folder' || mirror.state === 'on';
     } catch (e) {
       fail(`Merge failed: ${message(e)}`);
     } finally {
+      merging = false;
       await Promise.all(held.map((id) => tournaments.unlock(id)));
       await Promise.all([games.load(), books.load(), engines.load(), tournaments.load()]).catch(
         () => undefined,
       );
       busy.value = '';
     }
+    if (shouldSync) await sync();
   }
 
   function cancelReview(): void {
@@ -337,6 +371,10 @@ export const useBackup = defineStore('backup', () => {
 
   const mirror = reactive<Mirror>({ state: 'none', folder: '', at: null, error: '' });
   let handle: FileSystemDirectoryHandle | null = null;
+  /** monotonic generation incremented whenever the mirror folder stops or changes */
+  let mirrorGen = 0;
+  /** suppresses incremental mirror flushes while applyReview writes a batch */
+  let merging = false;
   /** the files and folders changed since the last copy, by path */
   const dirty = new Set<string>();
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -346,6 +384,9 @@ export const useBackup = defineStore('backup', () => {
   const supported = () => typeof window.showDirectoryPicker === 'function';
   /** tells this browser's other tabs that the folder was picked or stopped */
   const tabs = typeof BroadcastChannel === 'function' ? new BroadcastChannel(MIRROR_LOCK) : null;
+
+  const isCurrentMirror = (gen: number, h: FileSystemDirectoryHandle) =>
+    gen === mirrorGen && handle === h;
 
   function failMirror(e: unknown): void {
     if (e instanceof DOMException && (e.name === 'NotAllowedError' || e.name === 'SecurityError'))
@@ -360,56 +401,61 @@ export const useBackup = defineStore('backup', () => {
   async function check(): Promise<void> {
     const h = handle;
     if (!h) return;
+    const gen = mirrorGen;
     mirror.state = 'checking';
     mirror.error = '';
     try {
-      await navigator.locks.request(MIRROR_LOCK, async () => {
+      await withMirrorLock(async () => {
+        if (!isCurrentMirror(gen, h)) return;
         const r = await reviewOf(
           'folder',
           h.name,
           await contentsOf(await filesIn(h, settings.backupBooks, settings.backupEngines)),
         );
+        if (!isCurrentMirror(gen, h)) return;
         // the folder holds nothing this browser lacks: it only needs this browser's changes
-        if (r.rows.length === 0) await push(h);
+        if (r.rows.length === 0) await push(h, gen);
         else {
           pending = r;
           mirror.state = 'review';
         }
       });
     } catch (e) {
-      failMirror(e);
+      if (isCurrentMirror(gen, h)) failMirror(e);
     }
   }
 
   /** makes the folder hold just this browser's data; under the mirror's lock */
-  async function push(h: FileSystemDirectoryHandle): Promise<void> {
+  async function push(h: FileSystemDirectoryHandle, gen: number): Promise<void> {
+    if (!isCurrentMirror(gen, h)) return;
     dirty.clear();
     const withBooks = settings.backupBooks;
     const withEngines = settings.backupEngines;
-    await applyTo(
-      h,
-      await syncOf(
-        await hereFiles(withBooks, withEngines),
-        await filesIn(h, withBooks, withEngines),
-        withBooks,
-        withEngines,
-      ),
+    const ops = await syncOf(
+      await hereFiles(withBooks, withEngines),
+      await filesIn(h, withBooks, withEngines),
+      withBooks,
+      withEngines,
     );
+    if (!isCurrentMirror(gen, h)) return;
+    await applyTo(h, ops);
+    if (!isCurrentMirror(gen, h)) return;
     mirror.state = 'on';
     mirror.at = Date.now();
     // changes made while it was copied
-    if (dirty.size > 0) timer ??= setTimeout(() => void flush(), FLUSH_MS);
+    if (dirty.size > 0 && !merging) timer ??= setTimeout(() => void flush(), FLUSH_MS);
   }
 
   /** copies this browser's data to the folder after a merge from it */
   async function sync(): Promise<void> {
     const h = handle;
     if (!h) return;
+    const gen = mirrorGen;
     mirror.state = 'checking';
     try {
-      await navigator.locks.request(MIRROR_LOCK, () => push(h));
+      await withMirrorLock(() => push(h, gen));
     } catch (e) {
-      failMirror(e);
+      if (isCurrentMirror(gen, h)) failMirror(e);
     }
   }
 
@@ -422,12 +468,16 @@ export const useBackup = defineStore('backup', () => {
   async function flush(): Promise<void> {
     timer = undefined;
     const h = handle;
-    if (!h || mirror.state !== 'on' || dirty.size === 0) return;
+    if (!h || merging || mirror.state !== 'on' || dirty.size === 0) return;
+    const gen = mirrorGen;
     const paths = [...dirty];
     dirty.clear();
     try {
-      await navigator.locks.request(MIRROR_LOCK, async () => {
-        const root = await navigator.storage.getDirectory();
+      await withMirrorLock(async () => {
+        if (!isCurrentMirror(gen, h)) return;
+        const api = storageApi();
+        if (!api || typeof api.getDirectory !== 'function') return;
+        const root = await api.getDirectory();
         const ops = await exclusive(async () => {
           const out: Op[] = [];
           for (const p of paths) {
@@ -443,10 +493,10 @@ export const useBackup = defineStore('backup', () => {
               if (inLayout(p, settings.backupBooks, settings.backupEngines)) {
                 const f = await (await d.getFileHandle(name)).getFile();
                 // a user's book or engine binary may be large: it is read as it is copied
-                const streamed =
-                  (parts[0] === USER && name !== USER_LIST) ||
-                  (parts[0] === USER_ENGINES && name !== USER_ENGINES_LIST);
-                out.push({ write: p, data: streamed ? f : new Blob([await f.arrayBuffer()]) });
+                out.push({
+                  write: p,
+                  data: isStreamedPath(p) ? f : new Blob([await f.arrayBuffer()]),
+                });
               } else await d.getDirectoryHandle(name);
             } catch (e) {
               if (e instanceof DOMException && e.name === 'NotFoundError') out.push({ remove: p });
@@ -455,10 +505,12 @@ export const useBackup = defineStore('backup', () => {
           }
           return out;
         });
+        if (!isCurrentMirror(gen, h)) return;
         await applyTo(h, ops);
       });
-      mirror.at = Date.now();
+      if (isCurrentMirror(gen, h)) mirror.at = Date.now();
     } catch (e) {
+      if (!isCurrentMirror(gen, h)) return;
       for (const p of paths) dirty.add(p);
       failMirror(e);
     }
@@ -472,7 +524,7 @@ export const useBackup = defineStore('backup', () => {
       path === SETTINGS;
     if (!followed) return;
     dirty.add(path);
-    if (mirror.state === 'on') timer ??= setTimeout(() => void flush(), FLUSH_MS);
+    if (mirror.state === 'on' && !merging) timer ??= setTimeout(() => void flush(), FLUSH_MS);
   }
 
   /** lets the user pick the mirror folder, then compares it with this browser's data */
@@ -481,6 +533,11 @@ export const useBackup = defineStore('backup', () => {
     if (!pick) return;
     try {
       const h = await pick({ id: 'ratchet-ui-mirror', mode: 'readwrite' });
+      mirrorGen++;
+      clearTimeout(timer);
+      timer = undefined;
+      dirty.clear();
+      pending = null;
       handle = h;
       mirror.folder = h.name;
       await setValue(HANDLE_KEY, h);
@@ -494,11 +551,22 @@ export const useBackup = defineStore('backup', () => {
 
   /** asks the browser for the folder again; a click must call it */
   async function allowFolder(): Promise<void> {
-    if (!handle) return;
-    if ((await handle.requestPermission({ mode: 'readwrite' })) === 'granted') await check();
+    const h = handle;
+    if (!h) return;
+    const gen = mirrorGen;
+    try {
+      if (
+        (await h.requestPermission({ mode: 'readwrite' })) === 'granted' &&
+        isCurrentMirror(gen, h)
+      )
+        await check();
+    } catch (e) {
+      if (isCurrentMirror(gen, h)) failMirror(e);
+    }
   }
 
   async function stopMirror(): Promise<void> {
+    mirrorGen++;
     handle = null;
     pending = null;
     if (review.value?.source === 'folder') review.value = null;
@@ -508,13 +576,16 @@ export const useBackup = defineStore('backup', () => {
     mirror.state = 'none';
     mirror.folder = '';
     mirror.at = null;
+    mirror.error = '';
     await deleteValue(HANDLE_KEY);
     tabs?.postMessage('folder');
   }
 
   /** takes up the folder kept between visits, or none, as another tab just set it */
   async function connect(): Promise<void> {
+    const gen = ++mirrorGen;
     const h = await getValue(HANDLE_KEY).catch(() => undefined);
+    if (gen !== mirrorGen) return;
     pending = null;
     if (review.value?.source === 'folder') review.value = null;
     if (!(h instanceof FileSystemDirectoryHandle)) {
@@ -524,15 +595,21 @@ export const useBackup = defineStore('backup', () => {
     }
     handle = h;
     mirror.folder = h.name;
-    if ((await h.queryPermission({ mode: 'readwrite' })) === 'granted') await check();
-    else mirror.state = 'allow';
+    if ((await h.queryPermission({ mode: 'readwrite' })) === 'granted') {
+      if (isCurrentMirror(gen, h)) await check();
+    } else if (isCurrentMirror(gen, h)) {
+      mirror.state = 'allow';
+    }
   }
 
   /** a change to the books or engines backup setting changes what the folder holds */
   watch(
-    () => [settings.backupBooks, settings.backupEngines],
-    () => {
-      if (mirror.state === 'on') void sync();
+    () => [settings.backupBooks, settings.backupEngines] as const,
+    ([b, e], [pb, pe]) => {
+      if (mirror.state !== 'on') return;
+      // Turning either on may expose unseen files in the mirror folder; review before pushing
+      if ((b && !pb) || (e && !pe)) void check();
+      else void sync();
     },
   );
   watch(

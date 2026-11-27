@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { spanText, whenText } from './format.ts';
+import { bytes, signed, spanText, whenText } from './format.ts';
 
 const NOW = Date.parse('2026-11-18T12:00:00Z');
 
@@ -25,5 +25,15 @@ describe('format', () => {
     expect(spanText(190 * 60_000)).toBe('3 h 10 min');
     expect(spanText(14.2 * 3_600_000)).toBe('14 h');
     expect(spanText(110 * 3_600_000)).toBe('4 d 14 h');
+  });
+
+  it('formats zero bytes and signed edge values cleanly', () => {
+    expect(bytes(0)).toBe('0 KB');
+    expect(bytes(500)).toBe('1 KB');
+    expect(bytes(1_500_000)).toBe('1.5 MB');
+    expect(signed(NaN)).toBe('—');
+    expect(signed(-0.04)).toBe('+0.0');
+    expect(signed(Infinity)).toBe('+∞');
+    expect(signed(-Infinity)).toBe('−∞');
   });
 });

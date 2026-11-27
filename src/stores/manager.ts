@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { computed, ref, shallowRef, watch } from 'vue';
+import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue';
 import {
   managerBase,
   readJob,
@@ -13,6 +13,8 @@ import { useSettings } from './settings.ts';
 
 /** how often the manager view reads the manager */
 export const RELOAD_MS = 10_000;
+/** upper bound for a single manager HTTP request so a dead LAN host fails promptly */
+const FETCH_TIMEOUT_MS = 8_000;
 
 /** none: no address is set; reading: the first read is out; connected; unreachable: the last read failed */
 export type Link = 'none' | 'reading' | 'connected' | 'unreachable';
@@ -47,11 +49,15 @@ export const useManager = defineStore('manager', () => {
     const at = url.value;
     if (!at) return;
     const mine = (abort = new AbortController());
+    const signal =
+      typeof AbortSignal.timeout === 'function' && typeof AbortSignal.any === 'function'
+        ? AbortSignal.any([mine.signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)])
+        : mine.signal;
     try {
       const want = opened.value;
       const [s, one] = await Promise.all([
-        readManager(at, mine.signal),
-        want === null ? null : readJob(at, want, mine.signal),
+        readManager(at, signal),
+        want === null ? null : readJob(at, want, signal),
       ]);
       // an answer for a page the reader has left since is dropped: open() started a read of its own
       if (mine.signal.aborted) return;
@@ -92,8 +98,15 @@ export const useManager = defineStore('manager', () => {
   );
 
   // a hidden page reads nothing; it reads at once when it shows again
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && url.value) void read();
+  const onVisibility = () => {
+    if (document.hidden) clearTimeout(timer);
+    else if (url.value) void read();
+  };
+  document.addEventListener('visibilitychange', onVisibility);
+  onScopeDispose(() => {
+    clearTimeout(timer);
+    abort?.abort();
+    document.removeEventListener('visibilitychange', onVisibility);
   });
 
   /** opens a job's page, or closes it with null: the job is read at once, and then with every read */

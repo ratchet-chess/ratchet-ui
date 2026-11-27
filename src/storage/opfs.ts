@@ -5,8 +5,15 @@
  * queue, so two writes to one file never interleave.
  */
 
+function storageApi(): StorageManager | undefined {
+  return typeof navigator !== 'undefined' ? (navigator as Partial<Navigator>).storage : undefined;
+}
+
 async function folder(path: string[], create: boolean): Promise<FileSystemDirectoryHandle> {
-  let d = await navigator.storage.getDirectory();
+  const storage = storageApi();
+  if (!storage || typeof storage.getDirectory !== 'function')
+    throw new Error('OPFS storage requires a secure context (HTTPS or localhost)');
+  let d = await storage.getDirectory();
   for (const name of path) d = await d.getDirectoryHandle(name, { create });
   return d;
 }
@@ -36,7 +43,8 @@ function changed(path: string[], name: string): void {
   if (!asked) {
     asked = true;
     // the browser may still clear storage it was not asked to keep, under pressure
-    void navigator.storage.persist().catch(() => false);
+    const storage = storageApi();
+    if (storage && typeof storage.persist === 'function') void storage.persist().catch(() => false);
   }
   const at = [...path, name].join('/');
   for (const fn of watchers) fn(at);
@@ -64,8 +72,13 @@ export function writeText(path: string[], file: string, text: string): Promise<v
     const w = await (
       await (await folder(path, true)).getFileHandle(file, { create: true })
     ).createWritable();
-    await w.write(text);
-    await w.close();
+    try {
+      await w.write(text);
+      await w.close();
+    } catch (e) {
+      await w.abort().catch(() => undefined);
+      throw e;
+    }
     changed(path, file);
   });
 }
@@ -83,9 +96,14 @@ export function appendText(
     const handle = await (await folder(path, true)).getFileHandle(file, { create: true });
     const size = (await handle.getFile()).size;
     const w = await handle.createWritable({ keepExistingData: true });
-    await w.seek(size);
-    await w.write(typeof text === 'string' ? text : text(size));
-    await w.close();
+    try {
+      await w.seek(size);
+      await w.write(typeof text === 'string' ? text : text(size));
+      await w.close();
+    } catch (e) {
+      await w.abort().catch(() => undefined);
+      throw e;
+    }
     changed(path, file);
     return (await handle.getFile()).size;
   });
@@ -107,7 +125,13 @@ export async function writeStream(
 
 /** the names of the folders in a folder; none when it does not exist */
 export async function folders(path: string[]): Promise<string[]> {
-  const d = await folder(path, true);
+  let d: FileSystemDirectoryHandle;
+  try {
+    d = await folder(path, false);
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'NotFoundError') return [];
+    throw e;
+  }
   const out: string[] = [];
   for await (const [name, handle] of d.entries()) if (handle.kind === 'directory') out.push(name);
   return out;
@@ -128,7 +152,7 @@ export function removeFile(path: string[], file: string): Promise<void> {
 export function removeFolder(path: string[], name: string): Promise<void> {
   return exclusive(async () => {
     try {
-      await (await folder(path, true)).removeEntry(name, { recursive: true });
+      await (await folder(path, false)).removeEntry(name, { recursive: true });
     } catch (e) {
       if (!(e instanceof DOMException && e.name === 'NotFoundError')) throw e;
     }

@@ -77,8 +77,15 @@ describe('the layout', () => {
     expect(inLayout('user-engines/list.json', false, true)).toBe(true);
   });
 
-  it('takes off the one folder a zipped folder puts around it', () => {
-    const f = layoutOf(files({ 'backup/settings.json': '{}', 'backup/games/a.pgn': '' }));
+  it('takes off the one folder a zipped folder puts around it, ignoring __MACOSX metadata', () => {
+    const f = layoutOf(
+      files({
+        'backup/settings.json': '{}',
+        'backup/games/a.pgn': '',
+        '__MACOSX/backup/._settings.json': 'junk',
+        '.DS_Store': 'junk',
+      }),
+    );
     expect([...f.keys()]).toEqual(['settings.json', 'games/a.pgn']);
   });
 });
@@ -130,6 +137,19 @@ describe('items', () => {
     expect(c.items.size).toBe(0);
     expect(c.skipped).toHaveLength(1);
   });
+
+  it('skips corrupt settings.json and synthesizes a collection when games/index.json is absent', async () => {
+    const c = await contentsOf(
+      files({
+        ...tournament('x', 2),
+        'settings.json': '{not valid json',
+      }),
+    );
+    expect(c.items.has('settings:')).toBe(false);
+    expect(c.skipped).toContain('settings.json: invalid JSON');
+    const t = c.items.get('tournament:x');
+    expect(t?.collection).toMatchObject({ id: 't-x', name: 'Gauntlet', source: 'match', games: 2 });
+  });
 });
 
 describe('comparing', () => {
@@ -168,6 +188,16 @@ describe('comparing', () => {
     const a = files({ 'user-books/b.pgn': 'ab', 'user-books/list.json': list });
     const b = files({ 'user-books/b.pgn': 'a', 'user-books/list.json': list });
     expect(await relations(a, b)).toEqual({ 'book:b.pgn': 'diverged' });
+  });
+
+  it('treats a started tournament as ahead of its earlier queued snapshot', async () => {
+    const queued = {
+      'tournaments/x/config.json': JSON.stringify(config('x')),
+      'tournaments/x/queued.json': '{"order":1}',
+    };
+    const started = tournament('x', 2);
+    expect(await relations(files(started), files(queued))).toEqual({ 'tournament:x': 'ahead' });
+    expect(await relations(files(queued), files(started))).toEqual({ 'tournament:x': 'behind' });
   });
 });
 
@@ -322,6 +352,32 @@ describe('merging', () => {
     const m = await merged(all, all);
     expect(m.ops).toEqual([]);
     expect(m.collections).toEqual({ put: [], drop: [] });
+  });
+
+  it('keeps dotted tournament names and engine IDs intact when renaming on Keep both', async () => {
+    const other = tournament('x', 2);
+    other['tournaments/x/config.json'] = JSON.stringify(config('x', 'Ratchet 0.3.14 vs SF 10'));
+    other['tournaments/x/games.jsonl'] = '{"pair":9}\n{"pair":8}\n';
+    const here = tournament('x', 2);
+    here['tournaments/x/config.json'] = JSON.stringify(config('x', 'Ratchet 0.3.14 vs SF 10'));
+    const engineList = (id: string, sha256: string) =>
+      JSON.stringify([{ id, name: id, wasm: `${id}.wasm`, bytes: 4, sha256, added: 0 }]);
+    const m = await merged(
+      files({
+        ...here,
+        'user-engines/ratchet-0.3.14.wasm': 'aaaa',
+        'user-engines/list.json': engineList('ratchet-0.3.14', '1111aaaa'),
+      }),
+      files({
+        ...other,
+        'user-engines/ratchet-0.3.14.wasm': 'bbbb',
+        'user-engines/list.json': engineList('ratchet-0.3.14', '2222bbbb'),
+      }),
+    );
+    expect(JSON.parse(m.texts.get('tournaments/n1/config.json') ?? '')).toMatchObject({
+      name: 'Ratchet 0.3.14 vs SF 10 (2)',
+    });
+    expect(m.engines.put).toEqual(['ratchet-0.3.14 (2):ratchet-0.3.14 (2).wasm']);
   });
 });
 

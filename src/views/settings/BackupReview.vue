@@ -34,7 +34,7 @@ const relation = (r: Relation) =>
     diverged: 'Both changed',
   })[r];
 
-const busy = (row: Row) => row.kind === 'tournament' && props.review.busy.has(row.here?.id ?? '');
+const busy = (row: Row) => row.here?.kind === 'tournament' && props.review.busy.has(row.here.id);
 
 const LABEL: Record<Choice, (row: Row) => { label: string; title: string }> = {
   add: () => ({ label: 'Add', title: 'Add to browser storage' }),

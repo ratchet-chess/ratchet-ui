@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { FolderOpen } from '@lucide/vue';
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import HelpTip from '../components/HelpTip.vue';
 import PageHeader from '../components/PageHeader.vue';
 import Panel from '../components/Panel.vue';
@@ -26,6 +26,13 @@ const readClock = computed(() =>
     : new Date(manager.readAt).toLocaleTimeString('en-US', { hourCycle: 'h23' }),
 );
 const draft = ref(settings.managerUrl);
+watch(
+  () => settings.managerUrl,
+  (url) => {
+    draft.value = url;
+  },
+);
+const invalidManagerUrl = computed(() => settings.managerUrl !== '' && manager.url === '');
 
 const THEMES = [
   { value: 'system', label: 'System', title: 'Match operating system theme' },
@@ -82,8 +89,15 @@ onMounted(() => {
         Disconnect
       </button>
     </form>
-    <div v-if="manager.link !== 'none'" class="num border-t border-row px-3 py-1.5 text-dense">
-      <template v-if="manager.link === 'connected'">
+    <div
+      v-if="manager.link !== 'none' || invalidManagerUrl"
+      class="num border-t border-row px-3 py-1.5 text-dense"
+    >
+      <template v-if="invalidManagerUrl">
+        <span class="text-bad">Invalid URL</span>
+        <span class="text-dim"> · use http://host:port or https://host:port</span>
+      </template>
+      <template v-else-if="manager.link === 'connected'">
         <span class="text-good">Connected</span>
         <span class="text-dim"> · updated {{ readClock }} (every {{ RELOAD_MS / 1000 }} s)</span>
       </template>
@@ -108,7 +122,8 @@ onMounted(() => {
       </span>
       <span class="text-dim">Persistent</span>
       <span>
-        <template v-if="backup.persisted">
+        <template v-if="backup.persisted === null">—</template>
+        <template v-else-if="backup.persisted">
           Yes <span class="text-dim">· protected from automatic eviction</span>
         </template>
         <template v-else>

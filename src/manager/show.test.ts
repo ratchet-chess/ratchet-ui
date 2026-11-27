@@ -514,4 +514,14 @@ describe('the LLR at the decision', () => {
     expect(decisionText(summary({ games: 1594, decision: { pairs: 797, llr: 3.31 } }))).toBe('');
     expect(decisionText(summary({}))).toBe('');
   });
+
+  it('rejects queries, fragments, spaces, and invalid ports in managerBase', () => {
+    expect(managerBase('http://host:7420/')).toBe('http://host:7420');
+    expect(managerBase('https://host:7420/api/')).toBe('https://host:7420/api');
+    expect(managerBase('http://host:7420?x=1')).toBe('');
+    expect(managerBase('http://host:7420#frag')).toBe('');
+    expect(managerBase('http://host:7420 extra')).toBe('');
+    expect(managerBase('http://host:99999')).toBe('');
+    expect(managerBase('host:7420')).toBe('');
+  });
 });

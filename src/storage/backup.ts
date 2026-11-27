@@ -51,10 +51,13 @@ export function inLayout(path: string, books: boolean, engines = false): boolean
 export function layoutOf(files: Files): Files {
   let out = new Map([...files].filter(([p]) => inLayout(p, true, true)));
   if (out.size === 0) {
-    const heads = new Set([...files.keys()].map((p) => p.split('/')[0]));
+    const visible = [...files].filter(
+      ([p]) => !p.startsWith('__MACOSX/') && !p.split('/').some((seg) => seg.startsWith('.')),
+    );
+    const heads = new Set(visible.map(([p]) => p.split('/')[0]));
     if (heads.size === 1)
       out = new Map(
-        [...files]
+        visible
           .map(([p, b]): [string, Blob] => [p.slice(p.indexOf('/') + 1), b])
           .filter(([p]) => inLayout(p, true, true)),
       );
@@ -123,15 +126,20 @@ export async function contentsOf(files: Files): Promise<Contents> {
 
   const settings = files.get(SETTINGS);
   if (settings) {
-    const s = settingsFileOf(await json(settings));
-    items.set(keyOf('settings', ''), {
-      kind: 'settings',
-      id: '',
-      name: 'Settings',
-      files: new Map([[SETTINGS, settings]]),
-      settings: s,
-      facts: `${counted(s.templates.length, 'template')} · ${counted(s.controls.length, 'control')}`,
-    });
+    const parsed = await json(settings);
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+      skipped.push(`${SETTINGS}: invalid JSON`);
+    } else {
+      const s = settingsFileOf(parsed);
+      items.set(keyOf('settings', ''), {
+        kind: 'settings',
+        id: '',
+        name: 'Settings',
+        files: new Map([[SETTINGS, settings]]),
+        settings: s,
+        facts: `${counted(s.templates.length, 'template')} · ${counted(s.controls.length, 'control')}`,
+      });
+    }
   }
 
   const tournaments = new Map<string, Files>();
@@ -159,6 +167,18 @@ export async function contentsOf(files: Files): Promise<Contents> {
       t.set(pgn, own);
       claimed.add(pgn);
     }
+    const collection: Collection | undefined =
+      collections.find((c) => c.id === `${T_PREFIX}${id}`) ??
+      (own
+        ? {
+            id: `${T_PREFIX}${id}`,
+            name,
+            source: 'match',
+            games: gamesIn(await own.text()),
+            bytes: own.size,
+            updated: new Date(own instanceof File ? own.lastModified : Date.now()).toISOString(),
+          }
+        : undefined);
     const games = linesIn((await t.get(`${TOURNAMENTS}/${id}/games.jsonl`)?.text()) ?? '');
     const end = await json(t.get(`${TOURNAMENTS}/${id}/end.json`));
     const status =
@@ -174,7 +194,7 @@ export async function contentsOf(files: Files): Promise<Contents> {
       id,
       name,
       files: t,
-      collection: collections.find((c) => c.id === `${T_PREFIX}${id}`),
+      collection,
       facts: `${counted(games, 'game')} · ${status}`,
     });
   }
@@ -305,15 +325,37 @@ async function relationOf(here: Item, there: Item): Promise<Order> {
   const paths = new Set([...here.files.keys(), ...there.files.keys()]);
   const orders: Order[] = [];
   let end: string | undefined;
+  let queuedPath: string | undefined;
   for (const p of paths) {
     if (p.endsWith('/end.json')) {
       end = p;
+      continue;
+    }
+    if (p.endsWith(`/${QUEUED}`)) {
+      queuedPath = p;
       continue;
     }
     const appended = here.kind !== 'book' && here.kind !== 'engine' && /\.(jsonl|pgn)$/.test(p);
     orders.push(await orderOf(here.files.get(p), there.files.get(p), appended));
   }
   const order = combined(orders);
+  if (queuedPath !== undefined) {
+    const hq = here.files.get(queuedPath);
+    const tq = there.files.get(queuedPath);
+    if (hq && tq) {
+      if (order === 'same' && !(await sameFile(hq, tq))) return 'diverged';
+    } else if (hq && !tq) {
+      // here is still queued while there started playing (or ended)
+      if (order === 'behind' || (order === 'same' && end !== undefined && there.files.has(end)))
+        return 'behind';
+      return 'diverged';
+    } else if (!hq && tq) {
+      // there is still queued while here started playing (or ended)
+      if (order === 'ahead' || (order === 'same' && end !== undefined && here.files.has(end)))
+        return 'ahead';
+      return 'diverged';
+    }
+  }
   if (order !== 'same' || end === undefined) return order;
   // the same games: the copy that stopped later is ahead
   const [h, t] = [here.files.get(end), there.files.get(end)];
@@ -402,9 +444,9 @@ export function choiceOf(row: Row, busy: boolean): Choice | null {
 /** a change to a store of the layout: a file written, or a file or folder deleted */
 export type Op = { write: string; data: Blob } | { remove: string };
 
-/** a name not yet taken: the name, then with (2), (3) and on before its extension */
-function freeName(name: string, taken: (n: string) => boolean): string {
-  const dot = name.lastIndexOf('.');
+/** a name not yet taken: the name, then with (2), (3) and on (before its extension for files) */
+function freeName(name: string, taken: (n: string) => boolean, hasExtension = false): string {
+  const dot = hasExtension ? name.lastIndexOf('.') : -1;
   const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ''];
   let out = name;
   for (let n = 2; taken(out); n++) out = `${stem} (${n})${ext}`;
@@ -414,12 +456,13 @@ function freeName(name: string, taken: (n: string) => boolean): string {
 /** the other's copy of an item under a new id, so both are kept */
 async function renamed(
   item: Item,
-  here: Contents,
-  there: Contents,
+  usedNames: Set<string>,
+  usedBooks: Set<string>,
+  usedEngines: Set<string>,
   fresh: (name: string) => string,
 ): Promise<Item> {
-  const names = new Set([...here.items.values(), ...there.items.values()].map((i) => i.name));
-  const name = freeName(item.name, (n) => names.has(n));
+  const name = freeName(item.name, (n) => usedNames.has(n), false);
+  usedNames.add(name);
   if (item.kind === 'tournament') {
     const id = fresh(name);
     const files: Files = new Map();
@@ -443,15 +486,15 @@ async function renamed(
     return { ...item, id, name, files: new Map([[`${GAMES}/${id}.pgn`, b]]), collection };
   }
   if (item.kind === 'book') {
-    const ids = new Set([...here.books, ...there.books].map((b) => b.id));
-    const id = freeName(item.id, (n) => ids.has(n));
+    const id = freeName(item.id, (n) => usedBooks.has(n), true);
+    usedBooks.add(id);
     const [[, b] = ['', EMPTY]] = item.files;
     const book = item.book && { ...item.book, id };
     return { ...item, id, name: id, files: new Map([[`${USER}/${id}`, b]]), book };
   }
   if (item.kind === 'engine') {
-    const ids = new Set([...here.engines, ...there.engines].map((e) => e.id));
-    const id = freeName(item.id, (n) => ids.has(n));
+    const id = freeName(item.id, (n) => usedEngines.has(n), false);
+    usedEngines.add(id);
     const wasm = `${id}.wasm`;
     const [[, b] = ['', EMPTY]] = item.files;
     const engine = item.engine && { ...item.engine, id, wasm };
@@ -501,8 +544,13 @@ export async function mergeOf(
   there: Contents,
   fresh: (name: string) => string = (name) => makeId(name),
 ): Promise<Merge> {
-  const removes: Op[] = [];
-  const writes: Op[] = [];
+  // Additive writes run first so a quota error on a new item never deletes an existing one;
+  // each replacement deletes its own old files right before writing its new ones.
+  const additions: Op[] = [];
+  const replacements: Op[] = [];
+  const usedNames = new Set([...here.items.values(), ...there.items.values()].map((i) => i.name));
+  const usedBooks = new Set([...here.books, ...there.books].map((b) => b.id));
+  const usedEngines = new Set([...here.engines, ...there.engines].map((e) => e.id));
   const out: Merge = {
     ops: [],
     collections: { put: [], drop: [] },
@@ -510,8 +558,8 @@ export async function mergeOf(
     engines: { put: [], drop: [] },
     settings: null,
   };
-  const take = (item: Item) => {
-    for (const [p, data] of item.files) writes.push({ write: p, data });
+  const take = (item: Item, target: Op[]) => {
+    for (const [p, data] of item.files) target.push({ write: p, data });
     if (item.collection) out.collections.put.push(item.collection);
     if (item.book) out.books.put.push(item.book);
     if (item.engine) out.engines.put.push(item.engine);
@@ -525,18 +573,19 @@ export async function mergeOf(
       else if (h?.settings && t.settings) out.settings = unionOf(h.settings, t.settings);
       continue;
     }
-    if (choice === 'both') take(await renamed(t, here, there, fresh));
-    else {
-      if (h) {
-        removes.push(...removalsOf(h));
-        if (h.collection) out.collections.drop.push(h.collection.id);
-        if (h.book) out.books.drop.push(h.book.id);
-        if (h.engine) out.engines.drop.push(h.engine.id);
-      }
-      take(t);
+    if (choice === 'both')
+      take(await renamed(t, usedNames, usedBooks, usedEngines, fresh), additions);
+    else if (h) {
+      replacements.push(...removalsOf(h));
+      if (h.collection) out.collections.drop.push(h.collection.id);
+      if (h.book) out.books.drop.push(h.book.id);
+      if (h.engine) out.engines.drop.push(h.engine.id);
+      take(t, replacements);
+    } else {
+      take(t, additions);
     }
   }
-  out.ops = [...removes, ...writes];
+  out.ops = [...additions, ...replacements];
   return out;
 }
 

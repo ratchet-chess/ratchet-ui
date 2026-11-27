@@ -7,20 +7,26 @@ export const count = (n: number): string => n.toLocaleString('en-US');
 export const sentence = (s: string): string =>
   s ? `${s.charAt(0).toUpperCase()}${s.slice(1)}` : '';
 
-/** a size in bytes as a reader reads it: `808 KB`, `8.0 MB`, `10.7 GB` */
+/** a size in bytes as a reader reads it: `0 KB`, `808 KB`, `8.0 MB`, `10.7 GB` */
 export const bytes = (b: number): string =>
-  b >= 1e9
-    ? `${(b / 1e9).toFixed(1)} GB`
-    : b >= 1e6
-      ? `${(b / 1e6).toFixed(1)} MB`
-      : `${Math.max(1, Math.round(b / 1e3))} KB`;
+  !(b > 0)
+    ? '0 KB'
+    : b >= 1e9
+      ? `${(b / 1e9).toFixed(1)} GB`
+      : b >= 1e6
+        ? `${(b / 1e6).toFixed(1)} MB`
+        : `${Math.max(1, Math.round(b / 1e3))} KB`;
 
 /** a large count in thousands, as a search's nodes a second: `835 k` */
 export const thousands = (n: number): string => `${count(Math.round(n / 1000))} k`;
 
 /** a signed value; an unbounded one, as an all-or-nothing score gives, shows as ±∞ */
-export const signed = (v: number, d = 1): string =>
-  Number.isFinite(v) ? `${v >= 0 ? '+' : ''}${v.toFixed(d)}` : v > 0 ? '+∞' : '−∞';
+export function signed(v: number, d = 1): string {
+  if (Number.isNaN(v)) return '—';
+  if (!Number.isFinite(v)) return v > 0 ? '+∞' : '−∞';
+  const rounded = Number(v.toFixed(d)) + 0;
+  return `${rounded >= 0 ? '+' : ''}${rounded.toFixed(d)}`;
+}
 
 const DAY = 86_400_000;
 

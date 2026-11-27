@@ -26,6 +26,7 @@ async function zipOf(files: [name: string, text: string][], method: 0 | 8): Prom
     const central = new DataView(new ArrayBuffer(46));
     central.setUint32(0, 0x02014b50, true);
     central.setUint16(10, method, true);
+    central.setUint32(16, await crc32(new Blob([raw])), true);
     central.setUint32(20, data.length, true);
     central.setUint32(24, raw.length, true);
     central.setUint16(28, nameBytes.length, true);
@@ -112,5 +113,35 @@ describe('zipStored', () => {
     const back = await unzipAll(archive, (n) => n !== 'c.txt');
     expect([...back.keys()]).toEqual(['a/b.txt']);
     expect(await back.get('a/b.txt')?.text()).toBe('bee');
+  });
+
+  it('rejects corrupt CRC-32, ZIP64 sentinels, truncated headers, and EOCD signatures in comments', async () => {
+    // corrupt stored byte -> checksum mismatch
+    const good = new Uint8Array(
+      await (
+        await zipStored([{ name: 'a.txt', data: new Blob(['hello']), modified: 0 }])
+      ).arrayBuffer(),
+    );
+    const bad = good.slice();
+    // local header (30) + "a.txt" (5) -> byte 35 is 'h'
+    bad[35] = 0x58;
+    await expect(unzipAll(new Blob([bad]))).rejects.toThrow('corrupt');
+    const first = await unzipFirst(new Blob([bad]));
+    await expect(read(first.stream)).rejects.toThrow('corrupt');
+
+    // ZIP64 count sentinel 0xffff -> explicit error
+    const z64 = good.slice();
+    const eocdAt = z64.length - 22;
+    new DataView(z64.buffer).setUint16(eocdAt + 10, 0xffff, true);
+    await expect(unzipAll(new Blob([z64]))).rejects.toThrow('ZIP64');
+
+    // EOCD signature inside trailing comment still finds the real EOCD
+    const fakeComment = new Uint8Array([0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0]);
+    const withComment = new Uint8Array(good.length + fakeComment.length);
+    withComment.set(good, 0);
+    new DataView(withComment.buffer).setUint16(eocdAt + 20, fakeComment.length, true);
+    withComment.set(fakeComment, good.length);
+    const restored = await unzipAll(new Blob([withComment]));
+    expect(await restored.get('a.txt')?.text()).toBe('hello');
   });
 });

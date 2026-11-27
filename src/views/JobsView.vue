@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useRoute } from 'vue-router';
 import ManagerGate from '../components/ManagerGate.vue';
 import NoticeList from '../components/NoticeList.vue';
 import OutcomeLine from '../components/OutcomeLine.vue';
@@ -32,7 +32,6 @@ import { clockText, count } from '../ui/format.ts';
 
 const manager = useManager();
 const route = useRoute();
-const router = useRouter();
 
 /** the job whose page is open, from the address; null for the list alone */
 const selected = computed(() => {
@@ -41,7 +40,6 @@ const selected = computed(() => {
 });
 watch(selected, (id) => manager.open(id), { immediate: true });
 onBeforeUnmount(() => manager.open(null));
-const open = (j: Job) => void router.push(`/jobs/${j.id}`);
 
 /** the last read's time stands for now, so a row's text changes only with a read */
 const now = computed(() => manager.readAt ?? 0);
@@ -84,7 +82,12 @@ const hostsOf = (j: Job) => j.hosts.join(' ');
 
     <Panel title="Running" :note="String(running.length)">
       <div v-if="running.length === 0" class="px-3 py-2 text-dense text-dim">No running jobs.</div>
-      <div v-for="j in running" :key="j.id" class="row px-3 py-2" @click="open(j)">
+      <RouterLink
+        v-for="j in running"
+        :key="j.id"
+        :to="`/jobs/${j.id}`"
+        class="row block px-3 py-2"
+      >
         <div :class="line1">
           <span class="num shrink-0 text-dim">{{ j.id }}</span>
           <span class="min-w-0 flex-1 truncate font-medium" :title="j.name">{{ jobTitle(j) }}</span>
@@ -117,11 +120,11 @@ const hostsOf = (j: Job) => j.hosts.join(' ');
         >
           {{ unitsNote(j) }}
         </div>
-      </div>
+      </RouterLink>
     </Panel>
 
     <Panel v-if="queued.length > 0" title="Queued" :note="String(queued.length)">
-      <div v-for="j in queued" :key="j.id" class="row px-3 py-2" @click="open(j)">
+      <RouterLink v-for="j in queued" :key="j.id" :to="`/jobs/${j.id}`" class="row block px-3 py-2">
         <div :class="line1">
           <span class="num shrink-0 text-dim">{{ j.id }}</span>
           <span class="min-w-0 flex-1 truncate font-medium" :title="j.name">{{ jobTitle(j) }}</span>
@@ -133,14 +136,19 @@ const hostsOf = (j: Job) => j.hosts.join(' ');
           <span class="flex-1" />
           <span class="min-w-0 truncate" :title="waitingDetail(j)">{{ waitingText(j) }}</span>
         </div>
-      </div>
+      </RouterLink>
     </Panel>
 
     <Panel title="Done" note="last 24 h">
       <div v-if="ended.length === 0" class="px-3 py-2 text-dense text-dim">
         No jobs finished in the last 24 h.
       </div>
-      <div v-for="j in ended" :key="j.id" class="row px-3 py-1.5" @click="open(j)">
+      <RouterLink
+        v-for="j in ended"
+        :key="j.id"
+        :to="`/jobs/${j.id}`"
+        class="row block px-3 py-1.5"
+      >
         <div :class="line1">
           <span class="num shrink-0 text-dim">{{ j.id }}</span>
           <span class="min-w-0 flex-1 truncate" :title="j.name">{{ jobTitle(j) }}</span>
@@ -169,7 +177,7 @@ const hostsOf = (j: Job) => j.hosts.join(' ');
         >
           {{ [testText(j), outcomeText(j)].filter((t) => t !== '').join(' · ') }}
         </div>
-      </div>
+      </RouterLink>
     </Panel>
   </template>
 
@@ -187,12 +195,12 @@ const hostsOf = (j: Job) => j.hosts.join(' ');
             {{ g.name }}
             <span class="num ml-1 font-normal text-faint">{{ g.jobs.length }}</span>
           </div>
-          <div
+          <RouterLink
             v-for="j in g.jobs"
             :key="j.id"
-            class="row px-3 py-2"
+            :to="`/jobs/${j.id}`"
+            class="row block px-3 py-2"
             :class="j.id === selected ? 'bg-selected' : ''"
-            @click="open(j)"
           >
             <div class="flex items-baseline gap-2">
               <span class="num shrink-0 text-dim">{{ j.id }}</span>
@@ -208,7 +216,7 @@ const hostsOf = (j: Job) => j.hosts.join(' ');
               class="mt-1"
               :parts="unitParts(j)"
             />
-          </div>
+          </RouterLink>
         </template>
         <div v-if="manager.jobs.length === 0" class="px-3 py-3 text-dim">No jobs.</div>
       </Panel>
@@ -220,7 +228,13 @@ const hostsOf = (j: Job) => j.hosts.join(' ');
         >‹ Jobs</RouterLink
       >
       <div class="text-dense text-dim">
-        {{ manager.jobMissing ? `Job ${selected} not found.` : `Loading job ${selected}…` }}
+        {{
+          manager.jobMissing
+            ? `Job ${selected} not found.`
+            : manager.link === 'unreachable'
+              ? `Could not load job ${selected} (manager unreachable).`
+              : `Loading job ${selected}…`
+        }}
       </div>
     </div>
   </div>

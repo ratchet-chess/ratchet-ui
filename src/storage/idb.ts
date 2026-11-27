@@ -22,12 +22,17 @@ async function run(
   const db = await open();
   try {
     return await new Promise<unknown>((resolve, reject) => {
-      const req = op(db.transaction(STORE, mode).objectStore(STORE));
+      const tx = db.transaction(STORE, mode);
+      const req = op(tx.objectStore(STORE));
+      let result: unknown;
       req.onsuccess = () => {
-        const result: unknown = req.result;
-        resolve(result);
+        result = req.result;
+        if (mode === 'readonly') resolve(result);
       };
       req.onerror = () => reject(req.error ?? new Error('IndexedDB failed'));
+      tx.onerror = () => reject(tx.error ?? new Error('IndexedDB transaction failed'));
+      tx.onabort = () => reject(tx.error ?? new Error('IndexedDB transaction aborted'));
+      if (mode !== 'readonly') tx.oncomplete = () => resolve(result);
     });
   } finally {
     db.close();
