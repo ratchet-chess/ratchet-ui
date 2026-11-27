@@ -5,7 +5,7 @@
  */
 import { X } from '@lucide/vue';
 import type { Color } from 'chessops/types';
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { describeControl, parseControl } from '../../chess/clock.ts';
 import type { ServedEngine } from '../../engine/manifest.ts';
 import {
@@ -18,6 +18,7 @@ import {
 } from '../../engine/options.ts';
 import type { SideConfig } from '../../play/usePlay.ts';
 import { useEngines } from '../../stores/engines.ts';
+import { sentence } from '../../ui/format.ts';
 import { canSpawnBrowserThreads } from '../../../vendor/uci-over-wasi/check-browser.ts';
 
 const props = defineProps<{
@@ -38,7 +39,8 @@ const emit = defineEmits<{
 
 const engines = useEngines();
 const threadsOk = canSpawnBrowserThreads();
-const hardwareThreads = Math.max(1, navigator.hardwareConcurrency || 1);
+const hc = navigator.hardwareConcurrency;
+const hardwareThreads = Number.isFinite(hc) && hc > 0 ? Math.floor(hc) : 1;
 const threadsCap = threadsOk ? hardwareThreads : 1;
 
 const LIMIT_PRESETS = [
@@ -146,6 +148,11 @@ function setOption(opt: UciOption, raw: OptionValue): void {
   emit('updateOption', opt.name, isDefaultOptionValue(opt, val) ? undefined : val);
 }
 
+function setSpinOption(opt: UciOption, raw: string): void {
+  if (raw.trim() === '') return;
+  setOption(opt, Number(raw));
+}
+
 const limitStrengthOff = computed(() => {
   const ls = grouped.value.strength.find((o) => o.name.toLowerCase() === 'uci_limitstrength');
   return ls ? currentValue(ls) !== true : false;
@@ -161,6 +168,7 @@ function saveDefault(): void {
     savedNote.value = false;
   }, 1500);
 }
+onBeforeUnmount(() => clearTimeout(savedTimer));
 </script>
 
 <template>
@@ -170,7 +178,7 @@ function saveDefault(): void {
     >
       <div class="flex min-w-0 items-center gap-2">
         <span class="truncate text-small font-semibold text-text">{{ engine.id }}</span>
-        <span class="shrink-0 text-small text-faint">{{ color }} options</span>
+        <span class="shrink-0 text-small text-faint">{{ sentence(color) }} options</span>
         <span v-if="locked" class="tag tone-warn">Read-only</span>
       </div>
       <button
@@ -194,6 +202,7 @@ function saveDefault(): void {
         <input
           :value="limitDraft"
           type="text"
+          aria-label="Search limit"
           :disabled="locked"
           placeholder="Match game time (e.g. depth 8, 200k nodes, 1s/move)"
           class="field-sm num w-full disabled:cursor-not-allowed disabled:opacity-65"
@@ -273,6 +282,7 @@ function saveDefault(): void {
                 <input
                   v-if="opt.type === 'check'"
                   type="checkbox"
+                  :aria-label="opt.name"
                   class="accent-accent"
                   :disabled="locked"
                   :checked="currentValue(opt) === true"
@@ -282,21 +292,23 @@ function saveDefault(): void {
                   <input
                     v-if="spinMin(opt) !== undefined && spinMax(opt) !== undefined"
                     type="range"
+                    :aria-label="`${opt.name} slider`"
                     class="w-20 accent-accent"
                     :disabled="locked"
                     :min="spinMin(opt)"
                     :max="spinMax(opt)"
                     :value="Number(currentValue(opt))"
-                    @input="setOption(opt, Number(($event.target as HTMLInputElement).value))"
+                    @input="setSpinOption(opt, ($event.target as HTMLInputElement).value)"
                   />
                   <input
                     type="number"
+                    :aria-label="opt.name"
                     class="field-sm num no-spin w-[70px] text-right"
                     :disabled="locked"
                     :min="spinMin(opt)"
                     :max="spinMax(opt)"
                     :value="Number(currentValue(opt))"
-                    @change="setOption(opt, Number(($event.target as HTMLInputElement).value))"
+                    @change="setSpinOption(opt, ($event.target as HTMLInputElement).value)"
                   />
                 </template>
               </span>
@@ -325,12 +337,13 @@ function saveDefault(): void {
               </span>
               <input
                 type="number"
+                :aria-label="opt.name"
                 class="field-sm num no-spin w-[76px] text-right"
                 :disabled="locked || isThreadsLocked(opt)"
                 :min="spinMin(opt)"
                 :max="spinMax(opt)"
                 :value="isThreadsLocked(opt) ? 1 : Number(currentValue(opt))"
-                @change="setOption(opt, Number(($event.target as HTMLInputElement).value))"
+                @change="setSpinOption(opt, ($event.target as HTMLInputElement).value)"
               />
             </div>
             <div v-if="opt.name.toLowerCase() === 'threads'" class="mt-0.5 text-small text-dim">
@@ -369,6 +382,7 @@ function saveDefault(): void {
                 <input
                   v-if="opt.type === 'check'"
                   type="checkbox"
+                  :aria-label="opt.name"
                   class="accent-accent"
                   :disabled="locked"
                   :checked="currentValue(opt) === true"
@@ -376,6 +390,7 @@ function saveDefault(): void {
                 />
                 <select
                   v-else-if="opt.type === 'combo'"
+                  :aria-label="opt.name"
                   class="field-sm num max-w-36"
                   :disabled="locked"
                   :value="String(currentValue(opt))"
@@ -386,16 +401,18 @@ function saveDefault(): void {
                 <input
                   v-else-if="opt.type === 'spin'"
                   type="number"
+                  :aria-label="opt.name"
                   class="field-sm num no-spin w-[76px] text-right"
                   :disabled="locked"
                   :min="spinMin(opt)"
                   :max="spinMax(opt)"
                   :value="Number(currentValue(opt))"
-                  @change="setOption(opt, Number(($event.target as HTMLInputElement).value))"
+                  @change="setSpinOption(opt, ($event.target as HTMLInputElement).value)"
                 />
                 <input
                   v-else
                   type="text"
+                  :aria-label="opt.name"
                   class="field-sm num w-32"
                   :disabled="locked"
                   :value="String(currentValue(opt))"

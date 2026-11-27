@@ -29,7 +29,7 @@ export interface UserEngine {
   id: string;
   /** display name (UCI `id name` when reported, else `id`) */
   name: string;
-  /** file name under `user-engines/`, `<id>.wasm` */
+  /** file name under `user-engines/` */
   wasm: string;
   bytes: number;
   sha256: string;
@@ -147,6 +147,16 @@ export const useEngines = defineStore('engines', () => {
 
   let servedLoaded = false;
   let loading: Promise<void> | null = null;
+  let userQueue: Promise<void> = Promise.resolve();
+
+  function serial<T>(fn: () => Promise<T>): Promise<T> {
+    const run = userQueue.then(fn, fn);
+    userQueue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
 
   /** the direct URL of `engine`'s .wasm module (served path or OPFS-backed blob URL) */
   const wasmUrl = (engine: ServedEngine) =>
@@ -161,7 +171,7 @@ export const useEngines = defineStore('engines', () => {
       : `${enginesBase}${host.value}#${engine.wasm}`;
 
   async function estimate(): Promise<void> {
-    const e = await navigator.storage.estimate().catch(() => undefined);
+    const e = await (navigator as Partial<Navigator>).storage?.estimate().catch(() => undefined);
     storage.value =
       e?.usage !== undefined && e.quota !== undefined ? { usage: e.usage, quota: e.quota } : null;
   }
@@ -250,108 +260,119 @@ export const useEngines = defineStore('engines', () => {
    * Saves a checked visitor WASI build into OPFS `user-engines/` so it joins Play, Tourneys,
    * and Engines. Throws on invalid ID, served-ID collision, or duplicate ID without `replace`.
    */
-  async function addUser(input: {
+  function addUser(input: {
     id: string;
     name: string;
     bytes: Uint8Array;
     wasi?: WasiCheckReport;
     replace?: boolean;
   }): Promise<ServedEngine> {
-    const id = input.id.trim();
-    if (!isValidEngineId(id)) throw new Error('Invalid engine ID');
-    if (servedIds.value.has(id)) {
-      throw new Error(`${id} is already a served engine; choose another ID`);
-    }
-    const existing = user.value.find((u) => u.id === id);
-    if (existing && !input.replace) {
-      throw new Error(`${id} is already in browser; choose Replace or another ID`);
-    }
-
-    const wasm = `${id}.wasm`;
-    const copy = new Uint8Array(input.bytes);
-    const sha256 = hex(await crypto.subtle.digest('SHA-256', copy));
-    const entry: UserEngine = {
-      id,
-      name: input.name.trim() || id,
-      wasm,
-      bytes: copy.byteLength,
-      sha256,
-      added: Date.now(),
-    };
-
-    try {
-      const blob = new Blob([copy], { type: 'application/wasm' });
-      await writeStream([USER_ENGINES], wasm, blob.stream());
-      const file = await readFile([USER_ENGINES], wasm);
-      if (!file || file.size !== copy.byteLength) {
-        throw new Error('the saved .wasm file could not be read back');
+    return serial(async () => {
+      const id = input.id.trim();
+      if (!isValidEngineId(id)) throw new Error('Invalid engine ID');
+      if (servedIds.value.has(id)) {
+        throw new Error(`${id} is already a served engine; choose another ID`);
       }
-      const next = [...user.value.filter((u) => u.id !== id), entry].toSorted((a, b) =>
-        a.id.localeCompare(b.id),
-      );
+      const existing = user.value.find((u) => u.id === id);
+      if (existing && !input.replace) {
+        throw new Error(`${id} is already in browser; choose Replace or another ID`);
+      }
+
+      const copy = new Uint8Array(input.bytes);
+      const sha256 = hex(await crypto.subtle.digest('SHA-256', copy));
+      // Write replacements to a distinct file name so the previous build stays intact on failure.
+      const defaultWasm = `${id}.wasm`;
+      const wasm =
+        existing?.wasm === defaultWasm ? `${id}.${sha256.slice(0, 8)}.wasm` : defaultWasm;
+      const entry: UserEngine = {
+        id,
+        name: input.name.trim() || id,
+        wasm,
+        bytes: copy.byteLength,
+        sha256,
+        added: Date.now(),
+      };
+
+      try {
+        const blob = new Blob([copy], { type: 'application/wasm' });
+        await writeStream([USER_ENGINES], wasm, blob.stream());
+        const file = await readFile([USER_ENGINES], wasm);
+        if (!file || file.size !== copy.byteLength) {
+          throw new Error('the saved .wasm file could not be read back');
+        }
+        const next = [...user.value.filter((u) => u.id !== id), entry].toSorted((a, b) =>
+          a.id.localeCompare(b.id),
+        );
+        await writeText([USER_ENGINES], USER_ENGINES_LIST, JSON.stringify(next));
+        if (existing && existing.wasm !== wasm) {
+          await removeFile([USER_ENGINES], existing.wasm).catch(() => undefined);
+        }
+        setBlobUrl(id, sha256, file);
+        if (existing && existing.sha256 !== sha256) {
+          liveInspect.get(id)?.terminate();
+          liveInspect.delete(id);
+          inspections.delete(id);
+          removeEngineCache(id);
+        }
+        if (input.wasi?.state === 'pass') {
+          persistEngineWasi(id, sha256, {
+            ...cloneWasiReport(input.wasi),
+            fileName: wasm,
+            size: copy.byteLength,
+          });
+        }
+        user.value = next;
+        await estimate();
+        return toServedEngine(entry);
+      } catch (e) {
+        await removeFile([USER_ENGINES], wasm).catch(() => undefined);
+        throw new Error(`${id} was not added: ${message(e)}`, { cause: e });
+      }
+    });
+  }
+
+  /** Removes a visitor-added engine from OPFS, revoking its blob URL and dropping its cache. */
+  function removeUser(id: string): Promise<void> {
+    return serial(async () => {
+      const existing = user.value.find((u) => u.id === id);
+      if (!existing) return;
+      const next = user.value.filter((u) => u.id !== id);
       await writeText([USER_ENGINES], USER_ENGINES_LIST, JSON.stringify(next));
-      if (existing && existing.wasm !== wasm) {
-        await removeFile([USER_ENGINES], existing.wasm).catch(() => undefined);
-      }
-      setBlobUrl(id, sha256, file);
-      if (existing && existing.sha256 !== sha256) {
+      await removeFile([USER_ENGINES], existing.wasm).catch(() => undefined);
+      liveInspect.get(id)?.terminate();
+      liveInspect.delete(id);
+      inspections.delete(id);
+      removeEngineCache(id);
+      revokeBlobUrl(id);
+      user.value = next;
+      await estimate();
+    });
+  }
+
+  /** Drops then adds entries of the visitor engines list, as a backup merge asks. */
+  function mergeList(drop: readonly string[], put: readonly UserEngine[]): Promise<void> {
+    return serial(async () => {
+      const raw = await readText([USER_ENGINES], USER_ENGINES_LIST);
+      const saved: unknown = JSON.parse(raw ?? '[]');
+      const kept = (Array.isArray(saved) ? saved.filter(isUserEngine) : []).filter(
+        (e) => !drop.includes(e.id) && !put.some((p) => p.id === e.id),
+      );
+      for (const id of [...drop, ...put.map((p) => p.id)]) {
         liveInspect.get(id)?.terminate();
         liveInspect.delete(id);
         inspections.delete(id);
         removeEngineCache(id);
+        revokeBlobUrl(id);
       }
-      if (input.wasi?.state === 'pass') {
-        persistEngineWasi(id, sha256, {
-          ...cloneWasiReport(input.wasi),
-          fileName: wasm,
-          size: copy.byteLength,
-        });
-      }
-      user.value = next;
+      await writeText(
+        [USER_ENGINES],
+        USER_ENGINES_LIST,
+        JSON.stringify([...kept, ...put].toSorted((a, b) => a.id.localeCompare(b.id))),
+      );
+      await loadUser();
+      hydrateInspections(list.value);
       await estimate();
-      return toServedEngine(entry);
-    } catch (e) {
-      if (!existing) await removeFile([USER_ENGINES], wasm).catch(() => undefined);
-      throw new Error(`${id} was not added: ${message(e)}`, { cause: e });
-    }
-  }
-
-  /** Removes a visitor-added engine from OPFS, revoking its blob URL and dropping its cache. */
-  async function removeUser(id: string): Promise<void> {
-    const existing = user.value.find((u) => u.id === id);
-    if (!existing) return;
-    const next = user.value.filter((u) => u.id !== id);
-    await writeText([USER_ENGINES], USER_ENGINES_LIST, JSON.stringify(next));
-    await removeFile([USER_ENGINES], existing.wasm).catch(() => undefined);
-    liveInspect.get(id)?.terminate();
-    liveInspect.delete(id);
-    inspections.delete(id);
-    removeEngineCache(id);
-    revokeBlobUrl(id);
-    user.value = next;
-    await estimate();
-  }
-
-  /** Drops then adds entries of the visitor engines list, as a backup merge asks. */
-  async function mergeList(drop: readonly string[], put: readonly UserEngine[]): Promise<void> {
-    const raw = await readText([USER_ENGINES], USER_ENGINES_LIST);
-    const saved: unknown = JSON.parse(raw ?? '[]');
-    const kept = (Array.isArray(saved) ? saved.filter(isUserEngine) : []).filter(
-      (e) => !drop.includes(e.id) && !put.some((p) => p.id === e.id),
-    );
-    for (const id of [...drop, ...put.map((p) => p.id)]) {
-      inspections.delete(id);
-      removeEngineCache(id);
-      revokeBlobUrl(id);
-    }
-    await writeText(
-      [USER_ENGINES],
-      USER_ENGINES_LIST,
-      JSON.stringify([...kept, ...put].toSorted((a, b) => a.id.localeCompare(b.id))),
-    );
-    await loadUser();
-    hydrateInspections(list.value);
-    await estimate();
+    });
   }
 
   /** Records a completed UCI inspection (e.g. from a speed probe) and persists it. */
@@ -386,6 +407,7 @@ export const useEngines = defineStore('engines', () => {
     try {
       const id = await engine.identify();
       await engine.ready();
+      if (inspections.get(e.id) !== state) return state;
       state.idName = id.name;
       state.idAuthor = id.author;
       state.startMs = performance.now() - t0;

@@ -16,7 +16,14 @@
  * before anything is written.
  */
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import type { ServedEngine } from '../src/engine/manifest.ts';
 import { isEngineMeta, type EngineMeta } from '../src/engine/meta.ts';
@@ -94,10 +101,14 @@ function readList(path: string): Record<string, unknown>[] {
 function readReleases(): ReleaseEntry[] {
   return readList(listPath).map((e) => {
     const t = (k: string) => text(e, listPath, k);
+    const id = t('id');
     const metaUrl = optText(e, listPath, 'metaUrl');
     const metaSha256 = optText(e, listPath, 'metaSha256');
+    if (Boolean(metaUrl) !== Boolean(metaSha256)) {
+      fail(`${listPath}: ${id} must specify both metaUrl and metaSha256`);
+    }
     return {
-      id: t('id'),
+      id,
       name: t('name'),
       version: textOrNull(e, listPath, 'version'),
       repo: t('repo'),
@@ -115,10 +126,14 @@ function readReleases(): ReleaseEntry[] {
 function readLocals(): LocalEntry[] {
   return readList(localPath).map((e) => {
     const t = (k: string) => text(e, localPath, k);
+    const id = t('id');
     const metaPath = optText(e, localPath, 'metaPath');
     const metaSha256 = optText(e, localPath, 'metaSha256');
+    if (Boolean(metaPath) !== Boolean(metaSha256)) {
+      fail(`${localPath}: ${id} must specify both metaPath and metaSha256`);
+    }
     return {
-      id: t('id'),
+      id,
       name: t('name'),
       version: textOrNull(e, localPath, 'version'),
       path: t('path'),
@@ -225,8 +240,16 @@ function addLocal(dir: string | undefined): void {
   if (dir === undefined) fail('usage: bun scripts/engines.ts add-local <package dir>');
   const id = basename(resolve(dir));
   const sums = readFileSync(join(dir, 'SHA256SUMS'), 'utf8');
-  const want = new RegExp(`^([0-9a-f]{64}) [ *]${id}\\.wasm$`, 'm').exec(sums)?.[1];
-  if (want === undefined) fail(`${dir}/SHA256SUMS does not list ${id}.wasm`);
+  const target = `${id}.wasm`;
+  let want: string | undefined;
+  for (const line of sums.split(/\r?\n/)) {
+    const m = /^([0-9a-f]{64}) [ *](.+)$/.exec(line);
+    if (m?.[2] === target) {
+      want = m[1];
+      break;
+    }
+  }
+  if (want === undefined) fail(`${dir}/SHA256SUMS does not list ${target}`);
   const path = join(dir, `${id}.wasm`);
   const got = sha256(readFileSync(path));
   if (got !== want) fail(`${path} hashes to ${got}, and SHA256SUMS says ${want}`);
@@ -310,6 +333,9 @@ async function sync(): Promise<void> {
   }
 
   mkdirSync(outDir, { recursive: true });
+  for (const entry of readdirSync(outDir)) {
+    if (entry.endsWith('.wasm') && !files.has(entry)) unlinkSync(join(outDir, entry));
+  }
   for (const [name, bytes] of files) writeFileSync(join(outDir, name), bytes);
   const bundle = ['build', 'vendor/uci-over-wasi/browser.ts', '--outfile', join(outDir, HOST)];
   execFileSync('bun', [...bundle, '--format', 'iife', '--target', 'browser'], {

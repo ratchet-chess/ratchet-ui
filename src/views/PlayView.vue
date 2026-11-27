@@ -28,6 +28,9 @@ import EngineOptionsPanel from './play/EngineOptionsPanel.vue';
 import PlaySidePicker from './play/PlaySidePicker.vue';
 
 const CUSTOM_VALUE = '__custom__';
+const WIDE_BREAKPOINT = 1120;
+
+// ── Stores and game state ───────────────────────────────────────────────────
 
 const route = useRoute();
 const engines = useEngines();
@@ -35,6 +38,7 @@ const books = useBooks();
 const settings = useSettings();
 /** the book a new game draws its opening from; empty for chess's start */
 const book = ref('');
+const startingBook = ref(false);
 const play = usePlay();
 const {
   game,
@@ -54,6 +58,8 @@ const {
 
 /** which side's engine options panel is open, if any */
 const editingSide = ref<Color | null>(null);
+const containerRef = ref<HTMLElement | null>(null);
+const isWide = ref(true);
 const addingControl = ref(false);
 const customControlText = ref('');
 const customControlParsed = computed(() =>
@@ -61,7 +67,15 @@ const customControlParsed = computed(() =>
 );
 
 const engineIds = computed(() => engines.list.map((e) => e.id));
-const locked = computed(() => phase.value === 'playing' || phase.value === 'starting');
+const locked = computed(
+  () => phase.value === 'playing' || phase.value === 'starting' || startingBook.value,
+);
+
+watch(locked, (isLocked) => {
+  if (isLocked) addingControl.value = false;
+});
+
+// ── Route setup and side pickers ────────────────────────────────────────────
 
 function applyRouteQuery(): boolean {
   if (locked.value) return false;
@@ -130,6 +144,8 @@ function keepCustomControl(): void {
   addingControl.value = false;
 }
 
+// ── Side overrides and options panel ────────────────────────────────────────
+
 const editingEngine = computed(() => {
   const c = editingSide.value;
   if (!c) return undefined;
@@ -142,7 +158,7 @@ function toggleEdit(c: Color): void {
   editingSide.value = editingSide.value === c ? null : c;
 }
 
-function sideSummary(c: Color, includeLimit = true): string[] {
+function computeSideSummary(c: Color, includeLimit: boolean): string[] {
   const p = play.players[c];
   if (p.kind !== 'engine') return [];
   const opts = engines.inspections.get(p.id)?.options ?? [];
@@ -151,6 +167,22 @@ function sideSummary(c: Color, includeLimit = true): string[] {
     play.sideConfig[c].options,
     includeLimit ? play.sideConfig[c].limit : '',
   );
+}
+
+const sideSummaries = computed<Record<Color, { full: string[]; noLimit: string[] }>>(() => ({
+  white: {
+    full: computeSideSummary('white', true),
+    noLimit: computeSideSummary('white', false),
+  },
+  black: {
+    full: computeSideSummary('black', true),
+    noLimit: computeSideSummary('black', false),
+  },
+}));
+
+function barSummary(c: Color): string[] {
+  const includeLimit = times[c] !== null || !play.sideConfig[c].limit;
+  return includeLimit ? sideSummaries.value[c].full : sideSummaries.value[c].noLimit;
 }
 
 function updateSideOption(name: string, value: OptionValue | undefined): void {
@@ -168,6 +200,8 @@ function updateSideLimit(limit: string): void {
   play.sideConfig[c].limit = limit;
 }
 
+// ── Board state, promotions, and move list ──────────────────────────────────
+
 /** the board's bottom side: a person's side when one plays, else White */
 const orientation = ref<Color>('white');
 watch(
@@ -183,7 +217,7 @@ watch(
 const board = computed(() => {
   const g = game.value;
   const snap = g.positionAt(currentPly.value);
-  const mover = play.personToMove();
+  const mover = startingBook.value ? undefined : play.personToMove();
   return {
     fen: snap.fen,
     turn: snap.turn,
@@ -197,11 +231,15 @@ const board = computed(() => {
 /** a pawn move to the last rank, waiting for the person to pick its piece */
 const promoting = ref<{ orig: string; dest: string } | null>(null);
 const PROMOTIONS = [
-  { role: 'q', glyph: '♛' },
-  { role: 'r', glyph: '♜' },
-  { role: 'b', glyph: '♝' },
-  { role: 'n', glyph: '♞' },
+  { role: 'q', label: 'Queen', glyph: '♛' },
+  { role: 'r', label: 'Rook', glyph: '♜' },
+  { role: 'b', label: 'Bishop', glyph: '♝' },
+  { role: 'n', label: 'Knight', glyph: '♞' },
 ];
+
+watch(phase, (nextPhase) => {
+  if (nextPhase !== 'playing' && nextPhase !== 'setup') promoting.value = null;
+});
 
 function onMove(orig: Key, dest: Key): void {
   if (game.value.isPromotion(orig, dest)) promoting.value = { orig, dest };
@@ -280,7 +318,13 @@ watch([currentPly, () => game.value.san.length], async ([p]) => {
   el?.scrollIntoView?.({ block: 'nearest' });
 });
 
+// ── Keyboard shortcuts, layout observer, and actions ────────────────────────
+
 function onKey(e: KeyboardEvent): void {
+  if (e.key === 'Escape' && promoting.value !== null) {
+    cancelPromotion();
+    return;
+  }
   if (e.key === 'Escape' && editingSide.value !== null) {
     editingSide.value = null;
     return;
@@ -311,8 +355,28 @@ function onKey(e: KeyboardEvent): void {
   e.preventDefault();
   play.goTo(nextPly);
 }
-onMounted(() => window.addEventListener('keydown', onKey));
-onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
+
+let containerObserver: ResizeObserver | undefined;
+let copyTimer: ReturnType<typeof setTimeout> | undefined;
+
+onMounted(() => {
+  window.addEventListener('keydown', onKey);
+  const el = containerRef.value;
+  if (el) {
+    isWide.value = el.clientWidth >= WIDE_BREAKPOINT;
+    containerObserver = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width;
+      if (width !== undefined) isWide.value = width >= WIDE_BREAKPOINT;
+    });
+    containerObserver.observe(el);
+  }
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKey);
+  containerObserver?.disconnect();
+  clearTimeout(copyTimer);
+});
 
 function clockText(ms: number | null): string {
   if (ms === null) return '';
@@ -328,16 +392,23 @@ const sides = computed(() => {
 
 /** starts a game, from a random opening of the chosen book */
 async function newGame(): Promise<void> {
+  if (startingBook.value || phase.value === 'starting') return;
   promoting.value = null;
   if (!book.value) {
     await play.start();
     return;
   }
+  startingBook.value = true;
+  let picked;
   try {
-    await play.start(await books.randomOpening(book.value));
+    picked = await books.randomOpening(book.value);
   } catch (e) {
     error.value = `No opening from ${book.value}: ${e instanceof Error ? e.message : String(e)}`;
+    return;
+  } finally {
+    startingBook.value = false;
   }
+  await play.start(picked);
 }
 
 function onTakeback(): void {
@@ -355,7 +426,10 @@ async function copyPgn(): Promise<void> {
     // a browser may deny the clipboard; Download PGN still works there
     copyNote.value = 'Copy denied';
   }
-  setTimeout(() => (copyNote.value = ''), 1500);
+  clearTimeout(copyTimer);
+  copyTimer = setTimeout(() => {
+    copyNote.value = '';
+  }, 1500);
 }
 
 function savePgn(): void {
@@ -364,12 +438,14 @@ function savePgn(): void {
   a.href = url;
   a.download = `${names.value.white} vs ${names.value.black}.pgn`.replaceAll(/[^\w .+-]/g, '_');
   a.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 1000);
 }
 </script>
 
 <template>
-  <div class="@container relative">
+  <div ref="containerRef" class="@container relative">
     <div
       class="grid items-start gap-3.5 @[700px]:grid-cols-[minmax(320px,440px)_minmax(270px,1fr)]"
       :class="
@@ -401,6 +477,8 @@ function savePgn(): void {
                 <button
                   v-for="p in PROMOTIONS"
                   :key="p.role"
+                  type="button"
+                  :aria-label="`Promote to ${p.label}`"
                   class="size-14 rounded bg-panel2 text-glyph hover:bg-active"
                   @click="promote(p.role)"
                 >
@@ -422,22 +500,10 @@ function savePgn(): void {
               />
               <span class="truncate">{{ names[sides[where]] }}</span>
               <span
-                v-if="
-                  sideSummary(
-                    sides[where],
-                    times[sides[where]] !== null || !play.sideConfig[sides[where]].limit,
-                  ).length > 0
-                "
+                v-if="barSummary(sides[where]).length > 0"
                 class="num truncate text-small text-dim"
               >
-                {{
-                  sideSummary(
-                    sides[where],
-                    times[sides[where]] !== null || !play.sideConfig[sides[where]].limit,
-                  )
-                    .slice(0, 2)
-                    .join(' · ')
-                }}
+                {{ barSummary(sides[where]).slice(0, 2).join(' · ') }}
               </span>
             </span>
             <span v-if="times[sides[where]] !== null" class="num shrink-0 text-stat">
@@ -491,7 +557,7 @@ function savePgn(): void {
                     :class="
                       editingSide === row.color
                         ? 'border-accent bg-chosen text-text'
-                        : sideSummary(row.color).length > 0
+                        : sideSummaries[row.color].full.length > 0
                           ? 'border-accent-line text-accent'
                           : ''
                     "
@@ -501,18 +567,18 @@ function savePgn(): void {
                     <SlidersHorizontal :size="12" />
                     Edit
                     <span
-                      v-if="sideSummary(row.color).length > 0"
+                      v-if="sideSummaries[row.color].full.length > 0"
                       class="num rounded bg-chosen px-1 text-label text-accent"
                     >
-                      {{ sideSummary(row.color).length }}
+                      {{ sideSummaries[row.color].full.length }}
                     </span>
                   </button>
                 </div>
                 <div
-                  v-if="sideSummary(row.color).length > 0"
+                  v-if="sideSummaries[row.color].full.length > 0"
                   class="num mt-0.5 truncate text-small text-dim"
                 >
-                  {{ sideSummary(row.color).join(' · ') }}
+                  {{ sideSummaries[row.color].full.join(' · ') }}
                 </div>
               </div>
             </template>
@@ -539,6 +605,7 @@ function savePgn(): void {
                 <input
                   v-model="customControlText"
                   type="text"
+                  aria-label="Custom time control"
                   placeholder="5+0.05, 5m+3, 1s/move, depth 12"
                   class="field-sm num min-w-0 flex-1"
                   :class="
@@ -577,7 +644,7 @@ function savePgn(): void {
           <div class="flex flex-wrap gap-1.5 border-t border-row px-3 py-2">
             <button
               :class="phase === 'setup' ? 'btn-primary' : 'btn'"
-              :disabled="phase === 'starting'"
+              :disabled="phase === 'starting' || startingBook"
               @click="newGame"
             >
               New game
@@ -744,7 +811,7 @@ function savePgn(): void {
       </div>
 
       <!-- ── 3rd column Edit panel on wide viewports ───────────────────── -->
-      <div v-if="editingSide && editingEngine" class="hidden min-w-0 @[1120px]:block">
+      <div v-if="isWide && editingSide && editingEngine" class="min-w-0">
         <EngineOptionsPanel
           class="max-h-[calc(100dvh-2rem)]"
           :engine="editingEngine"
@@ -763,8 +830,8 @@ function savePgn(): void {
 
     <!-- ── Slide-over drawer on narrow viewports (< 1120px) ──────────── -->
     <div
-      v-if="editingSide && editingEngine"
-      class="fixed inset-0 z-40 flex justify-end bg-black/50 @[1120px]:hidden"
+      v-if="!isWide && editingSide && editingEngine"
+      class="fixed inset-0 z-40 flex justify-end bg-black/50"
       @click.self="editingSide = null"
     >
       <EngineOptionsPanel

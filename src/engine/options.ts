@@ -28,7 +28,7 @@ export interface EngineOptionPreset {
   limit?: string;
 }
 
-const KEYWORDS = new Set(['name', 'type', 'default', 'min', 'max', 'var']);
+const AFTER_TYPE = new Set(['default', 'min', 'max', 'var']);
 
 /**
  * Parses one UCI `option name ... type ...` line.
@@ -55,7 +55,16 @@ export function parseOption(line: string): UciOption | null {
   };
 
   for (const tok of tokens.slice(1)) {
-    if (KEYWORDS.has(tok) && !(section === 'default' && tok === 'name')) {
+    const startsSection =
+      (section === '' && tok === 'name') ||
+      (section === 'name' && tok === 'type') ||
+      (section === 'type' && Boolean(type) && AFTER_TYPE.has(tok)) ||
+      (section === 'default' &&
+        type !== 'string' &&
+        (type === 'combo' ? tok === 'var' : AFTER_TYPE.has(tok))) ||
+      (section === 'var' && tok === 'var') ||
+      ((section === 'min' || section === 'max') && AFTER_TYPE.has(tok));
+    if (startsSection) {
       if (section === 'var') flushVar();
       section = tok;
       continue;
@@ -142,7 +151,8 @@ export function optionBounds(opt: UciOption): {
 export function optionDefaultValue(opt: UciOption): OptionValue {
   if (opt.type === 'check') return opt.defaultValue.toLowerCase() === 'true';
   if (opt.type === 'spin') {
-    const n = Number(opt.defaultValue);
+    const trimmed = opt.defaultValue.trim();
+    const n = trimmed !== '' ? Number(trimmed) : Number.NaN;
     return Number.isFinite(n) ? n : (optionBounds(opt).min ?? 0);
   }
   return opt.defaultValue === '<empty>' ? '' : opt.defaultValue;

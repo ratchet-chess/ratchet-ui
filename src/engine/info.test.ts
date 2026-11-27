@@ -42,4 +42,15 @@ describe('parseInfo', () => {
   it('returns null for other lines', () => {
     expect(parseInfo('bestmove e2e4 ponder e7e5')).toBeNull();
   });
+
+  it('ignores malformed or truncated score tokens without recording NaN', () => {
+    expect(parseInfo('info depth 4 score cp')).toEqual({ depth: 4 });
+    expect(parseInfo('info depth 4 score cp abc nodes 12')).toEqual({ depth: 4, nodes: 12 });
+    expect(parseInfo('info depth 4 score mate xyz lowerbound nodes 5')).toEqual({
+      depth: 4,
+      bound: 'lower',
+      nodes: 5,
+    });
+    expect(parseInfo('info score unknown nodes 42')).toEqual({ nodes: 42 });
+  });
 });

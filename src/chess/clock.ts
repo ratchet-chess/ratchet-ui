@@ -39,30 +39,33 @@ export function parseControl(text: string): TimeControl | null {
   let m = /^(\d+(?:\.\d+)?)(m|s)? ?\+ ?(\d+(?:\.\d+)?)s?$/.exec(t);
   if (m) {
     const baseMs = Math.round(Number(m[1]) * (m[2] === 'm' ? 60_000 : 1000));
-    return baseMs > 0
-      ? { kind: 'clock', label, baseMs, incMs: Math.round(Number(m[3]) * 1000) }
+    const incMs = Math.round(Number(m[3]) * 1000);
+    return Number.isFinite(baseMs) && baseMs > 0 && Number.isFinite(incMs) && incMs >= 0
+      ? { kind: 'clock', label, baseMs, incMs }
       : null;
   }
   m = /^(\d+) ?\/ ?(\d+(?:\.\d+)?)(m|s)?$/.exec(t);
   if (m) {
     const moves = Number(m[1]);
     const periodMs = Math.round(Number(m[2]) * (m[3] === 's' ? 1000 : 60_000));
-    return moves > 0 && periodMs > 0 ? { kind: 'moves', label, moves, periodMs } : null;
+    return Number.isFinite(moves) && moves > 0 && Number.isFinite(periodMs) && periodMs > 0
+      ? { kind: 'moves', label, moves, periodMs }
+      : null;
   }
   m = /^(\d+(?:\.\d+)?) ?([km]?) ?nodes$/.exec(t);
   if (m) {
     const nodes = Math.round(Number(m[1]) * (SCALE[m[2] ?? ''] ?? 1));
-    return nodes > 0 ? { kind: 'nodes', label, nodes } : null;
+    return Number.isFinite(nodes) && nodes > 0 ? { kind: 'nodes', label, nodes } : null;
   }
   m = /^(\d+(?:\.\d+)?) ?s ?\/ ?move$/.exec(t);
   if (m) {
     const ms = Math.round(Number(m[1]) * 1000);
-    return ms > 0 ? { kind: 'movetime', label, ms } : null;
+    return Number.isFinite(ms) && ms > 0 ? { kind: 'movetime', label, ms } : null;
   }
   m = /^depth ?(\d+)$/.exec(t);
   if (m) {
     const depth = Number(m[1]);
-    return depth > 0 ? { kind: 'depth', label, depth } : null;
+    return Number.isFinite(depth) && depth > 0 ? { kind: 'depth', label, depth } : null;
   }
   return null;
 }
@@ -72,8 +75,9 @@ const LEGACY: Record<string, string> = { '2+1': '2m+1' };
 
 /** a saved control: a built-in by its label, then one typed; null when neither reads */
 export function resolveControl(label: string): TimeControl | null {
-  const built = TIME_CONTROLS.find((t) => t.label === (LEGACY[label] ?? label));
-  return built ?? parseControl(label);
+  const trimmed = label.trim();
+  const built = TIME_CONTROLS.find((t) => t.label === (LEGACY[trimmed] ?? trimmed));
+  return built ?? parseControl(trimmed);
 }
 
 const secs = (ms: number) => `${Number((ms / 1000).toFixed(3))} s`;

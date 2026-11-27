@@ -128,6 +128,7 @@ export class Game {
    * @returns the number of half-moves actually removed
    */
   undo(plies = 1): number {
+    if (!Number.isFinite(plies)) return 0;
     const count = Math.max(0, Math.min(Math.floor(plies), this.uci.length));
     if (count === 0) return 0;
     const keep = this.uci.length - count;
@@ -215,8 +216,17 @@ export class Game {
     }
     if (this.outcome) all.Termination = this.outcome.termination;
     const head = Object.entries(all).map(
-      ([k, v]) => `[${k} "${v.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"]`,
+      ([k, v]) =>
+        `[${k} "${v
+          .replaceAll(/[\r\n]+/g, ' ')
+          .replaceAll('\\', '\\\\')
+          .replaceAll('"', '\\"')}"]`,
     );
+    const safeComment = (s: string) =>
+      s
+        .replaceAll(/[\r\n]+/g, ' ')
+        .replaceAll(/[{}]/g, '')
+        .trim();
 
     const start = Chess.fromSetup(parseFen(this.startFen).unwrap()).unwrap();
     let n = start.fullmoves;
@@ -226,17 +236,20 @@ export class Game {
       if (white) words.push(`${n}.`);
       else if (i === 0) words.push(`${n}...`);
       words.push(san);
-      const comment = this.comments[i] ?? '';
+      const comment = safeComment(this.comments[i] ?? '');
       if (comment) words.push(`{${comment}}`);
       if (!white) n++;
       white = !white;
     });
-    if (this.outcome) words.push(`{${this.outcome.reason}}`);
+    if (this.outcome) {
+      const reason = safeComment(this.outcome.reason);
+      if (reason) words.push(`{${reason}}`);
+    }
     words.push(result);
     const lines: string[] = [];
     let line = '';
     for (const w of words) {
-      if (line.length + w.length + 1 > 79) {
+      if (line && line.length + w.length + 1 > 79) {
         lines.push(line);
         line = w;
       } else line = line ? `${line} ${w}` : w;

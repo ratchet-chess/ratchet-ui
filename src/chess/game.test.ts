@@ -121,4 +121,24 @@ describe('Game', () => {
       ].join('\n'),
     );
   });
+
+  it('sanitizes tag newlines, comment braces, and wraps oversized first tokens cleanly', () => {
+    const g = new Game();
+    playAll(g, 'e2e4');
+    g.annotate('bad {brace}\nline');
+    g.forfeit('white', `long ${'x'.repeat(90)} {end}\nnext`);
+    const pgn = g.pgn({ Event: 'Line 1\r\nLine 2' });
+    expect(pgn).toContain('[Event "Line 1 Line 2"]');
+    expect(pgn).toContain('{bad brace line}');
+    expect(pgn).not.toContain('\n\n\n');
+    expect(pgn).not.toContain('{{');
+    expect(pgn).not.toContain('}}');
+  });
+
+  it('returns 0 when undo receives a non-finite count', () => {
+    const g = new Game();
+    playAll(g, 'e2e4');
+    expect(g.undo(Number.NaN)).toBe(0);
+    expect(g.san).toEqual(['e4']);
+  });
 });

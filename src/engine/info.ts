@@ -41,14 +41,23 @@ export function parseInfo(line: string): Info | null {
     }
     if (key === 'score') {
       const kind = t[i + 1];
-      const value = Number(t[i + 2]);
-      if (kind === 'cp') info.cp = value;
-      else if (kind === 'mate') info.mate = value;
-      i += 2;
-      const next = t[i + 1];
-      if (next === 'lowerbound' || next === 'upperbound') {
-        info.bound = next === 'lowerbound' ? 'lower' : 'upper';
-        i++;
+      if (kind === 'cp' || kind === 'mate') {
+        const raw = t[i + 2];
+        if (raw !== undefined) {
+          const value = Number(raw);
+          if (Number.isFinite(value)) {
+            if (kind === 'cp') info.cp = value;
+            else info.mate = value;
+          }
+          i += 2;
+        } else {
+          i += 1;
+        }
+        const next = t[i + 1];
+        if (next === 'lowerbound' || next === 'upperbound') {
+          info.bound = next === 'lowerbound' ? 'lower' : 'upper';
+          i++;
+        }
       }
       continue;
     }

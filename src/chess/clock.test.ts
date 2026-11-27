@@ -123,8 +123,25 @@ describe('parseControl', () => {
   });
 
   it('refuses what is not a control, or is empty', () => {
-    for (const t of ['', '10', '0+1', '40/0', 'nodes', '0s/move', 'depth 0', '5+0.05x'])
+    const huge = '9'.repeat(400);
+    for (const t of [
+      '',
+      '10',
+      '0+1',
+      '40/0',
+      'nodes',
+      '0s/move',
+      'depth 0',
+      '5+0.05x',
+      `${huge}+1`,
+      `1+${huge}`,
+      `40/${huge}`,
+      `${huge}m nodes`,
+      `${huge}s/move`,
+      `depth ${huge}`,
+    ]) {
       expect(parseControl(t)).toBeNull();
+    }
   });
 });
 
@@ -145,6 +162,7 @@ describe('describeControl', () => {
 describe('resolveControl', () => {
   it('reads a label saved before the built-ins said their units', () => {
     expect(resolveControl('2+1')).toMatchObject({ label: '2m+1', baseMs: 120_000 });
+    expect(resolveControl(' 2+1 ')).toMatchObject({ label: '2m+1', baseMs: 120_000 });
     expect(resolveControl('5+0.05')).toMatchObject({ baseMs: 5000, incMs: 50 });
     expect(resolveControl('soon')).toBeNull();
   });

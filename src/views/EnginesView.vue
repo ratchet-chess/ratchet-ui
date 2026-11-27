@@ -7,9 +7,9 @@ import {
   cloneWasiReport,
   executeWasiCheck,
   loadEngineCache,
-  saveEngineCache,
+  persistEngineProbe,
+  persistEngineWasi,
   type EngineProbe,
-  type PersistedEngineData,
   type WasiCheckReport,
 } from '../engine/cache.ts';
 import type { ServedEngine } from '../engine/manifest.ts';
@@ -22,6 +22,8 @@ import EngineDetail from './engines/EngineDetail.vue';
 import WasiChecker from './engines/WasiChecker.vue';
 
 const UPLOAD_KEY = '__uploaded__';
+
+// ── State and cache hydration ───────────────────────────────────────────────
 
 const engines = useEngines();
 const tournaments = useTournaments();
@@ -49,31 +51,7 @@ const userBytes = computed(() => engines.user.reduce((n, e) => n + e.bytes, 0));
 
 const liveProbe = new Map<string, UciEngine>();
 const liveWasi = new Map<string, AbortController>();
-
-function persistServed(): void {
-  const out: Record<string, PersistedEngineData> = {};
-  for (const e of engines.list) {
-    const insp = inspections.get(e.id);
-    const probe = probes.get(e.id);
-    const wasi = wasiReports.get(e.id);
-    const entry: PersistedEngineData = { sha256: e.sha256 };
-    let keep = false;
-    if (insp?.state === 'done') {
-      entry.inspection = insp;
-      keep = true;
-    }
-    if (probe?.state === 'done') {
-      entry.probe = probe;
-      keep = true;
-    }
-    if (wasi && wasi.state !== 'running' && wasi.state !== 'cancelled') {
-      entry.wasi = wasi;
-      keep = true;
-    }
-    if (keep) out[e.id] = entry;
-  }
-  saveEngineCache(out);
-}
+let uploadToken = 0;
 
 function hydrateCache(list: readonly ServedEngine[]): void {
   const saved = loadEngineCache();
@@ -91,6 +69,8 @@ function hydrateCache(list: readonly ServedEngine[]): void {
     }
   }
 }
+
+// ── Filtering and selection ─────────────────────────────────────────────────
 
 const filtered = computed(() => {
   const q = query.value.trim().toLowerCase();
@@ -136,6 +116,8 @@ watch(
   { immediate: true },
 );
 
+// ── Inspect, speed probe, and WASI checks ───────────────────────────────────
+
 async function inspectEngine(e: ServedEngine): Promise<void> {
   await engines.inspect(e, true);
 }
@@ -162,10 +144,12 @@ async function runProbe(e: ServedEngine, suite: ProbeSuite, depth: number): Prom
   const t0 = performance.now();
   const engine = new UciEngine(engines.workerUrl(e));
   liveProbe.set(e.id, engine);
+  const isCurrent = () => liveProbe.get(e.id) === engine && state.state !== 'stopped';
 
   try {
     const id = await engine.identify();
     await engine.ready();
+    if (!isCurrent()) return;
     const startMs = performance.now() - t0;
     state.startMs = startMs;
     if (!inspections.has(e.id) || inspections.get(e.id)?.state === 'failed') {
@@ -181,30 +165,34 @@ async function runProbe(e: ServedEngine, suite: ProbeSuite, depth: number): Prom
     state.state = 'running';
 
     for (const [i, pos] of positions.entries()) {
+      if (!isCurrent()) return;
       const row = state.rows[i];
       if (!row) continue;
       row.state = 'running';
       engine.send('ucinewgame');
       await engine.ready();
+      if (!isCurrent()) return;
       const pt0 = performance.now();
       const best = await engine.go(pos.position, `depth ${depth}`, (info) => {
-        if (info.depth !== undefined) row.last = info;
+        if (isCurrent() && info.depth !== undefined) row.last = info;
       });
+      if (!isCurrent()) return;
       row.elapsedMs = performance.now() - pt0;
       row.nodes = row.last?.nodes ?? null;
       row.best = best.move;
       row.state = 'done';
     }
+    if (!isCurrent()) return;
     state.state = 'done';
-    persistServed();
+    persistEngineProbe(e.id, e.sha256, state);
   } catch (err) {
-    if (state.state !== 'stopped') {
+    if (isCurrent()) {
       state.error = err instanceof Error ? err.message : String(err);
       state.state = 'failed';
     }
   } finally {
     engine.terminate();
-    liveProbe.delete(e.id);
+    if (liveProbe.get(e.id) === engine) liveProbe.delete(e.id);
   }
 }
 
@@ -224,6 +212,7 @@ async function runServedWasi(e: ServedEngine): Promise<void> {
     const res = await fetch(engines.wasmUrl(e), { signal: ac.signal });
     if (!res.ok) throw new Error(`${e.wasm}: ${res.status} ${res.statusText}`);
     const wasm = new Uint8Array(await res.arrayBuffer());
+    if (ac.signal.aborted || liveWasi.get(e.id) !== ac) return;
     wasiLoading.delete(e.id);
     const report: WasiCheckReport = reactive({
       fileName: e.wasm,
@@ -237,10 +226,11 @@ async function runServedWasi(e: ServedEngine): Promise<void> {
     });
     wasiReports.set(e.id, report);
     await executeWasiCheck(wasm, report, ac.signal);
-    if (!ac.signal.aborted) persistServed();
+    if (!ac.signal.aborted && liveWasi.get(e.id) === ac) {
+      persistEngineWasi(e.id, e.sha256, report);
+    }
   } catch (err) {
-    wasiLoading.delete(e.id);
-    if (ac.signal.aborted) return;
+    if (ac.signal.aborted || liveWasi.get(e.id) !== ac) return;
     wasiReports.set(
       e.id,
       reactive({
@@ -255,27 +245,33 @@ async function runServedWasi(e: ServedEngine): Promise<void> {
       }),
     );
   } finally {
-    wasiLoading.delete(e.id);
-    if (liveWasi.get(e.id) === ac) liveWasi.delete(e.id);
+    if (liveWasi.get(e.id) === ac) {
+      wasiLoading.delete(e.id);
+      liveWasi.delete(e.id);
+    }
   }
 }
 
 function cancelServedWasi(e: ServedEngine): void {
   liveWasi.get(e.id)?.abort();
   liveWasi.delete(e.id);
+  wasiLoading.delete(e.id);
   const r = wasiReports.get(e.id);
   if (r?.state === 'running') r.state = 'cancelled';
 }
 
-async function runUploadWasi(): Promise<void> {
-  const wasm = uploadedBytes.value;
-  const current = uploadedReport.value;
-  if (!wasm || !current) return;
+// ── Upload, add, and remove visitor builds ──────────────────────────────────
+
+async function runUploadWasi(
+  wasm: Uint8Array | null = uploadedBytes.value,
+  fileName: string | undefined = uploadedReport.value?.fileName,
+): Promise<void> {
+  if (!wasm || !fileName) return;
   liveWasi.get(UPLOAD_KEY)?.abort();
   const ac = new AbortController();
   liveWasi.set(UPLOAD_KEY, ac);
   const report: WasiCheckReport = reactive({
-    fileName: current.fileName,
+    fileName,
     size: wasm.length,
     state: 'running',
     info: null,
@@ -299,22 +295,31 @@ function cancelUploadWasi(): void {
 }
 
 async function checkUploadedFile(file: File): Promise<void> {
-  const wasm = new Uint8Array(await file.arrayBuffer());
-  uploadedBytes.value = wasm;
+  const mine = ++uploadToken;
   saveUploadError.value = '';
-  const report: WasiCheckReport = reactive({
-    fileName: file.name,
-    size: wasm.length,
-    state: 'running',
-    info: null,
-    identity: null,
-    results: [],
-    fatalError: '',
-    staticNote: '',
-  });
-  uploadedReport.value = report;
+  let wasm: Uint8Array;
+  try {
+    wasm = new Uint8Array(await file.arrayBuffer());
+  } catch (err) {
+    if (mine !== uploadToken) return;
+    uploadedBytes.value = null;
+    uploadedReport.value = reactive<WasiCheckReport>({
+      fileName: file.name,
+      size: file.size,
+      state: 'invalid',
+      info: null,
+      identity: null,
+      results: [],
+      fatalError: err instanceof Error ? err.message : String(err),
+      staticNote: '',
+    });
+    selectedId.value = UPLOAD_KEY;
+    return;
+  }
+  if (mine !== uploadToken) return;
+  uploadedBytes.value = wasm;
   selectedId.value = UPLOAD_KEY;
-  await runUploadWasi();
+  await runUploadWasi(wasm, file.name);
 }
 
 async function addUploadedEngine(id: string, replace: boolean): Promise<void> {
@@ -366,6 +371,8 @@ async function removeUserEngine(e: ServedEngine): Promise<void> {
     selectedId.value = engines.list[0]?.id ?? '';
   }
 }
+
+// ── Row labels and drag-and-drop ────────────────────────────────────────────
 
 function picked(e: Event): void {
   const input = e.target as HTMLInputElement;
@@ -456,6 +463,7 @@ onUnmounted(() => {
   </Panel>
 
   <div v-else class="grid gap-3.5 wide:grid-cols-[minmax(280px,340px)_1fr]">
+    <!-- ── Engine list sidebar ─────────────────────────────────────────── -->
     <div class="min-w-0">
       <Panel title="Engines" :note="`${filtered.length} of ${engines.list.length}`">
         <div class="border-b border-row px-2.5 py-2">
@@ -480,9 +488,12 @@ onUnmounted(() => {
             <div
               v-for="e in filteredUser"
               :key="e.id"
+              tabindex="0"
               class="row px-3 py-2"
               :class="selected?.id === e.id ? 'bg-selected' : ''"
               @click="selectedId = e.id"
+              @keydown.enter.prevent="selectedId = e.id"
+              @keydown.space.prevent="selectedId = e.id"
             >
               <div class="flex items-baseline gap-2">
                 <span class="min-w-0 flex-1 truncate text-dense font-medium text-text">{{
@@ -498,6 +509,7 @@ onUnmounted(() => {
                   {{ bytes(e.bytes) }}
                 </span>
                 <button
+                  type="button"
                   class="shrink-0 rounded p-0.5 text-faint hover:bg-hover hover:text-text"
                   title="Remove from browser"
                   :aria-label="`Remove ${e.id}`"
@@ -518,9 +530,12 @@ onUnmounted(() => {
           <div
             v-for="e in filteredServed"
             :key="e.id"
+            tabindex="0"
             class="row px-3 py-2"
             :class="selected?.id === e.id ? 'bg-selected' : ''"
             @click="selectedId = e.id"
+            @keydown.enter.prevent="selectedId = e.id"
+            @keydown.space.prevent="selectedId = e.id"
           >
             <div class="flex items-baseline gap-2">
               <span class="min-w-0 flex-1 truncate text-dense font-medium text-text">{{
@@ -563,9 +578,12 @@ onUnmounted(() => {
         <template v-if="uploadedReport">
           <div class="subhead border-y border-line bg-panel2 px-3 py-1">Checked file</div>
           <div
+            tabindex="0"
             class="row px-3 py-2"
             :class="showingUpload ? 'bg-selected' : ''"
             @click="selectedId = UPLOAD_KEY"
+            @keydown.enter.prevent="selectedId = UPLOAD_KEY"
+            @keydown.space.prevent="selectedId = UPLOAD_KEY"
           >
             <div class="flex items-center gap-2">
               <span class="mono min-w-0 flex-1 truncate text-dense text-text">
@@ -609,6 +627,7 @@ onUnmounted(() => {
       </p>
     </div>
 
+    <!-- ── Detail or upload checker pane ───────────────────────────────── -->
     <WasiChecker
       v-if="showingUpload && uploadedReport"
       mode="upload"
@@ -619,7 +638,7 @@ onUnmounted(() => {
       :user-ids="userIds"
       :saving="savingUpload"
       :save-error="saveUploadError"
-      @run="runUploadWasi"
+      @run="runUploadWasi()"
       @cancel="cancelUploadWasi"
       @upload="picker?.click()"
       @add="addUploadedEngine"

@@ -36,9 +36,9 @@ export const useCalibration = defineStore('calibration', () => {
   const error = ref('');
 
   const liveWorkers = new Set<UciEngine>();
-  let cancelled = false;
-  /** read through a call, since stop() can flip `cancelled` across awaits */
-  const isCancelled = () => cancelled;
+  let runId = 0;
+  /** read through a call, since stop() or a newer run() can advance `runId` across awaits */
+  const isStaleRun = (mine: number) => mine !== runId;
 
   /** The Stockfish 10 anchor engine used for CCRL-baseline calibration, when served. */
   const anchor = computed<ServedEngine | undefined>(() =>
@@ -58,7 +58,7 @@ export const useCalibration = defineStore('calibration', () => {
 
   /** Stops any running calibration immediately and discards partial results. */
   function stop(): void {
-    cancelled = true;
+    runId++;
     for (const w of liveWorkers) w.terminate();
     liveWorkers.clear();
     progress.value = null;
@@ -70,6 +70,7 @@ export const useCalibration = defineStore('calibration', () => {
    */
   async function run(concurrency: number): Promise<void> {
     stop();
+    const mine = ++runId;
     error.value = '';
     const engine = anchor.value;
     if (!engine) {
@@ -77,10 +78,11 @@ export const useCalibration = defineStore('calibration', () => {
       return;
     }
 
-    const hw = Math.max(1, navigator.hardwareConcurrency);
-    const copies = Math.max(1, Math.min(Math.round(concurrency), hw));
+    const hc = navigator.hardwareConcurrency;
+    const hw = Number.isFinite(hc) && hc > 0 ? Math.floor(hc) : 1;
+    const requested = Number.isFinite(concurrency) ? Math.round(concurrency) : 1;
+    const copies = Math.max(1, Math.min(requested, hw));
     const positions = PROBE_SUITES.three;
-    cancelled = false;
     const prog = reactive<CalibrationProgress>({
       concurrency: copies,
       phase: 'starting',
@@ -107,7 +109,7 @@ export const useCalibration = defineStore('calibration', () => {
           await w.ready();
         }),
       );
-      if (isCancelled()) return;
+      if (isStaleRun(mine)) return;
 
       // Warm up WASM/JIT on all workers in parallel before timing
       prog.phase = 'warmup';
@@ -118,7 +120,7 @@ export const useCalibration = defineStore('calibration', () => {
           await w.ready();
         }),
       );
-      if (isCancelled()) return;
+      if (isStaleRun(mine)) return;
 
       // Measured pass: all workers search the 3-position suite concurrently
       prog.phase = 'measuring';
@@ -127,7 +129,7 @@ export const useCalibration = defineStore('calibration', () => {
           let totalNodes = 0;
           let totalMs = 0;
           for (const pos of positions) {
-            if (isCancelled()) return { nps: 0, nodes: 0, ms: 0 };
+            if (isStaleRun(mine)) return { nps: 0, nodes: 0, ms: 0 };
             w.send('ucinewgame');
             await w.ready();
             let lastNodes = 0;
@@ -147,7 +149,7 @@ export const useCalibration = defineStore('calibration', () => {
           };
         }),
       );
-      if (isCancelled()) return;
+      if (isStaleRun(mine)) return;
 
       const valid = reads.filter((r) => r.nps > 0 && r.nodes > 0 && r.ms > 0);
       if (valid.length === 0) throw new Error('Anchor reported no node counts during calibration.');
@@ -169,7 +171,7 @@ export const useCalibration = defineStore('calibration', () => {
       else data.concurrent[copies] = sample;
       saveCalibration(data);
     } catch (e) {
-      if (!isCancelled()) {
+      if (!isStaleRun(mine)) {
         error.value = e instanceof Error ? e.message : String(e);
       }
     } finally {
@@ -177,7 +179,7 @@ export const useCalibration = defineStore('calibration', () => {
         w.terminate();
         liveWorkers.delete(w);
       }
-      if (!isCancelled()) progress.value = null;
+      if (!isStaleRun(mine)) progress.value = null;
     }
   }
 

@@ -327,39 +327,42 @@ export function usePlay() {
 
   async function think(color: Color, w: UciEngine): Promise<void> {
     const mine = token;
+    const isLive = () => mine === token;
     const prev = inFlight[color];
-    if (prev) {
-      await prev.catch(() => {});
-      if (mine !== token) return;
-      await w.ready().catch(() => {});
-      if (mine !== token) return;
-    }
-    const control = activeControls[color] ?? UNCLOCKED_ENGINE_FALLBACK;
-    const p = engineTurn({
-      game: game.value,
-      color,
-      engine: w,
-      name: names.value[color],
-      control,
-      clock,
-      live: () => mine === token,
-      onInfo: (info) => {
-        if (mine !== token || info.depth === undefined) return;
-        const score = scoreFor(info, color);
-        if (score === null) return;
-        thinking[color] = {
-          depth: info.depth,
-          score,
-          nodes: info.nodes ?? 0,
-          nps: info.nps ?? 0,
-          line: game.value.lineSan(info.pv ?? [], 8),
-        };
-      },
-    });
-    inFlight[color] = p;
-    await p;
-    if (inFlight[color] === p) delete inFlight[color];
-    if (mine !== token) return;
+    const run = (async () => {
+      if (prev) {
+        await prev.catch(() => undefined);
+        if (!isLive()) return;
+        await w.ready().catch(() => undefined);
+        if (!isLive()) return;
+      }
+      const control = activeControls[color] ?? UNCLOCKED_ENGINE_FALLBACK;
+      await engineTurn({
+        game: game.value,
+        color,
+        engine: w,
+        name: names.value[color],
+        control,
+        clock,
+        live: isLive,
+        onInfo: (info) => {
+          if (!isLive() || info.depth === undefined) return;
+          const score = scoreFor(info, color);
+          if (score === null) return;
+          thinking[color] = {
+            depth: info.depth,
+            score,
+            nodes: info.nodes ?? 0,
+            nps: info.nps ?? 0,
+            line: game.value.lineSan(info.pv ?? [], 8),
+          };
+        },
+      });
+    })();
+    inFlight[color] = run;
+    await run;
+    if (inFlight[color] === run) delete inFlight[color];
+    if (!isLive()) return;
     next();
   }
 
@@ -367,6 +370,7 @@ export function usePlay() {
   async function start(bookOpening?: Opening, initialMove?: string): Promise<void> {
     token++;
     const mine = token;
+    const isLive = () => mine === token;
     shutDown();
     clock = null;
     error.value = '';
@@ -390,20 +394,23 @@ export function usePlay() {
     };
 
     const hc = navigator.hardwareConcurrency;
-    const threadsCap = canSpawnBrowserThreads() ? Math.max(1, Number.isFinite(hc) ? hc : 1) : 1;
+    const hw = Number.isFinite(hc) && hc > 0 ? Math.floor(hc) : 1;
+    const threadsCap = canSpawnBrowserThreads() ? hw : 1;
 
     try {
       for (const c of COLORS) {
-        const entry = entryOf(players[c]);
-        if (!entry) {
+        const player = players[c];
+        if (player.kind === 'person') {
           liveNames[c] = 'You';
           continue;
         }
+        const entry = entryOf(player);
+        if (!entry) throw new Error(`Engine "${player.id}" is not available`);
         const t0 = performance.now();
         const w = new UciEngine(engines.workerUrl(entry));
         workers[c] = w;
         const id = await w.identify();
-        if (mine !== token) return;
+        if (!isLive()) return;
         const declared = parseOptionsList(id.options);
         if (engines.inspections.get(entry.id)?.state !== 'done') {
           engines.recordInspection(entry, {
@@ -419,27 +426,27 @@ export function usePlay() {
           w.send(cmd);
         }
         await w.ready();
-        if (mine !== token) return;
+        if (!isLive()) return;
         // Warm-up before move 1 removes cold WASM/JIT startup lag from the game clock
         await w.go('startpos', 'depth 1');
-        if (mine !== token) return;
+        if (!isLive()) return;
         w.send('ucinewgame');
         await w.ready();
-        if (mine !== token) return;
+        if (!isLive()) return;
         liveNames[c] = id.name || entry.id;
       }
     } catch (e) {
-      if (mine !== token) return;
+      if (!isLive()) return;
       error.value = e instanceof Error ? e.message : String(e);
       shutDown();
-      if (initialMove) {
-        game.value = new Game();
-        changed();
-      }
+      game.value = new Game();
+      bookPlies.value = 0;
+      openingLabel.value = '';
+      changed();
       phase.value = 'setup';
       return;
     }
-    if (mine !== token) return;
+    if (!isLive()) return;
     clock = clockForSides(activeControls);
     if (clock) {
       clock.start(game.value.turn);

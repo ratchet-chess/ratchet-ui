@@ -3,6 +3,7 @@ import { parseControl } from '../chess/clock.ts';
 import {
   CCRL_PRESETS,
   CCRL_REF_NPS,
+  defaultClockConcurrency,
   median,
   parseCalibration,
   pickCalibration,
@@ -81,5 +82,13 @@ describe('device speed calibration', () => {
     });
     expect(parsed.idle).toEqual(valid);
     expect(parsed.concurrent).toEqual({ 4: valid4 });
+  });
+
+  it('guards defaultClockConcurrency against missing or non-positive thread counts', () => {
+    expect(defaultClockConcurrency(Number.NaN)).toBe(1);
+    expect(defaultClockConcurrency(0)).toBe(1);
+    expect(defaultClockConcurrency(-4)).toBe(1);
+    expect(defaultClockConcurrency(2)).toBe(1);
+    expect(defaultClockConcurrency(16)).toBe(7);
   });
 });

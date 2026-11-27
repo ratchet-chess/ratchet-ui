@@ -79,9 +79,62 @@ export interface PersistedEngineData {
 
 const CACHE_KEY = 'ratchet-ui.engine-cache';
 
-const isRecord = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null;
+const isRecord = (x: unknown): x is Record<string, unknown> =>
+  typeof x === 'object' && x !== null && !Array.isArray(x);
 const isString = (x: unknown): x is string => typeof x === 'string';
-const isNumOrNull = (x: unknown): x is number | null => x === null || typeof x === 'number';
+const isNumOrNull = (x: unknown): x is number | null =>
+  x === null || (typeof x === 'number' && Number.isFinite(x));
+
+function isUciOption(x: unknown): x is UciOption {
+  return (
+    isRecord(x) &&
+    isString(x.name) &&
+    isString(x.type) &&
+    isString(x.defaultValue) &&
+    isString(x.range)
+  );
+}
+
+function isProbeRow(x: unknown): x is ProbeRow {
+  return (
+    isRecord(x) &&
+    isString(x.label) &&
+    (x.state === 'pending' || x.state === 'running' || x.state === 'done') &&
+    isNumOrNull(x.nodes) &&
+    isNumOrNull(x.elapsedMs) &&
+    isString(x.best)
+  );
+}
+
+function isCheckResult(x: unknown): x is CheckResult {
+  return (
+    isRecord(x) &&
+    isString(x.name) &&
+    (x.status === 'pass' || x.status === 'fail' || x.status === 'skip') &&
+    isString(x.detail)
+  );
+}
+
+function isWasiStaticInfo(x: unknown): x is WasiStaticInfo {
+  return (
+    isRecord(x) &&
+    (x.profile === 'polls' || x.profile === 'deaf') &&
+    Array.isArray(x.requires) &&
+    x.requires.every(isString) &&
+    typeof x.threadSpawn === 'boolean' &&
+    typeof x.sharedMemory === 'boolean' &&
+    typeof x.atomics === 'boolean' &&
+    typeof x.exceptionHandling === 'boolean' &&
+    Array.isArray(x.relaxed) &&
+    x.relaxed.every(
+      (r) => Array.isArray(r) && r.length === 2 && isString(r[0]) && typeof r[1] === 'number',
+    )
+  );
+}
+
+function isWasiIdentity(x: unknown): x is { name: string; author: string } {
+  return isRecord(x) && isString(x.name) && isString(x.author);
+}
 
 function isInspection(x: unknown): x is EngineInspection {
   return (
@@ -90,7 +143,9 @@ function isInspection(x: unknown): x is EngineInspection {
     isString(x.idName) &&
     isString(x.idAuthor) &&
     isNumOrNull(x.startMs) &&
-    Array.isArray(x.options)
+    Array.isArray(x.options) &&
+    x.options.every(isUciOption) &&
+    isString(x.error)
   );
 }
 
@@ -100,8 +155,11 @@ function isProbe(x: unknown): x is EngineProbe {
     x.state === 'done' &&
     (x.suite === 'startpos' || x.suite === 'three') &&
     typeof x.depth === 'number' &&
+    Number.isFinite(x.depth) &&
     isNumOrNull(x.startMs) &&
-    Array.isArray(x.rows)
+    Array.isArray(x.rows) &&
+    x.rows.every(isProbeRow) &&
+    isString(x.error)
   );
 }
 
@@ -110,8 +168,12 @@ function isWasiReport(x: unknown): x is WasiCheckReport {
     isRecord(x) &&
     isString(x.fileName) &&
     typeof x.size === 'number' &&
+    Number.isFinite(x.size) &&
     (x.state === 'pass' || x.state === 'fail' || x.state === 'invalid' || x.state === 'static') &&
+    (x.info === null || isWasiStaticInfo(x.info)) &&
+    (x.identity === null || isWasiIdentity(x.identity)) &&
     Array.isArray(x.results) &&
+    x.results.every(isCheckResult) &&
     isString(x.fatalError) &&
     isString(x.staticNote)
   );
@@ -140,7 +202,7 @@ export function loadEngineCache(): Record<string, PersistedEngineData> {
 }
 
 /** Saves persisted engine data to localStorage; ignores quota or privacy errors. */
-export function saveEngineCache(data: Record<string, PersistedEngineData>): void {
+function saveEngineCache(data: Record<string, PersistedEngineData>): void {
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify(data));
   } catch {
@@ -159,6 +221,17 @@ export function persistEngineInspection(
   const prev = saved[id];
   const next: PersistedEngineData = prev?.sha256 === sha256 ? { ...prev } : { sha256 };
   next.inspection = inspection;
+  saved[id] = next;
+  saveEngineCache(saved);
+}
+
+/** Merges one engine's completed speed probe into the persisted cache without dropping inspection/WASI data. */
+export function persistEngineProbe(id: string, sha256: string, probe: EngineProbe): void {
+  if (probe.state !== 'done') return;
+  const saved = loadEngineCache();
+  const prev = saved[id];
+  const next: PersistedEngineData = prev?.sha256 === sha256 ? { ...prev } : { sha256 };
+  next.probe = probe;
   saved[id] = next;
   saveEngineCache(saved);
 }
@@ -247,7 +320,13 @@ export async function executeWasiCheck(
 
   const isWasmHeader =
     wasm.length >= 8 && wasm[0] === 0 && wasm[1] === 0x61 && wasm[2] === 0x73 && wasm[3] === 0x6d;
-  if (!isWasmHeader || !WebAssembly.validate(wasm.slice().buffer)) {
+  const wasmBuffer =
+    wasm.buffer instanceof ArrayBuffer &&
+    wasm.byteOffset === 0 &&
+    wasm.byteLength === wasm.buffer.byteLength
+      ? wasm.buffer
+      : wasm.slice().buffer;
+  if (!isWasmHeader || !WebAssembly.validate(wasmBuffer)) {
     report.fatalError = 'Invalid WebAssembly module.';
     report.state = 'invalid';
     return;
@@ -271,9 +350,19 @@ export async function executeWasiCheck(
 
   if (liveBlocked) {
     report.staticNote = liveBlocked;
-    await runChecks(wasm, noLiveDriver, { only: 'declaration', signal }, (r) => {
-      if (!signal.aborted) report.results.push(r);
-    });
+    try {
+      await runChecks(wasm, noLiveDriver, { only: 'declaration', signal }, (r) => {
+        if (!signal.aborted) report.results.push(r);
+      });
+    } catch (err) {
+      if (signal.aborted) {
+        report.state = 'cancelled';
+        return;
+      }
+      report.fatalError = err instanceof Error ? err.message : String(err);
+      report.state = 'fail';
+      return;
+    }
     if (signal.aborted) {
       report.state = 'cancelled';
       return;

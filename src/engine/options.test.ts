@@ -5,6 +5,7 @@ import {
   isDefaultOptionValue,
   isHiddenPlayOption,
   optionBounds,
+  optionDefaultValue,
   parseOption,
   sortOptions,
   summarizeOverrides,
@@ -115,5 +116,38 @@ describe('UCI option parser', () => {
         'depth 8',
       ),
     ).toEqual(['depth 8', 'UCI_LimitStrength', 'Skill Level 8', 'Hash 32']);
+  });
+
+  it('preserves UCI keywords inside option names, string defaults, and combo vars', () => {
+    expect(parseOption('option name Eval max ply type spin default 64 min 1 max 128')).toEqual({
+      name: 'Eval max ply',
+      type: 'spin',
+      defaultValue: '64',
+      range: '1..128',
+      min: 1,
+      max: 128,
+    });
+    expect(
+      parseOption('option name EvalFile type string default net min max var type.nnue'),
+    ).toEqual({
+      name: 'EvalFile',
+      type: 'string',
+      defaultValue: 'net min max var type.nnue',
+      range: '',
+    });
+    expect(
+      parseOption('option name Mode type combo default max risk var max risk var min risk'),
+    ).toEqual({
+      name: 'Mode',
+      type: 'combo',
+      defaultValue: 'max risk',
+      range: 'max risk, min risk',
+      vars: ['max risk', 'min risk'],
+    });
+  });
+
+  it('falls back to spin min when defaultValue is empty', () => {
+    const opt = mustParse('option name UCI_Elo type spin min 1350 max 2850');
+    expect(optionDefaultValue(opt)).toBe(1350);
   });
 });
