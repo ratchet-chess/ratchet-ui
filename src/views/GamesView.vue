@@ -26,6 +26,7 @@ import { PLAYED, useGames, type Collection } from '../stores/games.ts';
 import { bytes, count, sentence } from '../ui/format.ts';
 import GamesFilterBar from './games/GamesFilterBar.vue';
 
+// ── route and collection loading ────────────────────────────────────────────
 const games = useGames();
 const route = useRoute();
 const router = useRouter();
@@ -92,10 +93,23 @@ async function loadSelectedGame(): Promise<void> {
     openGameText.value = '';
     return;
   }
-  const text = await games.readGameText(openId.value, index.value, gIdx);
-  if (mine !== gameToken) return;
-  openGameText.value = text;
-  openGame.value = parseSingleGame(text);
+  if (gIdx >= index.value.count) {
+    openGame.value = null;
+    openGameText.value = '';
+    notice.value = `Game #${count(gIdx + 1)} is outside this collection.`;
+    return;
+  }
+  try {
+    const text = await games.readGameText(openId.value, index.value, gIdx);
+    if (mine !== gameToken) return;
+    openGameText.value = text;
+    openGame.value = parseSingleGame(text);
+  } catch (e) {
+    if (mine !== gameToken) return;
+    openGame.value = null;
+    openGameText.value = '';
+    notice.value = `Could not read game: ${e instanceof Error ? e.message : String(e)}`;
+  }
 }
 
 onMounted(async () => {
@@ -108,6 +122,13 @@ watch(openId, (id) => {
   colsExpanded.value = false;
   void openCollection(id);
 });
+watch(
+  () => [open.value?.updated, open.value?.bytes] as const,
+  ([updated, size], [prevUpdated, prevBytes]) => {
+    if (!openId.value || !updated || (updated === prevUpdated && size === prevBytes)) return;
+    void openCollection(openId.value);
+  },
+);
 watch(
   () => route.query['round'],
   () => void openRound(),
@@ -141,7 +162,12 @@ function startRename(c: Collection): void {
 async function commitRename(c: Collection): Promise<void> {
   const next = renameDraft.value.trim();
   renamingId.value = '';
-  if (next && next !== c.name) await games.rename(c.id, next);
+  if (!next || next === c.name) return;
+  try {
+    await games.rename(c.id, next);
+  } catch (e) {
+    notice.value = `Rename failed: ${e instanceof Error ? e.message : String(e)}`;
+  }
 }
 function cancelRename(): void {
   renamingId.value = '';
@@ -156,13 +182,9 @@ const hasFilter = computed(() => isFiltered(filter.value));
 
 const PAGE = 100;
 const page = ref(0);
-watch(
-  filter,
-  () => {
-    page.value = 0;
-  },
-  { deep: true },
-);
+watch(filter, () => {
+  page.value = 0;
+});
 
 const pages = computed(() => Math.max(1, Math.ceil(filtered.value.length / PAGE)));
 watch(pages, (p) => {
@@ -268,20 +290,35 @@ async function onDrop(e: DragEvent): Promise<void> {
   await importFiles(files);
 }
 
-const download = (c: Collection) => games.download(c.id, c.name);
+// ── download, delete, and display helpers ───────────────────────────────────
+async function download(c: Collection): Promise<void> {
+  try {
+    await games.download(c.id, c.name);
+  } catch (e) {
+    notice.value = `Download failed: ${e instanceof Error ? e.message : String(e)}`;
+  }
+}
 async function downloadFiltered(): Promise<void> {
   if (!open.value || !index.value) return;
-  if (!hasFilter.value) {
-    await games.download(open.value.id, open.value.name);
-    return;
+  try {
+    if (!hasFilter.value) {
+      await games.download(open.value.id, open.value.name);
+      return;
+    }
+    await games.downloadFiltered(open.value.id, open.value.name, index.value, filtered.value);
+  } catch (e) {
+    notice.value = `Download failed: ${e instanceof Error ? e.message : String(e)}`;
   }
-  await games.downloadFiltered(open.value.id, open.value.name, index.value, filtered.value);
 }
 
 async function remove(c: Collection): Promise<void> {
   if (!confirm(`Delete ${c.name} (${count(c.games)} games) from browser?`)) return;
-  await games.remove(c.id);
-  if (openId.value === c.id) await router.push('/games');
+  try {
+    await games.remove(c.id);
+    if (openId.value === c.id) await router.push('/games');
+  } catch (e) {
+    notice.value = `Delete failed: ${e instanceof Error ? e.message : String(e)}`;
+  }
 }
 
 const day = (iso: string) => iso.slice(0, 10);

@@ -10,34 +10,51 @@ const props = defineProps<{
 
 const W = 80;
 const H = 18;
+const finitePoints = computed(() =>
+  props.points.flatMap((v, i) => (Number.isFinite(v) ? [{ i, v }] : [])),
+);
+const finiteLevel = computed(() =>
+  props.level !== undefined && Number.isFinite(props.level) ? props.level : undefined,
+);
 const extent = computed(() => {
-  const all = props.level === undefined ? props.points : [...props.points, props.level];
-  const lo = Math.min(...all);
-  const hi = Math.max(...all);
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (const { v } of finitePoints.value) {
+    if (v < lo) lo = v;
+    if (v > hi) hi = v;
+  }
+  if (finiteLevel.value !== undefined) {
+    if (finiteLevel.value < lo) lo = finiteLevel.value;
+    if (finiteLevel.value > hi) hi = finiteLevel.value;
+  }
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return { lo: -1, hi: 1 };
   return hi > lo ? { lo, hi } : { lo: lo - 1, hi: hi + 1 };
 });
+const x = (i: number) => (props.points.length <= 1 ? W / 2 : (i / (props.points.length - 1)) * W);
 const y = (v: number) =>
   H - 1 - ((v - extent.value.lo) / (extent.value.hi - extent.value.lo)) * (H - 2);
 const line = computed(() =>
-  props.points
-    .map(
-      (v, i) => `${((i / Math.max(1, props.points.length - 1)) * W).toFixed(1)},${y(v).toFixed(1)}`,
-    )
-    .join(' '),
+  finitePoints.value.length >= 2
+    ? finitePoints.value.map(({ i, v }) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ')
+    : '',
+);
+const single = computed(() =>
+  finitePoints.value.length === 1 ? (finitePoints.value[0] ?? null) : null,
 );
 </script>
 
 <template>
   <svg :viewBox="`0 0 ${W} ${H}`" :width="W" :height="H" class="block" aria-hidden="true">
     <line
-      v-if="level !== undefined"
+      v-if="finiteLevel !== undefined"
       x1="0"
       :x2="W"
-      :y1="y(level)"
-      :y2="y(level)"
+      :y1="y(finiteLevel)"
+      :y2="y(finiteLevel)"
       class="stroke-faint"
       stroke-dasharray="2 2"
     />
-    <polyline :points="line" fill="none" class="stroke-accent" stroke-width="1.25" />
+    <polyline v-if="line" :points="line" fill="none" class="stroke-accent" stroke-width="1.25" />
+    <circle v-else-if="single" :cx="x(single.i)" :cy="y(single.v)" r="1.75" class="fill-accent" />
   </svg>
 </template>

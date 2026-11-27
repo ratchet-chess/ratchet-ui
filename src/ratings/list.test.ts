@@ -64,6 +64,15 @@ describe('pairUp', () => {
     const out = pairUp([file, file]);
     expect(out.map((g) => g.pair)).toEqual([0, 0, 1, 2, 3, 3, 4, 5]);
   });
+
+  it('treats Round "*.0" as loose instead of assigning a negative pair index', () => {
+    const out = pairUp([
+      { id: 't1', per: 2, control: null, games: [game('a', 'b', 1, '1.1')] },
+      { id: 't2', per: 2, control: null, games: [game('c', 'd', 1, '1.0')] },
+    ]);
+    expect(out[0]?.pair).toBe(0);
+    expect(out[1]?.pair).toBe(1);
+  });
 });
 
 /** a control that must read */
@@ -161,5 +170,23 @@ describe('rate', () => {
     expect(list.records[0]?.los).toBeGreaterThan(0.5);
     expect(list.records[0]?.mark).toBe('');
     expect(list.records[0]?.losses).toBe(0);
+  });
+
+  it('omits self-play-only engines instead of emitting 0-game NaN rows', () => {
+    const selfOnly: Source[] = [
+      {
+        id: 's',
+        per: null,
+        control: null,
+        games: [game('ratchet', 'ratchet', 1), game('ratchet', 'ratchet', 0)],
+      },
+    ];
+    const list = rate(
+      selfOnly,
+      { collections: new Set(['s']), control: null, forfeits: true },
+      null,
+    );
+    expect(list.rows).toEqual([]);
+    expect(list.games).toBe(0);
   });
 });

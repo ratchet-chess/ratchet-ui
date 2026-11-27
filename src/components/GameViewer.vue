@@ -64,7 +64,11 @@ watch(ply, async (p) => {
     return;
   }
   const el = box.querySelector<HTMLElement>(`[data-ply="${p}"]`);
-  el?.scrollIntoView?.({ block: 'nearest' });
+  if (!el) return;
+  const top = el.offsetTop - box.offsetTop;
+  const bottom = top + el.offsetHeight;
+  if (top < box.scrollTop) box.scrollTop = top;
+  else if (bottom > box.scrollTop + box.clientHeight) box.scrollTop = bottom - box.clientHeight;
 });
 
 function onKey(e: KeyboardEvent): void {
@@ -72,7 +76,8 @@ function onKey(e: KeyboardEvent): void {
   if (
     e.target instanceof HTMLInputElement ||
     e.target instanceof HTMLSelectElement ||
-    e.target instanceof HTMLTextAreaElement
+    e.target instanceof HTMLTextAreaElement ||
+    (e.target instanceof HTMLElement && e.target.isContentEditable)
   ) {
     return;
   }

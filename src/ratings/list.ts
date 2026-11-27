@@ -152,7 +152,7 @@ export function pairUp(sources: readonly Source[]): Counted[] {
       const last = new Map<string, ScannedGame>();
       const loose: ScannedGame[] = [];
       for (const g of src.games) {
-        if (/^\d+\.\d+$/.test(g.round)) last.set(g.round, g);
+        if (/^\d+\.[1-9]\d*$/.test(g.round)) last.set(g.round, g);
         else loose.push(g);
       }
       const base = next;
@@ -227,9 +227,9 @@ export function rate(
     tally.set(i, t);
   };
   for (const g of games) {
+    if (g.white === g.black) continue;
     const w = at(g.white);
     const b = at(g.black);
-    if (w === b) continue;
     fitGames.push({ white: w, black: b, score: g.score, pair: g.pair });
     add(w, g.score, g.forfeit && g.score === 0);
     add(b, 1 - g.score, g.forfeit && g.score === 1);
@@ -285,7 +285,7 @@ export function rate(
         draws: t.draws,
         losses: t.losses,
         forfeits: t.forfeits,
-        score: (t.wins + t.draws / 2) / n,
+        score: n > 0 ? (t.wins + t.draws / 2) / n : 0,
         opponents: o.games > 0 ? o.sum / o.games : 0,
         los: null,
         pool: order(r.pool),

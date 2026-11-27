@@ -71,4 +71,13 @@ describe('scanHeaders', () => {
     expect(engineName('ratchet-0.3.14 #2')).toBe('ratchet-0.3.14');
     expect(engineName('Engine #2b')).toBe('Engine #2b');
   });
+
+  it('handles UTF-8 BOM, leading spaces, and padded Termination values', () => {
+    const bom = `\uFEFF[White "a"]\n  [Black "b"]\n[Result "1-0"]\n[Termination " time forfeit "]\n\n1. e4 1-0\n`;
+    const { games, total } = scanHeaders(bom);
+    expect(total).toBe(1);
+    expect(games).toEqual([
+      { white: 'a', black: 'b', score: 1, forfeit: true, round: '', control: '' },
+    ]);
+  });
 });

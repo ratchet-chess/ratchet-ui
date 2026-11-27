@@ -187,4 +187,30 @@ describe('fitRatings', () => {
     expect(fit.rated[4]).toBeNull();
     expect(fit.differenceError(0, 2)).toBeNaN();
   });
+
+  it('still rates the anchor and opponent when the anchor sweeps its only opponent', () => {
+    const games: FitGame[] = [];
+    for (let p = 0; p < 5; p++) {
+      games.push({ white: 0, black: 1, score: 1, pair: p });
+      games.push({ white: 1, black: 0, score: 0, pair: p });
+    }
+    const fit = fitRatings(2, games, { index: 0, rating: 3500 });
+    expect(fit.anchorPool).toBeGreaterThanOrEqual(0);
+    expect(rated(fit, 0).elo).toBe(3500);
+    expect(rated(fit, 1).elo).toBeLessThan(3500);
+    expect(rated(fit, 0).pool).toBe(rated(fit, 1).pool);
+  });
+
+  it('rates a 3-engine transitive sweep ladder in strict order instead of collapsing to null', () => {
+    const games: FitGame[] = [];
+    for (let p = 0; p < 5; p++) {
+      games.push({ white: 2, black: 0, score: 1, pair: p });
+      games.push({ white: 0, black: 2, score: 0, pair: p });
+      games.push({ white: 0, black: 1, score: 1, pair: 10 + p });
+      games.push({ white: 1, black: 0, score: 0, pair: 10 + p });
+    }
+    const fit = fitRatings(3, games);
+    expect(rated(fit, 2).elo).toBeGreaterThan(rated(fit, 0).elo);
+    expect(rated(fit, 0).elo).toBeGreaterThan(rated(fit, 1).elo);
+  });
 });

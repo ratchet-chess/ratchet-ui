@@ -380,6 +380,7 @@ function ratingFor(opponents: readonly number[], target: number, start: number):
       f += e;
       slope += K * e * (1 - e);
     }
+    if (!(slope > 0)) break;
     const step = Math.max(-400, Math.min(400, -f / slope));
     r += step;
     if (Math.abs(step) < 1e-9) break;
@@ -404,7 +405,6 @@ export function fitRatings(
   let anchorPool = ratePools(n, kept, anchor, rated, where, fits);
 
   // back in, the last to leave first, each against the opponents already rated in one pool
-  const unplaced: number[] = [];
   for (const [e, s] of [...swept].toSorted((x, y) => y[1].round - x[1].round)) {
     const byPool = new Map<number, number[]>();
     for (const g of games) {
@@ -414,21 +414,22 @@ export function fitRatings(
       byPool.set(r.pool, [...(byPool.get(r.pool) ?? []), r.elo]);
     }
     const [pool, opponents] = [...byPool].toSorted((x, y) => y[1].length - x[1].length)[0] ?? [];
-    if (pool === undefined || !opponents) {
-      unplaced.push(e);
-      continue;
-    }
+    if (pool === undefined || !opponents) continue;
     const target = s.bound === 'floor' ? opponents.length - 0.5 : 0.5;
     const mean = opponents.reduce((t, o) => t + o, 0) / opponents.length;
     const elo = ratingFor(opponents, target, mean + (s.bound === 'floor' ? 400 : -400));
     rated[e] = { elo, error: 0, model: false, pool, bound: s.bound };
   }
-  // engines that only swept or were swept by each other: the prior keeps them finite
-  if (unplaced.length > 0) {
-    const left = new Set(unplaced);
+  // engines that still have no rating (swept only against each other, or left isolated when every
+  // opponent was swept — including an anchor whose only opponents swept): the prior keeps them finite
+  const left = new Set<number>();
+  for (let i = 0; i < n; i++) if (rated[i] === null) left.add(i);
+  if (left.size > 0) {
     const among = games.filter((g) => left.has(g.white) && left.has(g.black));
-    const pool = ratePools(n, among, anchor, rated, where, fits);
-    if (anchorPool < 0) anchorPool = pool;
+    if (among.length > 0) {
+      const pool = ratePools(n, among, anchor, rated, where, fits);
+      if (anchorPool < 0) anchorPool = pool;
+    }
   }
   return {
     rated,

@@ -3,7 +3,7 @@
  * Ratings: every engine rated from the games in Games, a tournament's or a PGN file's, with no
  * manager. Filters in one bar; the rating list, or head-to-head records, below.
  */
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import HelpTip from '../components/HelpTip.vue';
 import PageHeader from '../components/PageHeader.vue';
@@ -39,11 +39,6 @@ watch(controls, (cs) => {
   if (ratings.control !== null && !cs.some(([key]) => key === ratings.control))
     ratings.control = null;
 });
-const anchorPlayed = computed(() =>
-  counted.value.some((c) =>
-    c.games.some((g) => g.white === ANCHOR_NAME || g.black === ANCHOR_NAME),
-  ),
-);
 const list = computed(() =>
   rate(
     counted.value,
@@ -51,6 +46,7 @@ const list = computed(() =>
     settings.anchorRating === null ? null : { name: ANCHOR_NAME, rating: settings.anchorRating },
   ),
 );
+const anchorPlayed = computed(() => list.value.rows.some((r) => r.name === ANCHOR_NAME));
 
 // ── what shows ───────────────────────────────────────────────────────────────
 const query = computed(() => ratings.search.trim().toLowerCase());
@@ -79,12 +75,20 @@ function setRating(e: Event): void {
   settings.anchorRating = v === '' || !Number.isFinite(Number(v)) ? null : Number(v);
 }
 
+function setMinGames(e: Event): void {
+  const n = Number((e.target as HTMLInputElement).value);
+  ratings.minGames = Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
 // ── copy as text ─────────────────────────────────────────────────────────────
 const notice = ref('');
+let noticeTimer: ReturnType<typeof setTimeout> | undefined;
 function tell(text: string): void {
   notice.value = text;
-  setTimeout(() => (notice.value = ''), 4000);
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => (notice.value = ''), 4000);
 }
+onBeforeUnmount(() => clearTimeout(noticeTimer));
 function heading(): string[] {
   const l = list.value;
   return [
@@ -137,10 +141,12 @@ async function copy(markdown: boolean): Promise<void> {
     <label class="flex items-center gap-1.5 text-dense text-dim">
       Min games
       <input
-        v-model.number="ratings.minGames"
+        :value="ratings.minGames || ''"
         type="number"
         min="0"
+        placeholder="0"
         class="field-sm no-spin num w-16 text-right"
+        @input="setMinGames"
       />
     </label>
     <span class="flex items-center gap-1.5">

@@ -73,6 +73,10 @@ async function buildIndex(blob: Blob): Promise<PgnIndex> {
       done();
       reject(new Error(e.message || 'PGN indexer worker failed'));
     };
+    worker.onmessageerror = () => {
+      done();
+      reject(new Error('PGN indexer returned an unreadable message'));
+    };
     worker.postMessage({ id: 1, blob });
   });
 }
@@ -96,6 +100,7 @@ export const useGames = defineStore('games', () => {
   const list = ref<Collection[]>([]);
   const error = ref('');
   const memIndex = new Map<string, { updated: string; bytes: number; index: PgnIndex }>();
+  const indexing = new Map<string, Promise<PgnIndex>>();
 
   async function saveIndex(): Promise<void> {
     await writeText(DIR, GAMES_INDEX, JSON.stringify(list.value, null, 1));
@@ -137,26 +142,43 @@ export const useGames = defineStore('games', () => {
     const mem = memIndex.get(c.id);
     if (mem && mem.updated === c.updated && mem.bytes === c.bytes) return mem.index;
 
-    try {
-      const cached = await getValue(`${IDB_PREFIX}${c.id}`);
-      const hydrated = hydratePgnIndex(cached, c.updated, c.bytes);
-      if (hydrated) {
-        memIndex.set(c.id, { updated: c.updated, bytes: c.bytes, index: hydrated });
-        return hydrated;
-      }
-    } catch {
-      // IndexedDB unavailable (e.g. private mode); fall back to indexing directly
-    }
+    const key = `${c.id}\0${c.updated}\0${c.bytes}`;
+    const active = indexing.get(key);
+    if (active) return active;
 
-    const blob = await readBlob(c.id);
-    const index = blob ? await buildIndex(blob) : await indexPgnBlob(new Blob([]));
-    memIndex.set(c.id, { updated: c.updated, bytes: c.bytes, index });
-    try {
-      await setValue(`${IDB_PREFIX}${c.id}`, dehydratePgnIndex(index, c.updated, c.bytes));
-    } catch {
-      // Ignore IDB quota/storage errors; memory cache still holds the index
-    }
-    return index;
+    const task = (async (): Promise<PgnIndex> => {
+      const stillCurrent = () =>
+        list.value.some((x) => x.id === c.id && x.updated === c.updated && x.bytes === c.bytes);
+
+      try {
+        const cached = await getValue(`${IDB_PREFIX}${c.id}`);
+        const hydrated = hydratePgnIndex(cached, c.updated, c.bytes);
+        if (hydrated) {
+          if (stillCurrent())
+            memIndex.set(c.id, { updated: c.updated, bytes: c.bytes, index: hydrated });
+          return hydrated;
+        }
+      } catch {
+        // IndexedDB unavailable (e.g. private mode); fall back to indexing directly
+      }
+
+      const blob = await readBlob(c.id);
+      if (!blob) return indexPgnBlob(new Blob([]));
+      const index = await buildIndex(blob);
+      if (stillCurrent()) {
+        memIndex.set(c.id, { updated: c.updated, bytes: c.bytes, index });
+        try {
+          await setValue(`${IDB_PREFIX}${c.id}`, dehydratePgnIndex(index, c.updated, c.bytes));
+        } catch {
+          // Ignore IDB quota/storage errors; memory cache still holds the index
+        }
+      }
+      return index;
+    })().finally(() => {
+      indexing.delete(key);
+    });
+    indexing.set(key, task);
+    return task;
   }
 
   /** Reads one game's raw PGN text by its byte span without reading the rest of the file. */
@@ -171,7 +193,6 @@ export const useGames = defineStore('games', () => {
 
   /** keeps an opened PGN file or Blob as a new collection; returns its id */
   async function addFile(name: string, data: string | Blob): Promise<string> {
-    await load();
     const clean = name.trim() || 'Untitled';
     const now = new Date();
     const id = makeId(clean, now);
@@ -188,8 +209,11 @@ export const useGames = defineStore('games', () => {
       bytes: blob.size,
       updated,
     };
-    upsert(col);
-    await saveIndex();
+    await serial(async () => {
+      await load();
+      upsert(col);
+      await saveIndex();
+    });
     memIndex.set(id, { updated, bytes: blob.size, index });
     try {
       await setValue(`${IDB_PREFIX}${id}`, dehydratePgnIndex(index, updated, blob.size));
@@ -309,12 +333,15 @@ export const useGames = defineStore('games', () => {
     triggerDownload(sliceGamesBlob(file, index, indices), `${name}-filtered.pgn`);
   }
 
-  async function remove(id: string): Promise<void> {
-    await removeFile(DIR, `${id}.pgn`);
-    list.value = list.value.filter((c) => c.id !== id);
-    memIndex.delete(id);
-    void deleteValue(`${IDB_PREFIX}${id}`).catch(() => undefined);
-    await saveIndex();
+  function remove(id: string): Promise<void> {
+    return serial(async () => {
+      await load();
+      await removeFile(DIR, `${id}.pgn`);
+      list.value = list.value.filter((c) => c.id !== id);
+      memIndex.delete(id);
+      void deleteValue(`${IDB_PREFIX}${id}`).catch(() => undefined);
+      await saveIndex();
+    });
   }
 
   return {

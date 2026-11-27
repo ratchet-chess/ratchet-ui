@@ -54,5 +54,10 @@ describe('replay', () => {
     const r = replay(nth('1. e4 e5 2. Ke3 *\n', 0));
     expect(r.steps).toHaveLength(3);
     expect(r.error).toBe('move 2, Ke3, is not legal here');
+
+    const custom = replay(
+      nth('[SetUp "1"]\n[FEN "4k3/8/8/8/8/8/4K3/8 w - - 0 25"]\n\n25. Ke5 *\n', 0),
+    );
+    expect(custom.error).toBe('move 25, Ke5, is not legal here');
   });
 });

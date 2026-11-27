@@ -126,4 +126,26 @@ describe('PgnIndex', () => {
     expect(restored?.lower[1]).toBe(idx.lower[1]);
     expect(hydratePgnIndex(stored, '2026-11-26T00:00:00Z', 500)).toBeNull();
   });
+
+  it('matches tagless unfinished games under result "*" and excludes draws from forfeits', () => {
+    const pgn = `[Event "e"]
+[White "a"]
+[Black "b"]
+
+1. e4 e5 *
+
+[Event "e"]
+[White "a"]
+[Black "b"]
+[Result "1/2-1/2"]
+[Termination "time forfeit"]
+
+1. d4 d5 1/2-1/2
+`;
+    const idx = indexPgnText(pgn);
+    expect(rowAt(idx, 0).result).toBe('*');
+    expect([...filterPgnIndex(idx, { ...EMPTY_FILTER, result: '*' })]).toEqual([0]);
+    expect(rowAt(idx, 1).forfeit).toBe(false);
+    expect([...filterPgnIndex(idx, { ...EMPTY_FILTER, termination: 'forfeit' })]).toEqual([]);
+  });
 });

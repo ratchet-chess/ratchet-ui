@@ -4,6 +4,8 @@
  * pass over its text.
  */
 
+import { isForfeitTermination } from '../games/index.ts';
+
 /** one game as Ratings counts it */
 export interface ScannedGame {
   white: string;
@@ -27,14 +29,6 @@ export interface Scan {
 
 const TAG = /^\[([A-Za-z0-9_]+)\s+"((?:[^"\\]|\\.)*)"\]\s*$/;
 const SCORES: Record<string, number> = { '1-0': 1, '0-1': 0, '1/2-1/2': 0.5 };
-/** PGN Termination values that mean the loser forfeited rather than lost over the board */
-const FORFEITS = new Set([
-  'time forfeit',
-  'rules infraction',
-  'abandoned',
-  'illegal move',
-  'stalled connection',
-]);
 
 /**
  * An engine's name as Ratings knows it: the PGN name without the ` #2` that a tournament adds
@@ -43,6 +37,7 @@ const FORFEITS = new Set([
 export const engineName = (pgnName: string): string => pgnName.replace(/ #\d+$/, '');
 
 export function scanHeaders(text: string): Scan {
+  const clean = text.startsWith('\uFEFF') ? text.slice(1) : text;
   const games: ScannedGame[] = [];
   let total = 0;
   let tags: Record<string, string> | null = null;
@@ -57,7 +52,7 @@ export function scanHeaders(text: string): Scan {
         white: engineName(white),
         black: engineName(black),
         score,
-        forfeit: score !== 0.5 && FORFEITS.has((tags.Termination ?? '').toLowerCase()),
+        forfeit: score !== 0.5 && isForfeitTermination(tags.Termination ?? ''),
         round: tags.Round ?? '',
         control: tags.TimeControl ?? '',
       });
@@ -65,7 +60,8 @@ export function scanHeaders(text: string): Scan {
     tags = null;
   };
   let inTags = false;
-  for (const line of text.split('\n')) {
+  for (const rawLine of clean.split('\n')) {
+    const line = rawLine.trimStart();
     const m = line.startsWith('[') ? TAG.exec(line) : null;
     if (m) {
       // a tag after movetext starts the next game

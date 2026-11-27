@@ -99,11 +99,15 @@ export function parseMoveComment(comments: readonly string[], mover: Color, ply:
         if (Number.isFinite(mag) && mag > 0) out.mate = (neg ? -1 : 1) * sign * mag;
       } else {
         const pawns = Number(score);
-        if (Number.isFinite(pawns)) out.cp = Math.round(sign * pawns * 100);
+        if (Number.isFinite(pawns)) out.cp = Math.round(sign * pawns * 100) + 0;
       }
       if (fc[3]) {
         const sec = Number(fc[3]);
         if (Number.isFinite(sec) && sec >= 0) out.timeSec = sec;
+      }
+      if (fc[4]) {
+        const tail = fc[4].replaceAll(ANY_CMD_TAG, '').trim();
+        if (tail) notes.push(tail);
       }
       continue;
     }
@@ -190,9 +194,10 @@ export function formatEval(point: { cp?: number; mate?: number }): string {
 /** Formats a move thinking time in seconds compactly (`0.12s`, `3.4s`, `1m 12s`). */
 export function formatMoveTime(sec: number): string {
   if (sec < 10) return `${sec.toFixed(2)}s`;
-  if (sec < 60) return `${sec.toFixed(1)}s`;
-  const m = Math.floor(sec / 60);
-  const s = Math.round(sec % 60);
+  if (sec < 59.95) return `${sec.toFixed(1)}s`;
+  const total = Math.round(sec);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
   return `${m}m ${String(s).padStart(2, '0')}s`;
 }
 

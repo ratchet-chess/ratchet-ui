@@ -6,6 +6,8 @@
  */
 import { openingMatches } from '../chess/openings.ts';
 
+// ── types, forfeit rules, and cache hydration ───────────────────────────────
+
 export const PGN_INDEX_VERSION = 1;
 
 /** Compact columnar index of every game in a PGN collection. */
@@ -560,6 +562,7 @@ export async function indexPgnBlob(blob: Blob): Promise<PgnIndex> {
 export function rowAt(index: PgnIndex, i: number): IndexedGameRow {
   const s = index.strings;
   const term = s[index.termination[i] ?? 0] ?? '';
+  const result = s[index.result[i] ?? 0] || '*';
   return {
     index: i,
     white: s[index.white[i] ?? 0] || '?',
@@ -568,12 +571,12 @@ export function rowAt(index: PgnIndex, i: number): IndexedGameRow {
     site: s[index.site[i] ?? 0] ?? '',
     date: s[index.date[i] ?? 0] ?? '',
     round: s[index.round[i] ?? 0] ?? '',
-    result: s[index.result[i] ?? 0] || '*',
+    result,
     eco: s[index.eco[i] ?? 0] ?? '',
     opening: s[index.opening[i] ?? 0] ?? '',
     termination: term,
     plies: index.plies[i] ?? 0,
-    forfeit: isForfeitTermination(term),
+    forfeit: result !== '1/2-1/2' && isForfeitTermination(term),
   };
 }
 
@@ -630,7 +633,9 @@ export function filterPgnIndex(index: PgnIndex, filter: GameFilter): Int32Array 
   });
 
   const wantResultId = filter.result ? index.strings.indexOf(filter.result) : -1;
-  if (filter.result && wantResultId < 0) return new Int32Array(0);
+  const allowEmptyResult = filter.result === '*';
+  if (filter.result && wantResultId < 0 && !allowEmptyResult) return new Int32Array(0);
+  const drawResultId = index.strings.indexOf('1/2-1/2');
 
   let termMask: Uint8Array | null = null;
   if (filter.termination) {
@@ -668,14 +673,21 @@ export function filterPgnIndex(index: PgnIndex, filter: GameFilter): Int32Array 
   const { white, black, event, site, date, round, result, eco, opening, termination } = index;
 
   outer: for (let i = 0; i < n; i++) {
-    if (wantResultId >= 0 && result[i] !== wantResultId) continue;
-    if (termMask && termMask[termination[i] ?? 0] !== 1) continue;
+    if (filter.result) {
+      const rId = result[i] ?? 0;
+      if (rId !== wantResultId && !(allowEmptyResult && rId === 0)) continue;
+    }
+    if (termMask) {
+      if (termMask[termination[i] ?? 0] !== 1) continue;
+      if (filter.termination === 'forfeit' && drawResultId >= 0 && result[i] === drawResultId)
+        continue;
+    }
     if (dateMask && dateMask[date[i] ?? 0] !== 1) continue;
 
     if (openingCache) {
       const eId = eco[i] ?? 0;
       const oId = opening[i] ?? 0;
-      const key = eId * 65_536 + oId;
+      const key = eId * sCount + oId;
       let hit = openingCache.get(key);
       if (hit === undefined) {
         hit = openingMatches(index.strings[eId] ?? '', index.strings[oId] ?? '', openingQ);

@@ -56,6 +56,9 @@ describe('parseMoveComment', () => {
       cp: 150,
       note: 'checkmate',
     });
+    const zeroBlack = parseMoveComment(['0.00/12 0.10s, White wins by adjudication'], 'black', 10);
+    expect(Object.is(zeroBlack.cp, 0)).toBe(true);
+    expect(zeroBlack.note).toBe('White wins by adjudication');
   });
 });
 
@@ -101,7 +104,9 @@ describe('formatting and winChance', () => {
     expect(formatEval({ mate: -2 })).toBe('-M2');
     expect(formatMoveTime(0.12)).toBe('0.12s');
     expect(formatMoveTime(14.5)).toBe('14.5s');
+    expect(formatMoveTime(59.96)).toBe('1m 00s');
     expect(formatMoveTime(72)).toBe('1m 12s');
+    expect(formatMoveTime(119.7)).toBe('2m 00s');
     expect(formatClock(280)).toBe('4:40');
     expect(formatClock(3880)).toBe('1:04:40');
   });

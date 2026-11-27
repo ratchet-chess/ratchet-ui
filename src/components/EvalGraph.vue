@@ -31,6 +31,8 @@ const props = withDefaults(
 const emit = defineEmits<{ select: [ply: number] }>();
 
 const W = 500;
+const PAD = 4;
+const INNER_W = W - 2 * PAD;
 const H = 112;
 const TH = 36;
 const MID_Y = H / 2;
@@ -38,7 +40,9 @@ const SCALE_Y = H / 2 / 1.05;
 const MID_T = TH / 2;
 
 const total = computed(() => props.gameEval.points.length);
-const xAt = (ply: number) => (total.value <= 0 ? 0 : (W * ply) / total.value);
+const clampPly = (ply: number) => Math.min(total.value, Math.max(0, ply));
+const xAt = (ply: number) =>
+  total.value <= 0 ? PAD : PAD + (INNER_W * clampPly(ply)) / total.value;
 const yAt = (w: number) => MID_Y - SCALE_Y * w;
 
 /** contiguous runs of book moves for subtle background shading */
@@ -59,21 +63,23 @@ const bookSpans = computed(() => {
 
 /** SVG paths for the win-chance curve and its shaded area to the 0-line */
 const curves = computed(() => {
-  const pts: { x: number; y: number }[] = [];
+  const pts: { ply: number; x: number; y: number }[] = [];
   let lastW = 0;
   for (const p of props.gameEval.points) {
     const has = p.cp !== undefined || p.mate !== undefined;
     if (!has) continue;
     lastW = winChance(p);
-    pts.push({ x: xAt(p.ply), y: yAt(lastW) });
+    pts.push({ ply: p.ply, x: xAt(p.ply), y: yAt(lastW) });
   }
   if (pts.length === 0) return { line: '', area: '' };
   const first = pts[0];
   const last = pts.at(-1);
   if (!first || !last) return { line: '', area: '' };
+  // Start flat at the midline right before the first evaluated move so book moves stay flat
+  const startX = xAt(Math.max(0, first.ply - 1));
   const segs = pts.map((p) => `L${p.x.toFixed(1)},${p.y.toFixed(1)}`).join('');
-  const line = `M0,${MID_Y.toFixed(1)}${segs}`;
-  const area = `${line}L${last.x.toFixed(1)},${MID_Y.toFixed(1)}L0,${MID_Y.toFixed(1)}Z`;
+  const line = `M${startX.toFixed(1)},${MID_Y.toFixed(1)}${segs}`;
+  const area = `${line}L${last.x.toFixed(1)},${MID_Y.toFixed(1)}L${startX.toFixed(1)},${MID_Y.toFixed(1)}Z`;
   return { line, area };
 });
 
@@ -81,7 +87,7 @@ const curves = computed(() => {
 const timeBars = computed(() => {
   if (!props.gameEval.hasTime || total.value === 0) return [];
   const maxT = Math.max(props.gameEval.maxTimeSec, 0.05);
-  const bw = Math.max(1.5, Math.min(8, W / total.value - 1));
+  const bw = Math.max(1.5, Math.min(8, INNER_W / total.value - 1));
   const out: { ply: number; x: number; y: number; w: number; h: number; white: boolean }[] = [];
   for (const p of props.gameEval.points) {
     if (p.timeSec === undefined || p.timeSec <= 0) continue;
@@ -89,7 +95,7 @@ const timeBars = computed(() => {
     const white = p.mover === 'white';
     out.push({
       ply: p.ply,
-      x: xAt(p.ply) - bw / 2,
+      x: Math.max(0, Math.min(W - bw, xAt(p.ply) - bw / 2)),
       y: white ? MID_T - h : MID_T,
       w: bw,
       h,
@@ -140,11 +146,14 @@ const dragging = ref(false);
 function plyFromPointer(e: PointerEvent): number {
   const box = (e.currentTarget as HTMLElement).getBoundingClientRect();
   if (box.width <= 0 || total.value <= 0) return 0;
-  const frac = Math.min(1, Math.max(0, (e.clientX - box.left) / box.width));
+  const padPx = (PAD / W) * box.width;
+  const innerPx = Math.max(1, box.width - 2 * padPx);
+  const frac = Math.min(1, Math.max(0, (e.clientX - box.left - padPx) / innerPx));
   return Math.round(frac * total.value);
 }
 
 function onPointerDown(e: PointerEvent): void {
+  if (e.button !== 0) return;
   dragging.value = true;
   (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   const p = plyFromPointer(e);
@@ -171,7 +180,7 @@ const shownPoint = computed<MoveEval | null>(() => {
   return idx > 0 ? (props.gameEval.points[idx - 1] ?? null) : null;
 });
 const hoverLeftPct = computed(() =>
-  hoverPly.value === null || total.value === 0 ? 0 : (100 * hoverPly.value) / total.value,
+  hoverPly.value === null || total.value === 0 ? 0 : (100 * xAt(hoverPly.value)) / W,
 );
 const totalMoves = computed(() => Math.ceil((total.value + (props.blackFirst ? 1 : 0)) / 2));
 const legendNote = computed(() =>
@@ -194,7 +203,10 @@ const legendNote = computed(() =>
         @pointerdown="onPointerDown"
         @pointermove="onPointerMove"
         @pointerup="onPointerUp"
-        @pointercancel="dragging = false"
+        @pointercancel="
+          dragging = false;
+          hoverPly = null;
+        "
         @pointerleave="hoverPly = null"
       >
         <svg

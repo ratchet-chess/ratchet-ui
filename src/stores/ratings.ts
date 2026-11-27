@@ -22,7 +22,8 @@ export const useRatings = defineStore('ratings', () => {
   const collections = shallowRef<RatedCollection[]>([]);
   const loading = ref(false);
   const error = ref('');
-  const scans = new Map<string, { updated: string; games: ScannedGame[] }>();
+  const scans = new Map<string, { updated: string; bytes: number; games: ScannedGame[] }>();
+  let loadToken = 0;
 
   /** the filters, kept while the app is open: a collection's choice where it differs from its default */
   const chosen = ref(new Map<string, boolean>());
@@ -54,17 +55,25 @@ export const useRatings = defineStore('ratings', () => {
   }
 
   async function load(): Promise<void> {
+    const mine = ++loadToken;
     loading.value = true;
     try {
       await games.load();
+      if (mine !== loadToken) return;
       const out: RatedCollection[] = [];
       for (const c of games.list) {
         let scan = scans.get(c.id);
-        if (scan?.updated !== c.updated) {
-          scan = { updated: c.updated, games: scanHeaders(await games.read(c.id)).games };
+        if (scan?.updated !== c.updated || scan.bytes !== c.bytes) {
+          scan = {
+            updated: c.updated,
+            bytes: c.bytes,
+            games: scanHeaders(await games.read(c.id)).games,
+          };
+          if (mine !== loadToken) return;
           scans.set(c.id, scan);
         }
         const t = await tournamentOf(c);
+        if (mine !== loadToken) return;
         out.push({
           id: c.id,
           collection: c,
@@ -77,9 +86,10 @@ export const useRatings = defineStore('ratings', () => {
       collections.value = out;
       error.value = games.error;
     } catch (e) {
+      if (mine !== loadToken) return;
       error.value = `Games could not be read: ${e instanceof Error ? e.message : String(e)}`;
     } finally {
-      loading.value = false;
+      if (mine === loadToken) loading.value = false;
     }
   }
 

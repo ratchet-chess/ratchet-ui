@@ -4,7 +4,7 @@
  * in a few words. The note is the default slot. It is drawn over the page, placed from the ?, so a
  * scrolling table or a panel never clips it; Escape or a tap elsewhere closes a tapped one.
  */
-import { onBeforeUnmount, ref, useId } from 'vue';
+import { nextTick, onBeforeUnmount, ref, useId } from 'vue';
 
 const props = defineProps<{
   /** which side of the ? the note opens to; right by default */
@@ -24,15 +24,25 @@ const at = ref({ left: 0, top: 0 });
 function place(): void {
   const r = button.value?.getBoundingClientRect();
   if (!r) return;
-  const left = props.side === 'left' ? r.left - WIDTH - 7 : r.right + 7;
+  const w = Math.min(WIDTH, window.innerWidth - 16);
+  const left = props.side === 'left' ? r.left - w - 7 : r.right + 7;
+  const h = note.value?.offsetHeight ?? 0;
+  const maxTop = Math.max(8, window.innerHeight - h - 8);
   at.value = {
-    left: Math.max(8, Math.min(window.innerWidth - WIDTH - 8, left)),
-    top: Math.max(8, r.top - 6),
+    left: Math.max(8, Math.min(window.innerWidth - w - 8, left)),
+    top: Math.max(8, Math.min(maxTop, r.top - 6)),
   };
 }
 function show(): void {
-  place();
   shown.value = true;
+  document.addEventListener('keydown', key);
+  place();
+  void nextTick(place);
+}
+function hide(): void {
+  if (pinned.value) return;
+  shown.value = false;
+  document.removeEventListener('keydown', key);
 }
 
 function away(e: Event): void {
@@ -54,7 +64,6 @@ function toggle(): void {
   show();
   pinned.value = true;
   document.addEventListener('pointerdown', away);
-  document.addEventListener('keydown', key);
   window.addEventListener('scroll', close, true);
 }
 onBeforeUnmount(close);
@@ -74,9 +83,9 @@ onBeforeUnmount(close);
     :aria-describedby="id"
     @click.stop="toggle"
     @mouseenter="show"
-    @mouseleave="!pinned && (shown = false)"
+    @mouseleave="hide"
     @focus="show"
-    @blur="!pinned && (shown = false)"
+    @blur="hide"
   >
     ?
   </button>
@@ -86,7 +95,7 @@ onBeforeUnmount(close);
       :id="id"
       ref="note"
       role="tooltip"
-      class="fixed z-50 rounded-md border border-line bg-popover px-3 py-2 text-left text-dense leading-normal font-normal tracking-normal whitespace-normal text-text normal-case shadow-lg"
+      class="fixed z-50 max-w-[calc(100vw-16px)] rounded-md border border-line bg-popover px-3 py-2 text-left text-dense leading-normal font-normal tracking-normal whitespace-normal text-text normal-case shadow-lg"
       :style="{ left: `${at.left}px`, top: `${at.top}px`, width: `${WIDTH}px` }"
     >
       <slot />

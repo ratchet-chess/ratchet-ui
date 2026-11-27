@@ -3,6 +3,7 @@
  * The rating list: one row per engine, by pool, then by rating. Under a narrow page the counts
  * that the score already sums (W, D, L, draw %) and the opponents' average fold away.
  */
+import { computed } from 'vue';
 import HelpTip from '../../components/HelpTip.vue';
 import type { RatingList, Row } from '../../ratings/list.ts';
 import { boundMark, losText, POOL_NOTE } from '../../ratings/report.ts';
@@ -12,11 +13,31 @@ const props = defineProps<{ list: RatingList; rows: readonly Row[] }>();
 
 /** a pool's first row, after the first pool: a divider goes above it */
 const opensPool = (k: number) => k > 0 && props.rows[k]?.pool !== props.rows[k - 1]?.pool;
-/** a row's place in its pool, from 1 */
-const place = (k: number) => {
-  let n = 1;
-  for (let i = k - 1; i >= 0 && props.rows[i]?.pool === props.rows[k]?.pool; i--) n++;
-  return n;
+/** each engine's true rank in its pool and its unfiltered neighbor, so filtering preserves both */
+const meta = computed(() => {
+  const rank = new Map<string, number>();
+  const nextInList = new Map<string, string>();
+  let pool = -1;
+  let pos = 0;
+  for (let i = 0; i < props.list.rows.length; i++) {
+    const r = props.list.rows[i];
+    if (!r) continue;
+    if (r.pool !== pool) {
+      pool = r.pool;
+      pos = 0;
+    }
+    pos++;
+    rank.set(r.name, pos);
+    const next = props.list.rows[i + 1];
+    if (next && next.pool === r.pool) nextInList.set(r.name, next.name);
+  }
+  return { rank, nextInList };
+});
+const place = (r: Row) => meta.value.rank.get(r.name) ?? 0;
+/** LOS compares against the next row in the full list; hide it if filtering removed that neighbor */
+const shownLos = (r: Row, k: number) => {
+  const next = props.rows[k + 1];
+  return next && meta.value.nextInList.get(r.name) === next.name ? r.los : null;
 };
 /** on the anchor's scale in its pool, else signed about the pool's average */
 const rating = (r: Row, elo: number) =>
@@ -86,7 +107,7 @@ const pct = (x: number) => (100 * x).toFixed(1);
             class="border-b border-row last:border-b-0 hover:bg-hover"
             :class="r.anchor && 'bg-selected'"
           >
-            <td class="num px-2 py-1 text-right text-faint">{{ place(k) }}</td>
+            <td class="num px-2 py-1 text-right text-faint">{{ place(r) }}</td>
             <td class="max-w-0 px-2 py-1">
               <span class="flex items-center gap-1.5">
                 <span class="truncate" :title="r.name">{{ r.name }}</span>
@@ -130,12 +151,12 @@ const pct = (x: number) => (100 * x).toFixed(1);
               {{ count(r.losses) }}
             </td>
             <td class="num hidden px-2 py-1 text-right @3xl:table-cell">
-              {{ pct(r.draws / r.games) }}
+              {{ r.games > 0 ? pct(r.draws / r.games) : '0.0' }}
             </td>
             <td class="num hidden px-2 py-1 text-right text-dim @3xl:table-cell">
               {{ rating(r, r.opponents) }}
             </td>
-            <td class="num px-2 py-1 text-right">{{ losText(r.los) }}</td>
+            <td class="num px-2 py-1 text-right">{{ losText(shownLos(r, k)) }}</td>
           </tr>
         </template>
       </tbody>

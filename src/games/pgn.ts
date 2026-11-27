@@ -76,7 +76,7 @@ export function replay(game: PgnGame<PgnNodeData>): Replay {
     if (!move || !g.play(makeUci(move))) {
       return {
         steps,
-        error: `move ${Math.ceil(steps.length / 2)}, ${node.san}, is not legal here`,
+        error: `move ${g.pos.fullmoves}, ${node.san}, is not legal here`,
       };
     }
     steps.push({
