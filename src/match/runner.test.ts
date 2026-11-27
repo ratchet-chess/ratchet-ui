@@ -95,12 +95,12 @@ describe('Run stop and error invariants', () => {
     expect(savedEnds).toEqual(['stopped']);
   });
 
-  it('stops cleanly and calls saveEnd when saveGame rejects', async () => {
+  it('stops, counting no game, when a game cannot be saved', async () => {
     const savedEnds: string[] = [];
     const state = stateOf(baseConfig, [], []);
     const tc = parseControl('10+0.1');
     if (!tc) throw new Error('control');
-    // entrants without Worker global will forfeit on start and trigger saveGame
+    // with no Worker in Node, each game ends at its start as a forfeit, which is then saved
     const run = new Run(
       baseConfig,
       [
@@ -129,5 +129,6 @@ describe('Run stop and error invariants', () => {
     expect(state.status).toBe('stopped');
     expect(state.error).toBe('quota exceeded');
     expect(savedEnds).toEqual(['stopped']);
+    expect(state.games).toEqual([]);
   });
 });

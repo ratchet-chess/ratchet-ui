@@ -56,7 +56,7 @@ function writeStorage(key: string, value: string): void {
   try {
     localStorage.setItem(key, value);
   } catch {
-    // ignore storage quota or private-mode restrictions
+    // a full or blocked localStorage keeps the setting for this page only
   }
 }
 
@@ -64,7 +64,7 @@ function removeStorage(key: string): void {
   try {
     localStorage.removeItem(key);
   } catch {
-    // ignore storage restrictions
+    // a blocked localStorage holds nothing to remove
   }
 }
 
@@ -297,13 +297,15 @@ export const useSettings = defineStore('settings', () => {
   }
 
   /** keeps a setup under a name, replacing a template of that name */
-  function saveTemplate(name: string, setup: Setup): void {
+  /** saves `setup` under `name`; false, saving nothing, when the setup is not valid */
+  function saveTemplate(name: string, setup: Setup): boolean {
     const clean = setupOf(JSON.parse(JSON.stringify(setup)));
-    if (!clean) return;
+    if (!clean) return false;
     const rest = templates.value.filter((t) => t.name !== name);
     templates.value = [...rest, { name, setup: clean }].toSorted((a, b) =>
       a.name.localeCompare(b.name),
     );
+    return true;
   }
 
   function removeTemplate(name: string): void {

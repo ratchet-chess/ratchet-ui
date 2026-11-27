@@ -56,18 +56,25 @@ describe('engine id helpers', () => {
   });
 
   it('prefers the newest Ratchet build over alphabetically later engines', () => {
-    const mk = (id: string): ServedEngine => ({
+    const mk = (id: string, source = 'test'): ServedEngine => ({
       id,
       name: id,
       version: null,
       wasm: `${id}.wasm`,
       bytes: 100,
       sha256: 'abc',
-      source: 'test',
+      source,
       license: 'GPL-3.0-or-later',
     });
     expect(
       defaultEngine([mk('clovis-iii'), mk('ratchetHCE-0.4.0'), mk('stockfish-10'), mk('zurichess')])
+        ?.id,
+    ).toBe('ratchetHCE-0.4.0');
+    expect(
+      defaultEngine([mk('ratchetHCE-0.10.0'), mk('ratchetHCE-0.4.0'), mk('stockfish-10')])?.id,
+    ).toBe('ratchetHCE-0.10.0');
+    expect(
+      defaultEngine([mk('ratchetHCE-0.4.0'), mk('stockfish-10'), mk('ratchet-test', 'in browser')])
         ?.id,
     ).toBe('ratchetHCE-0.4.0');
     expect(defaultEngine([mk('clovis-iii'), mk('stockfish-10')])?.id).toBe('stockfish-10');

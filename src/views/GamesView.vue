@@ -26,7 +26,7 @@ import { PLAYED, useGames, type Collection } from '../stores/games.ts';
 import { bytes, count, sentence } from '../ui/format.ts';
 import GamesFilterBar from './games/GamesFilterBar.vue';
 
-// ── route and collection loading ────────────────────────────────────────────
+// ── loading ─────────────────────────────────────────────────────────────────
 const games = useGames();
 const route = useRoute();
 const router = useRouter();
@@ -122,11 +122,21 @@ watch(openId, (id) => {
   colsExpanded.value = false;
   void openCollection(id);
 });
+// games added to the open collection, as a running tournament adds them, join its list; the game
+// open stays open, since an append moves no game already indexed
 watch(
-  () => [open.value?.updated, open.value?.bytes] as const,
-  ([updated, size], [prevUpdated, prevBytes]) => {
-    if (!openId.value || !updated || (updated === prevUpdated && size === prevBytes)) return;
-    void openCollection(openId.value);
+  () => [openId.value, open.value?.updated, open.value?.bytes] as const,
+  async ([id, updated, size], [prevId, prevUpdated, prevBytes]) => {
+    if (!id || id !== prevId || !index.value) return;
+    if (updated === prevUpdated && size === prevBytes) return;
+    const col = games.list.find((c) => c.id === id);
+    if (!col) return;
+    try {
+      const idx = await games.getIndex(col);
+      if (openId.value === id && index.value) index.value = idx;
+    } catch {
+      // the list keeps its last index until the next change
+    }
   },
 );
 watch(
@@ -137,7 +147,7 @@ watch(gameIndex, () => {
   void loadSelectedGame();
 });
 
-// ── collections list, search, and inline rename ─────────────────────────────
+// ── collections ─────────────────────────────────────────────────────────────
 const colSearch = ref('');
 const colsExpanded = ref(false);
 
@@ -173,7 +183,7 @@ function cancelRename(): void {
   renamingId.value = '';
 }
 
-// ── game search, filter, paging, and prev/next navigation ───────────────────
+// ── games: filter, pages and navigation ─────────────────────────────────────
 const filter = ref<GameFilter>({ ...EMPTY_FILTER });
 const filtered = computed<Int32Array>(() =>
   index.value ? filterPgnIndex(index.value, filter.value) : new Int32Array(0),
@@ -236,7 +246,7 @@ function selectGame(idx: number): void {
   void router.push(`/games/${openId.value}/${idx}`);
 }
 
-// ── import (file picker + drag-and-drop for .pgn and .zip) ──────────────────
+// ── import ──────────────────────────────────────────────────────────────────
 const fileInput = ref<HTMLInputElement | null>(null);
 const draggingOver = ref(false);
 let dragDepth = 0;
@@ -290,7 +300,7 @@ async function onDrop(e: DragEvent): Promise<void> {
   await importFiles(files);
 }
 
-// ── download, delete, and display helpers ───────────────────────────────────
+// ── download and delete ─────────────────────────────────────────────────────
 async function download(c: Collection): Promise<void> {
   try {
     await games.download(c.id, c.name);
@@ -363,7 +373,7 @@ const rangeLabel = computed(() => {
     <div v-if="notice" class="mb-3 text-dense text-warn">{{ notice }}</div>
     <div v-if="busy" class="mb-3 text-dense text-dim">{{ busy }}</div>
 
-    <!-- ── Game open: Variant A (collapsible switcher + compact rail + viewer) ── -->
+    <!-- ── a game open ────────────────────────────────────────────────────────── -->
     <template v-if="openGame && open && index">
       <div
         class="mb-2.5 flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-panel px-2.5 py-1.5 text-dense"
@@ -512,7 +522,7 @@ const rangeLabel = computed(() => {
       </div>
     </template>
 
-    <!-- ── Collection browsing view (no game open) ── -->
+    <!-- ── collections, no game open ──────────────── -->
     <template v-else>
       <Panel
         title="Collections"

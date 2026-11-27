@@ -4,12 +4,12 @@ import { gamesPerPair, plannedGames, type Format } from '../../match/format.ts';
 import type { Item } from '../../stores/tournaments.ts';
 import { count } from '../../ui/format.ts';
 
-/** cached display labels per entrants array so repeated cell lookups stay O(1) */
+/** each entrants array's labels; a config's entrants never change */
 const labelCache = new WeakMap<readonly string[], string[]>();
 
 function labelsOf(entrants: readonly string[]): string[] {
   let cached = labelCache.get(entrants);
-  if (cached && cached.length === entrants.length) return cached;
+  if (cached) return cached;
   const totals = new Map<string, number>();
   for (const id of entrants) totals.set(id, (totals.get(id) ?? 0) + 1);
   const seen = new Map<string, number>();

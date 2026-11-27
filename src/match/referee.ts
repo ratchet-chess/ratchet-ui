@@ -130,7 +130,7 @@ export interface Turn {
   onStats?: (nodes: number, ms: number) => void;
 }
 
-/** the largest delay `setTimeout` accepts without overflowing 32-bit signed ms to 1 ms */
+/** the largest delay `setTimeout` takes; a longer one fires at once */
 const MAX_TIMEOUT_MS = 2_147_483_647;
 
 /**

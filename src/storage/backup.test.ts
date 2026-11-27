@@ -146,7 +146,7 @@ describe('items', () => {
       }),
     );
     expect(c.items.has('settings:')).toBe(false);
-    expect(c.skipped).toContain('settings.json: invalid JSON');
+    expect(c.skipped).toContain('settings.json: not a settings file');
     const t = c.items.get('tournament:x');
     expect(t?.collection).toMatchObject({ id: 't-x', name: 'Gauntlet', source: 'match', games: 2 });
   });

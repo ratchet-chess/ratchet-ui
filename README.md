@@ -1,7 +1,7 @@
 # ratchet-ui
 
-A web app for the Ratchet chess engine. It holds play, games, books, engines, tournaments and ratings in the browser. It
-also shows a ratchet-bench manager's jobs and hosts.
+A web app for the Ratchet chess engine, at [ratchetchess.com](https://ratchetchess.com/). It holds play, games,
+books, engines, tournaments and ratings in the browser. It also shows a ratchet-bench manager's jobs and hosts.
 
 Engines run in the browser, each in its own Worker. An engine is a WASI build that speaks UCI. `engines.json` lists
 the engines the app serves, each a GitHub release asset pinned by its sha256. The same build serves two uses. It is a local app connected to a manager on

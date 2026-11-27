@@ -201,7 +201,7 @@ describe('fitRatings', () => {
     expect(rated(fit, 0).pool).toBe(rated(fit, 1).pool);
   });
 
-  it('rates a 3-engine transitive sweep ladder in strict order instead of collapsing to null', () => {
+  it('rates a 3-engine transitive sweep ladder in strict order', () => {
     const games: FitGame[] = [];
     for (let p = 0; p < 5; p++) {
       games.push({ white: 2, black: 0, score: 1, pair: p });

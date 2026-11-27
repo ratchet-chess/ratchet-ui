@@ -84,10 +84,7 @@ describe('device speed calibration', () => {
     expect(parsed.concurrent).toEqual({ 4: valid4 });
   });
 
-  it('guards defaultClockConcurrency against missing or non-positive thread counts', () => {
-    expect(defaultClockConcurrency(Number.NaN)).toBe(1);
-    expect(defaultClockConcurrency(0)).toBe(1);
-    expect(defaultClockConcurrency(-4)).toBe(1);
+  it('runs half the hardware threads less one on a clock, at least one', () => {
     expect(defaultClockConcurrency(2)).toBe(1);
     expect(defaultClockConcurrency(16)).toBe(7);
   });

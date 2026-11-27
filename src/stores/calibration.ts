@@ -37,7 +37,7 @@ export const useCalibration = defineStore('calibration', () => {
 
   const liveWorkers = new Set<UciEngine>();
   let runId = 0;
-  /** read through a call, since stop() or a newer run() can advance `runId` across awaits */
+  /** whether stop() or a newer run() has replaced the run numbered `mine` */
   const isStaleRun = (mine: number) => mine !== runId;
 
   /** The Stockfish 10 anchor engine used for CCRL-baseline calibration, when served. */
@@ -78,10 +78,8 @@ export const useCalibration = defineStore('calibration', () => {
       return;
     }
 
-    const hc = navigator.hardwareConcurrency;
-    const hw = Number.isFinite(hc) && hc > 0 ? Math.floor(hc) : 1;
-    const requested = Number.isFinite(concurrency) ? Math.round(concurrency) : 1;
-    const copies = Math.max(1, Math.min(requested, hw));
+    const hw = Math.max(1, navigator.hardwareConcurrency);
+    const copies = Math.max(1, Math.min(concurrency, hw));
     const positions = PROBE_SUITES.three;
     const prog = reactive<CalibrationProgress>({
       concurrency: copies,

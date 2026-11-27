@@ -93,13 +93,9 @@ export const useTournaments = defineStore('tournaments', () => {
   /** ids deleted while a `readAll` is in flight, so the finishing read cannot resurrect them */
   const deletedDuringLoad = new Set<string>();
 
-  const locks = (): LockManager | undefined => (navigator as Partial<Navigator>).locks;
-
   /** the tournaments' Web Locks held by any tab of this browser, by tournament */
   async function heldIds(): Promise<Set<string>> {
-    const lm = locks();
-    if (!lm) return new Set();
-    const held = (await lm.query()).held ?? [];
+    const held = (await navigator.locks.query()).held ?? [];
     return new Set(held.flatMap((l) => (l.name ? (idOfLock(l.name) ?? []) : [])));
   }
 
@@ -144,7 +140,6 @@ export const useTournaments = defineStore('tournaments', () => {
       const out = new Map<string, Item>();
       const broken: string[] = [];
       for (const id of await folders(TOURNAMENTS)) {
-        if (deletedDuringLoad.has(id)) continue;
         const live = items.value.find((i) => i.config.id === id && runs.has(id));
         if (live) {
           out.set(id, live);
@@ -152,7 +147,7 @@ export const useTournaments = defineStore('tournaments', () => {
         }
         try {
           const item = await readItem(id, held);
-          if (item && !deletedDuringLoad.has(id)) out.set(id, item);
+          if (item) out.set(id, item);
         } catch {
           broken.push(id);
         }
@@ -160,9 +155,9 @@ export const useTournaments = defineStore('tournaments', () => {
       // preserve tournaments created or started while this read was awaiting OPFS
       for (const existing of items.value) {
         const id = existing.config.id;
-        if (deletedDuringLoad.has(id)) continue;
         if (runs.has(id) || (!before.has(id) && !out.has(id))) out.set(id, existing);
       }
+      for (const id of deletedDuringLoad) out.delete(id);
       items.value = [...out.values()].toSorted((a, b) =>
         b.config.created.localeCompare(a.config.created),
       );
@@ -191,21 +186,23 @@ export const useTournaments = defineStore('tournaments', () => {
 
   /** takes the tournament's Web Lock; false when another tab holds it */
   function lock(id: string): Promise<boolean> {
-    const lm = locks();
-    if (!lm) return Promise.resolve(true);
     return new Promise((resolve) => {
       // the browser calls back in a later task, so `settled` is set by then
-      const settled: Promise<unknown> = lm.request(lockOf(id), { ifAvailable: true }, (held) => {
-        if (held === null) {
-          resolve(false);
-          return undefined;
-        }
-        freed.set(id, settled);
-        resolve(true);
-        return new Promise<void>((release) => {
-          releases.set(id, release);
-        });
-      });
+      const settled: Promise<unknown> = navigator.locks.request(
+        lockOf(id),
+        { ifAvailable: true },
+        (held) => {
+          if (held === null) {
+            resolve(false);
+            return undefined;
+          }
+          freed.set(id, settled);
+          resolve(true);
+          return new Promise<void>((release) => {
+            releases.set(id, release);
+          });
+        },
+      );
     });
   }
 
@@ -300,10 +297,8 @@ export const useTournaments = defineStore('tournaments', () => {
   /** the runs Pause all stopped, which Resume all resumes; this tab's only, and lost on a reload */
   const paused = ref<string[]>([]);
 
-  const withQueue = <T>(job: () => Promise<T>): Promise<T> => {
-    const lm = locks();
-    return lm ? lm.request(QUEUE_LOCK, job) : job();
-  };
+  const withQueue = <T>(job: () => Promise<T>): Promise<T> =>
+    navigator.locks.request(QUEUE_LOCK, job);
 
   const have = (): Have => ({
     engines: new Set(engines.list.map((e) => e.id)),
@@ -371,8 +366,8 @@ export const useTournaments = defineStore('tournaments', () => {
   }
 
   /**
-   * saves a new tournament at the queue's end; it starts at once when the queue was empty, no
-   * tournament runs in any tab, and Pause all holds none in this one
+   * saves a new tournament at the queue's end; it starts at once when no tournament runs in any
+   * tab and Pause all holds none in this one
    */
   async function enqueue(config: TournamentConfig): Promise<void> {
     const path = [...TOURNAMENTS, config.id];
@@ -392,13 +387,7 @@ export const useTournaments = defineStore('tournaments', () => {
         queued: order,
       });
       items.value.unshift(item);
-      if (
-        existing.length > 0 ||
-        runs.size > 0 ||
-        paused.value.length > 0 ||
-        (await heldIds()).size > 0
-      )
-        return;
+      if (runs.size > 0 || paused.value.length > 0 || (await heldIds()).size > 0) return;
       try {
         await books.load();
         if (ready(config, have())) await startQueued(item);

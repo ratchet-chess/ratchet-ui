@@ -6,7 +6,7 @@
  */
 import { openingMatches } from '../chess/openings.ts';
 
-// ── types, forfeit rules, and cache hydration ───────────────────────────────
+// ── types and forfeits ──────────────────────────────────────────────────────
 
 export const PGN_INDEX_VERSION = 1;
 
@@ -81,7 +81,7 @@ export const EMPTY_FILTER: GameFilter = {
   dateTo: '',
 };
 
-/** PGN Termination values that mean a game ended by forfeit (matching src/ratings/scan.ts). */
+/** PGN Termination values that mean a game ended by forfeit */
 const FORFEITS = new Set([
   'time forfeit',
   'rules infraction',
@@ -163,7 +163,7 @@ export function dehydratePgnIndex(index: PgnIndex, updated: string, bytes: numbe
   };
 }
 
-// ── single-pass UTF-8 byte scanner ──────────────────────────────────────────
+// ── the byte scanner ────────────────────────────────────────────────────────
 
 const NL = 0x0a;
 const CR = 0x0d;
@@ -556,7 +556,7 @@ export async function indexPgnBlob(blob: Blob): Promise<PgnIndex> {
   return b.finish(totalRead);
 }
 
-// ── row reading, lookup, filtering, and zero-parse byte-span export ─────────
+// ── rows, filters and export ────────────────────────────────────────────────
 
 /** Materializes one display row from an index. */
 export function rowAt(index: PgnIndex, i: number): IndexedGameRow {

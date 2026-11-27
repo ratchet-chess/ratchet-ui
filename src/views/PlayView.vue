@@ -30,7 +30,7 @@ import PlaySidePicker from './play/PlaySidePicker.vue';
 const CUSTOM_VALUE = '__custom__';
 const WIDE_BREAKPOINT = 1120;
 
-// ── Stores and game state ───────────────────────────────────────────────────
+// ── state ───────────────────────────────────────────────────────────────────
 
 const route = useRoute();
 const engines = useEngines();
@@ -75,7 +75,7 @@ watch(locked, (isLocked) => {
   if (isLocked) addingControl.value = false;
 });
 
-// ── Route setup and side pickers ────────────────────────────────────────────
+// ── the route and the sides ─────────────────────────────────────────────────
 
 function applyRouteQuery(): boolean {
   if (locked.value) return false;
@@ -144,7 +144,7 @@ function keepCustomControl(): void {
   addingControl.value = false;
 }
 
-// ── Side overrides and options panel ────────────────────────────────────────
+// ── side options ────────────────────────────────────────────────────────────
 
 const editingEngine = computed(() => {
   const c = editingSide.value;
@@ -200,7 +200,7 @@ function updateSideLimit(limit: string): void {
   play.sideConfig[c].limit = limit;
 }
 
-// ── Board state, promotions, and move list ──────────────────────────────────
+// ── board and moves ─────────────────────────────────────────────────────────
 
 /** the board's bottom side: a person's side when one plays, else White */
 const orientation = ref<Color>('white');
@@ -217,7 +217,9 @@ watch(
 const board = computed(() => {
   const g = game.value;
   const snap = g.positionAt(currentPly.value);
-  const mover = startingBook.value ? undefined : play.personToMove();
+  // a book's opening is played from its own position, so setup starts no game by a drag then
+  const fromBook = startingBook.value || (phase.value === 'setup' && book.value !== '');
+  const mover = fromBook ? undefined : play.personToMove();
   return {
     fen: snap.fen,
     turn: snap.turn,
@@ -318,7 +320,7 @@ watch([currentPly, () => game.value.san.length], async ([p]) => {
   el?.scrollIntoView?.({ block: 'nearest' });
 });
 
-// ── Keyboard shortcuts, layout observer, and actions ────────────────────────
+// ── keys, layout and actions ────────────────────────────────────────────────
 
 function onKey(e: KeyboardEvent): void {
   if (e.key === 'Escape' && promoting.value !== null) {
@@ -454,7 +456,7 @@ function savePgn(): void {
           : '@[1120px]:grid-cols-[minmax(0,560px)_minmax(320px,440px)]'
       "
     >
-      <!-- ── Board column ──────────────────────────────────────────────── -->
+      <!-- ── board ─────────────────────────────────────────────────────── -->
       <div class="min-w-0">
         <template v-for="where in ['top', 'bottom'] as const" :key="where">
           <div v-if="where === 'bottom'" class="relative">
@@ -527,7 +529,7 @@ function savePgn(): void {
         </div>
       </div>
 
-      <!-- ── Controls, Thinking, Moves column ──────────────────────────── -->
+      <!-- ── controls, thinking and moves ──────────────────────────────── -->
       <div class="min-w-0">
         <Panel title="Game">
           <div
@@ -810,7 +812,7 @@ function savePgn(): void {
         </section>
       </div>
 
-      <!-- ── 3rd column Edit panel on wide viewports ───────────────────── -->
+      <!-- ── edit panel, wide ──────────────────────────────────────────── -->
       <div v-if="isWide && editingSide && editingEngine" class="min-w-0">
         <EngineOptionsPanel
           class="max-h-[calc(100dvh-2rem)]"
@@ -828,7 +830,7 @@ function savePgn(): void {
       </div>
     </div>
 
-    <!-- ── Slide-over drawer on narrow viewports (< 1120px) ──────────── -->
+    <!-- ── edit drawer, narrow ───────────────────────────────────────── -->
     <div
       v-if="!isWide && editingSide && editingEngine"
       class="fixed inset-0 z-40 flex justify-end bg-black/50"

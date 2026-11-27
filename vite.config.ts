@@ -12,12 +12,12 @@ const isolation = {
   'Cross-Origin-Embedder-Policy': 'require-corp',
 };
 
-const rawBase = process.env['BASE'] ?? '/';
-const base = rawBase.replace(/^\/+/, '/').replace(/\/+$/, '/') || '/';
+// a static host may serve the app below its root, such as a project's GitHub Pages path;
+// the app's own fetches join paths to the base, so it starts and ends with one slash
+const path = (process.env['BASE'] ?? '').replaceAll(/^\/+|\/+$/g, '');
 
 export default defineConfig({
-  // a static host may serve the app below its root, such as a project's GitHub Pages path
-  base,
+  base: path ? `/${path}/` : '/',
   plugins: [vue(), tailwindcss()],
   server: { headers: isolation },
   preview: { headers: isolation },

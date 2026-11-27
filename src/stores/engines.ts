@@ -29,7 +29,7 @@ export interface UserEngine {
   id: string;
   /** display name (UCI `id name` when reported, else `id`) */
   name: string;
-  /** file name under `user-engines/` */
+  /** file name under `user-engines/`: `<id>.wasm`, or `<id>.<sha256 prefix>.wasm` for a replacement */
   wasm: string;
   bytes: number;
   sha256: string;
@@ -50,9 +50,15 @@ const hasControlChar = (s: string) => {
   return false;
 };
 
-/** Picks the preferred default engine: newest own Ratchet build when present, else the last entry. */
+/** the engine Play and Tourneys start with: the newest served Ratchet build, else the last engine */
 export function defaultEngine(list: readonly ServedEngine[]): ServedEngine | undefined {
-  const own = list.filter((e) => e.meta?.kind === 'own' || /^ratchet(?:HCE)?-/i.test(e.id));
+  const own = list
+    .filter(
+      (e) =>
+        e.source !== IN_BROWSER_SOURCE &&
+        (e.meta?.kind === 'own' || /^ratchet(?:HCE)?-/i.test(e.id)),
+    )
+    .toSorted((a, b) => a.id.localeCompare(b.id, 'en', { numeric: true }));
   return own.at(-1) ?? list.at(-1);
 }
 
@@ -280,7 +286,7 @@ export const useEngines = defineStore('engines', () => {
 
       const copy = new Uint8Array(input.bytes);
       const sha256 = hex(await crypto.subtle.digest('SHA-256', copy));
-      // Write replacements to a distinct file name so the previous build stays intact on failure.
+      // a replacement goes to another file name, so a failed write leaves the old build whole
       const defaultWasm = `${id}.wasm`;
       const wasm =
         existing?.wasm === defaultWasm ? `${id}.${sha256.slice(0, 8)}.wasm` : defaultWasm;

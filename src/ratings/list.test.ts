@@ -65,7 +65,7 @@ describe('pairUp', () => {
     expect(out.map((g) => g.pair)).toEqual([0, 0, 1, 2, 3, 3, 4, 5]);
   });
 
-  it('treats Round "*.0" as loose instead of assigning a negative pair index', () => {
+  it('treats Round "*.0" as no game number', () => {
     const out = pairUp([
       { id: 't1', per: 2, control: null, games: [game('a', 'b', 1, '1.1')] },
       { id: 't2', per: 2, control: null, games: [game('c', 'd', 1, '1.0')] },
@@ -172,7 +172,7 @@ describe('rate', () => {
     expect(list.records[0]?.losses).toBe(0);
   });
 
-  it('omits self-play-only engines instead of emitting 0-game NaN rows', () => {
+  it('omits an engine that played only itself', () => {
     const selfOnly: Source[] = [
       {
         id: 's',

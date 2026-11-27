@@ -44,6 +44,19 @@ export function inLayout(path: string, books: boolean, engines = false): boolean
   return false;
 }
 
+/** whether a path is a folder that holds layout files; a walk of a picked folder enters no other */
+export function inLayoutFolder(path: string, books: boolean, engines = false): boolean {
+  const p = path.split('/');
+  if (p.length === 2) return p[0] === TOURNAMENTS && isName(p[1]);
+  return (
+    p.length === 1 &&
+    (p[0] === GAMES ||
+      p[0] === TOURNAMENTS ||
+      (books && p[0] === USER) ||
+      (engines && p[0] === USER_ENGINES))
+  );
+}
+
 /**
  * An archive's files in the layout. A folder zipped whole puts the layout under one folder of its
  * own; that folder is taken off.
@@ -128,7 +141,7 @@ export async function contentsOf(files: Files): Promise<Contents> {
   if (settings) {
     const parsed = await json(settings);
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      skipped.push(`${SETTINGS}: invalid JSON`);
+      skipped.push(`${SETTINGS}: not a settings file`);
     } else {
       const s = settingsFileOf(parsed);
       items.set(keyOf('settings', ''), {
@@ -444,7 +457,7 @@ export function choiceOf(row: Row, busy: boolean): Choice | null {
 /** a change to a store of the layout: a file written, or a file or folder deleted */
 export type Op = { write: string; data: Blob } | { remove: string };
 
-/** a name not yet taken: the name, then with (2), (3) and on (before its extension for files) */
+/** a name not yet taken: the name, then with (2), (3) and on (before its extension, for a book) */
 function freeName(name: string, taken: (n: string) => boolean, hasExtension = false): string {
   const dot = hasExtension ? name.lastIndexOf('.') : -1;
   const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ''];
@@ -461,7 +474,7 @@ async function renamed(
   usedEngines: Set<string>,
   fresh: (name: string) => string,
 ): Promise<Item> {
-  const name = freeName(item.name, (n) => usedNames.has(n), false);
+  const name = freeName(item.name, (n) => usedNames.has(n));
   usedNames.add(name);
   if (item.kind === 'tournament') {
     const id = fresh(name);
@@ -493,7 +506,7 @@ async function renamed(
     return { ...item, id, name: id, files: new Map([[`${USER}/${id}`, b]]), book };
   }
   if (item.kind === 'engine') {
-    const id = freeName(item.id, (n) => usedEngines.has(n), false);
+    const id = freeName(item.id, (n) => usedEngines.has(n));
     usedEngines.add(id);
     const wasm = `${id}.wasm`;
     const [[, b] = ['', EMPTY]] = item.files;
@@ -544,8 +557,8 @@ export async function mergeOf(
   there: Contents,
   fresh: (name: string) => string = (name) => makeId(name),
 ): Promise<Merge> {
-  // Additive writes run first so a quota error on a new item never deletes an existing one;
-  // each replacement deletes its own old files right before writing its new ones.
+  // additions are written first, so a quota error on a new item never deletes an existing one;
+  // each replacement deletes its own old files right before writing its new ones
   const additions: Op[] = [];
   const replacements: Op[] = [];
   const usedNames = new Set([...here.items.values(), ...there.items.values()].map((i) => i.name));

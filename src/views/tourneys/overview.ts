@@ -162,7 +162,7 @@ export interface Served {
 /** the share of the storage quota past which a notice warns */
 export const STORAGE_WARN = 0.9;
 
-/** cached drift analysis per games array, invalidated whenever games are appended */
+/** each games array's drift report, until its games, control or pairing change */
 const driftCache = new WeakMap<
   readonly GameRecord[],
   { len: number; control: string; paired: boolean; report: DriftReport }

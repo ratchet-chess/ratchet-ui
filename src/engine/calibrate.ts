@@ -145,7 +145,6 @@ export function pickCalibration(
 
 /** Default tournament concurrency for clocked games: half the hardware threads less one. */
 export function defaultClockConcurrency(hardwareThreads: number): number {
-  if (!Number.isFinite(hardwareThreads) || hardwareThreads <= 0) return 1;
   return Math.max(1, Math.floor(hardwareThreads / 2) - 1);
 }
 

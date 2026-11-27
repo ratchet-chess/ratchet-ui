@@ -62,36 +62,26 @@ export function llr(counts: Ptnml | Trinomial, elo0: number, elo1: number): numb
 function mle(scores: readonly number[], probs: number[], muRef: number, tStar: number): number[] {
   const n = scores.length;
   const p = scores.map(() => 1 / n);
-  for (let iter = 0; iter < 50; iter++) {
+  for (let iter = 0; iter < 10; iter++) {
     let mu = 0;
     for (let i = 0; i < n; i++) mu += at(scores, i) * at(p, i);
     let variance = 0;
     for (let i = 0; i < n; i++) variance += at(p, i) * (at(scores, i) - mu) ** 2;
     const sigma = Math.sqrt(variance);
-    if (!(sigma > 0)) break;
-    // Clamp the linearized target inside the strictly feasible range of phi so large |elo| bounds
-    // step smoothly toward the boundary instead of producing same-sign phi and NaN.
-    const tCap = (a: number) => (2 * (a - muRef)) / (sigma * (1 + ((a - mu) / sigma) ** 2));
-    const tMax = tCap(at(scores, n - 1));
-    const tMin = tCap(at(scores, 0));
-    const tEff = Math.min(0.95 * tMax, Math.max(0.95 * tMin, tStar));
-    const phi = scores.map((a) => a - muRef - 0.5 * tEff * sigma * (1 + ((a - mu) / sigma) ** 2));
-    const maxPhi = Math.max(...phi);
-    const minPhi = Math.min(...phi);
-    if (!(maxPhi > 0 && minPhi < 0)) break;
+    const phi = scores.map((a) => a - muRef - 0.5 * tStar * sigma * (1 + ((a - mu) / sigma) ** 2));
     const f = (x: number) => {
       let r = 0;
       for (let i = 0; i < n; i++) r += (at(probs, i) * at(phi, i)) / (1 + x * at(phi, i));
       return r;
     };
-    const theta = itp(f, -1 / maxPhi, -1 / minPhi, Infinity, -Infinity);
+    const theta = itp(f, -1 / Math.max(...phi), -1 / Math.min(...phi), Infinity, -Infinity);
     let maxDiff = 0;
     for (let i = 0; i < n; i++) {
       const next = at(probs, i) / (1 + theta * at(phi, i));
       maxDiff = Math.max(maxDiff, Math.abs(next - at(p, i)));
       p[i] = next;
     }
-    if (tEff === tStar && maxDiff < 1e-4) break;
+    if (maxDiff < 1e-4) break;
   }
   return p;
 }
@@ -101,14 +91,14 @@ function itp(f: (x: number) => number, a0: number, b0: number, fa0: number, fb0:
   const [k1, k2, n0, eps] = [0.1, 2, 0.99, 1e-7];
   let [a, b, fa, fb] = fa0 > 0 ? [b0, a0, fb0, fa0] : [a0, b0, fa0, fb0];
   const nMax = Math.ceil(Math.log2(Math.abs(b - a) / (2 * eps))) + n0;
+  // a converging search ends within nMax steps; the cap ends one that cannot, at bounds past about ±200 nElo
   for (let i = 0; i < 200 && Math.abs(b - a) > 2 * eps; i++) {
     const xHalf = (a + b) / 2;
     const r = eps * 2 ** (nMax - i) - (b - a) / 2;
     const delta = k1 * (b - a) ** k2;
     const xf = (fb * a - fa * b) / (fb - fa);
-    const diff = xHalf - xf;
-    const sigma = diff === 0 ? 0 : diff / Math.abs(diff);
-    const xt = delta <= Math.abs(diff) ? xf + sigma * delta : xHalf;
+    const sigma = (xHalf - xf) / Math.abs(xHalf - xf);
+    const xt = delta <= Math.abs(xHalf - xf) ? xf + sigma * delta : xHalf;
     const x = Math.abs(xt - xHalf) <= r ? xt : xHalf - sigma * r;
     const fx = f(x);
     if (fx === 0) {

@@ -82,8 +82,7 @@ const CACHE_KEY = 'ratchet-ui.engine-cache';
 const isRecord = (x: unknown): x is Record<string, unknown> =>
   typeof x === 'object' && x !== null && !Array.isArray(x);
 const isString = (x: unknown): x is string => typeof x === 'string';
-const isNumOrNull = (x: unknown): x is number | null =>
-  x === null || (typeof x === 'number' && Number.isFinite(x));
+const isNumOrNull = (x: unknown): x is number | null => x === null || typeof x === 'number';
 
 function isUciOption(x: unknown): x is UciOption {
   return (
@@ -155,7 +154,6 @@ function isProbe(x: unknown): x is EngineProbe {
     x.state === 'done' &&
     (x.suite === 'startpos' || x.suite === 'three') &&
     typeof x.depth === 'number' &&
-    Number.isFinite(x.depth) &&
     isNumOrNull(x.startMs) &&
     Array.isArray(x.rows) &&
     x.rows.every(isProbeRow) &&
@@ -168,7 +166,6 @@ function isWasiReport(x: unknown): x is WasiCheckReport {
     isRecord(x) &&
     isString(x.fileName) &&
     typeof x.size === 'number' &&
-    Number.isFinite(x.size) &&
     (x.state === 'pass' || x.state === 'fail' || x.state === 'invalid' || x.state === 'static') &&
     (x.info === null || isWasiStaticInfo(x.info)) &&
     (x.identity === null || isWasiIdentity(x.identity)) &&
@@ -210,30 +207,26 @@ function saveEngineCache(data: Record<string, PersistedEngineData>): void {
   }
 }
 
-/** Merges one engine's completed UCI inspection into the persisted cache without dropping probe/WASI data. */
+/** sets part of one engine's persisted entry, keeping the rest while its sha256 is the same */
+function persist(id: string, sha256: string, part: Omit<PersistedEngineData, 'sha256'>): void {
+  const saved = loadEngineCache();
+  const prev = saved[id];
+  saved[id] = { ...(prev?.sha256 === sha256 ? prev : undefined), sha256, ...part };
+  saveEngineCache(saved);
+}
+
+/** Merges one engine's completed UCI inspection into the persisted cache. */
 export function persistEngineInspection(
   id: string,
   sha256: string,
   inspection: EngineInspection,
 ): void {
-  if (inspection.state !== 'done') return;
-  const saved = loadEngineCache();
-  const prev = saved[id];
-  const next: PersistedEngineData = prev?.sha256 === sha256 ? { ...prev } : { sha256 };
-  next.inspection = inspection;
-  saved[id] = next;
-  saveEngineCache(saved);
+  if (inspection.state === 'done') persist(id, sha256, { inspection });
 }
 
-/** Merges one engine's completed speed probe into the persisted cache without dropping inspection/WASI data. */
+/** Merges one engine's completed speed probe into the persisted cache. */
 export function persistEngineProbe(id: string, sha256: string, probe: EngineProbe): void {
-  if (probe.state !== 'done') return;
-  const saved = loadEngineCache();
-  const prev = saved[id];
-  const next: PersistedEngineData = prev?.sha256 === sha256 ? { ...prev } : { sha256 };
-  next.probe = probe;
-  saved[id] = next;
-  saveEngineCache(saved);
+  if (probe.state === 'done') persist(id, sha256, { probe });
 }
 
 /** Produces a plain deep copy of a WASI report safe to persist or pass out of reactive proxies. */
@@ -262,13 +255,7 @@ export function cloneWasiReport(r: WasiCheckReport): WasiCheckReport {
 
 /** Merges one engine's completed WASI check report into the persisted cache. */
 export function persistEngineWasi(id: string, sha256: string, wasi: WasiCheckReport): void {
-  if (wasi.state === 'running' || wasi.state === 'cancelled') return;
-  const saved = loadEngineCache();
-  const prev = saved[id];
-  const next: PersistedEngineData = prev?.sha256 === sha256 ? { ...prev } : { sha256 };
-  next.wasi = wasi;
-  saved[id] = next;
-  saveEngineCache(saved);
+  if (wasi.state !== 'running' && wasi.state !== 'cancelled') persist(id, sha256, { wasi });
 }
 
 /** Removes one engine's persisted inspection, probe, and WASI cache entry. */
@@ -320,13 +307,7 @@ export async function executeWasiCheck(
 
   const isWasmHeader =
     wasm.length >= 8 && wasm[0] === 0 && wasm[1] === 0x61 && wasm[2] === 0x73 && wasm[3] === 0x6d;
-  const wasmBuffer =
-    wasm.buffer instanceof ArrayBuffer &&
-    wasm.byteOffset === 0 &&
-    wasm.byteLength === wasm.buffer.byteLength
-      ? wasm.buffer
-      : wasm.slice().buffer;
-  if (!isWasmHeader || !WebAssembly.validate(wasmBuffer)) {
+  if (!isWasmHeader || !WebAssembly.validate(wasm.slice().buffer)) {
     report.fatalError = 'Invalid WebAssembly module.';
     report.state = 'invalid';
     return;

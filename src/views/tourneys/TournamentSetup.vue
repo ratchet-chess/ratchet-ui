@@ -66,7 +66,8 @@ const sprtPreset = computed(
   () => SPRT_PRESETS.find((p) => p.elo0 === elo0.value && p.elo1 === elo1.value)?.label ?? 'custom',
 );
 const customBounds = ref(false);
-const SPRT_LIMIT = 1000;
+// the LLR's fit, as fastchess's, finds no solution past about ±200 nElo
+const SPRT_LIMIT = 100;
 const posInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 1;
 const finiteNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const sprtBoundsOk = computed(
@@ -188,28 +189,8 @@ const seedCount = computed(() =>
       : 0,
 );
 const controlOk = computed(() => resolveControl(control.value) !== null);
-const formatNumbersOk = computed(() => {
-  if (!posInt(concurrency.value)) return false;
-  switch (kind.value) {
-    case 'match':
-      return posInt(pairs.value) && (!useSprt.value || sprtBoundsOk.value);
-    case 'roundrobin':
-      return posInt(cycles.value);
-    case 'gauntlet':
-      return posInt(seeds.value) && seeds.value < field.value.length && posInt(cycles.value);
-    case 'swiss':
-      return posInt(rounds.value);
-    default:
-      return posInt(matchPairs.value);
-  }
-});
 const canStart = computed(
-  () =>
-    entrants.value.length >= 2 &&
-    entrants.value.every((e) => e) &&
-    totalGames.value > 0 &&
-    controlOk.value &&
-    formatNumbersOk.value,
+  () => !blocked.value && entrants.value.every((e) => e) && totalGames.value > 0,
 );
 
 function adjudication(): Adjudication | null {
@@ -329,8 +310,8 @@ function useTemplate(n: string): void {
 function saveTemplate(): void {
   const n = prompt('Save this setup as a template named', template.value || defaultName.value);
   if (!n?.trim()) return;
-  settings.saveTemplate(n.trim(), setup.value);
-  template.value = n.trim();
+  if (settings.saveTemplate(n.trim(), setup.value)) template.value = n.trim();
+  else alert('Invalid setup: check the form, then save again.');
 }
 function deleteTemplate(): void {
   if (!template.value || !confirm(`Delete the template “${template.value}”?`)) return;
@@ -352,7 +333,7 @@ const newConfig = (): TournamentConfig => {
 };
 
 async function startNew(): Promise<void> {
-  if (submitting.value || !canStart.value || blocked.value !== '') return;
+  if (submitting.value || !canStart.value) return;
   submitting.value = true;
   submitError.value = '';
   try {
@@ -368,7 +349,7 @@ async function startNew(): Promise<void> {
 
 /** the form as a new tournament at the queue's end; it starts at once when nothing runs */
 async function queueNew(): Promise<void> {
-  if (submitting.value || !canStart.value || blocked.value !== '') return;
+  if (submitting.value || !canStart.value) return;
   submitting.value = true;
   submitError.value = '';
   try {
@@ -388,8 +369,9 @@ const queueHint = computed(() => {
   const place = tournaments.queue.filter((i) => groupOf(i) === 'queued').length + 1;
   if (running > 0)
     return `#${place} in queue · starts after ${running === 1 ? 'the run ends' : `${running} runs end`}`;
-  if (tournaments.paused.length > 0) return `#${place} in queue · paused`;
-  return place > 1 ? `#${place} in queue · waiting` : 'Nothing runs: it starts now';
+  return tournaments.paused.length > 0
+    ? `#${place} in queue · paused`
+    : 'Nothing runs: it starts now';
 });
 
 // ── the summary ────────────────────────────────────────────────────────────
@@ -743,14 +725,14 @@ const terse = 'text-dense text-dim';
         </dl>
         <button
           class="btn-primary w-full py-2.5"
-          :disabled="submitting || !canStart || blocked !== ''"
+          :disabled="submitting || !canStart"
           @click="startNew"
         >
           {{ submitting ? 'Starting…' : 'Start' }}
         </button>
         <button
           class="btn-secondary mt-1.5 w-full py-2.5"
-          :disabled="submitting || !canStart || blocked !== ''"
+          :disabled="submitting || !canStart"
           @click="queueNew"
         >
           Add to queue

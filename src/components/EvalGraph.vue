@@ -75,7 +75,7 @@ const curves = computed(() => {
   const first = pts[0];
   const last = pts.at(-1);
   if (!first || !last) return { line: '', area: '' };
-  // Start flat at the midline right before the first evaluated move so book moves stay flat
+  // the line starts a ply before the first evaluated move, so book moves draw none
   const startX = xAt(Math.max(0, first.ply - 1));
   const segs = pts.map((p) => `L${p.x.toFixed(1)},${p.y.toFixed(1)}`).join('');
   const line = `M${startX.toFixed(1)},${MID_Y.toFixed(1)}${segs}`;

@@ -40,7 +40,7 @@ export function parseControl(text: string): TimeControl | null {
   if (m) {
     const baseMs = Math.round(Number(m[1]) * (m[2] === 'm' ? 60_000 : 1000));
     const incMs = Math.round(Number(m[3]) * 1000);
-    return Number.isFinite(baseMs) && baseMs > 0 && Number.isFinite(incMs) && incMs >= 0
+    return Number.isFinite(baseMs) && baseMs > 0 && Number.isFinite(incMs)
       ? { kind: 'clock', label, baseMs, incMs }
       : null;
   }

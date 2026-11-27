@@ -334,14 +334,6 @@ export class Run {
         ...(timed && speed.wnps !== undefined ? { wnps: speed.wnps } : {}),
         ...(timed && speed.bnps !== undefined ? { bnps: speed.bnps } : {}),
       };
-      this.state.games.push(record);
-      this.state.summary = summarize(
-        this.config.format,
-        this.entrants.length,
-        this.state.games,
-        this.state.pairs,
-        this.config.paired,
-      );
       try {
         await this.deps.saveGame(record, this.pgn(game, pair, n, white, black));
       } catch (e) {
@@ -351,6 +343,15 @@ export class Run {
         }
         return;
       }
+      // a game counts once it is saved, so a resumed run in this tab sees what a reload would
+      this.state.games.push(record);
+      this.state.summary = summarize(
+        this.config.format,
+        this.entrants.length,
+        this.state.games,
+        this.state.pairs,
+        this.config.paired,
+      );
       if (this.stopped()) return;
     }
     this.running--;
@@ -364,7 +365,7 @@ export class Run {
       Event: this.config.name,
       Site: 'ratchet-ui',
       Date: date,
-      // the tournament's page finds a game by this number, matching its Round tag
+      // the tournament's page finds a game by this number, so it counts two a pair even with one game per opening
       Round: `${pair.round + 1}.${gameNumber(pair.pair, n, this.per)}`,
       White: this.entrants[white]?.name ?? '?',
       Black: this.entrants[black]?.name ?? '?',

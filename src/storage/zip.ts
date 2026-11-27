@@ -4,7 +4,7 @@
  * it, because both have DecompressionStream.
  */
 
-/** an archive's file: its name, expected checksum/size, and bytes as stored */
+/** an archive's file: its name, its checksum and size, and its bytes as stored */
 interface Entry {
   name: string;
   method: number;
@@ -90,8 +90,7 @@ function verifyStream(e: Entry): TransformStream<Uint8Array, Uint8Array> {
   return new TransformStream<Uint8Array, Uint8Array>({
     transform(chunk, controller) {
       size += chunk.length;
-      for (let i = 0; i < chunk.length; i++)
-        c = (CRC_TABLE[(c ^ (chunk[i] ?? 0)) & 0xff] ?? 0) ^ (c >>> 8);
+      c = crcUpdate(c, chunk);
       controller.enqueue(chunk);
     },
     flush(controller) {
@@ -162,6 +161,14 @@ const CRC_TABLE = (() => {
   return t;
 })();
 
+/** a running CRC-32 register `c` after `bytes` */
+function crcUpdate(c: number, bytes: Uint8Array): number {
+  // an indexed loop, several times faster than for-of over the bytes
+  for (let i = 0; i < bytes.length; i++)
+    c = (CRC_TABLE[(c ^ (bytes[i] ?? 0)) & 0xff] ?? 0) ^ (c >>> 8);
+  return c;
+}
+
 /** the CRC-32 a zip archive records of a file, read as a stream */
 export async function crc32(data: Blob): Promise<number> {
   let c = 0xffffffff;
@@ -169,9 +176,7 @@ export async function crc32(data: Blob): Promise<number> {
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
-    // an indexed loop, several times faster than for-of over the bytes
-    for (let i = 0; i < value.length; i++)
-      c = (CRC_TABLE[(c ^ (value[i] ?? 0)) & 0xff] ?? 0) ^ (c >>> 8);
+    c = crcUpdate(c, value);
   }
   return (c ^ 0xffffffff) >>> 0;
 }
@@ -198,7 +203,8 @@ export interface ZipFile {
  * whole over 4 GB, or more than 65,535 files.
  */
 export async function zipStored(files: readonly ZipFile[]): Promise<Blob> {
-  if (files.length > 0xffff) throw new Error(`${files.length} files are more than a zip holds`);
+  // a count of 0xffff marks ZIP64, which the reader refuses
+  if (files.length >= 0xffff) throw new Error(`${files.length} files are more than a zip holds`);
   const parts: (Blob | DataView<ArrayBuffer> | Uint8Array<ArrayBuffer>)[] = [];
   const centrals: (DataView<ArrayBuffer> | Uint8Array<ArrayBuffer>)[] = [];
   let at = 0;

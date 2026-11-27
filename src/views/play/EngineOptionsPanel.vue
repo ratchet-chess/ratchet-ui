@@ -39,8 +39,7 @@ const emit = defineEmits<{
 
 const engines = useEngines();
 const threadsOk = canSpawnBrowserThreads();
-const hc = navigator.hardwareConcurrency;
-const hardwareThreads = Number.isFinite(hc) && hc > 0 ? Math.floor(hc) : 1;
+const hardwareThreads = Math.max(1, navigator.hardwareConcurrency);
 const threadsCap = threadsOk ? hardwareThreads : 1;
 
 const LIMIT_PRESETS = [
@@ -193,7 +192,7 @@ onBeforeUnmount(() => clearTimeout(savedTimer));
     </header>
 
     <div class="min-h-0 flex-1 overflow-y-auto">
-      <!-- ── Search limit ────────────────────────────────────────────── -->
+      <!-- ── search limit ────────────────────────────────────────────── -->
       <div class="border-b border-row px-3 py-2.5">
         <div class="mb-1.5 flex items-center justify-between gap-2">
           <span class="subhead">Search limit</span>

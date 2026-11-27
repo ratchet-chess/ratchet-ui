@@ -13,7 +13,7 @@ const props = defineProps<{ list: RatingList; rows: readonly Row[] }>();
 
 /** a pool's first row, after the first pool: a divider goes above it */
 const opensPool = (k: number) => k > 0 && props.rows[k]?.pool !== props.rows[k - 1]?.pool;
-/** each engine's true rank in its pool and its unfiltered neighbor, so filtering preserves both */
+/** each engine's rank in its pool and its neighbor there, both from the list before filtering */
 const meta = computed(() => {
   const rank = new Map<string, number>();
   const nextInList = new Map<string, string>();

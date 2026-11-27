@@ -115,7 +115,7 @@ describe('zipStored', () => {
     expect(await back.get('a/b.txt')?.text()).toBe('bee');
   });
 
-  it('rejects corrupt CRC-32, ZIP64 sentinels, truncated headers, and EOCD signatures in comments', async () => {
+  it('rejects a corrupt CRC-32 and ZIP64, and skips an EOCD signature in the comment', async () => {
     // corrupt stored byte -> checksum mismatch
     const good = new Uint8Array(
       await (
@@ -135,8 +135,9 @@ describe('zipStored', () => {
     new DataView(z64.buffer).setUint16(eocdAt + 10, 0xffff, true);
     await expect(unzipAll(new Blob([z64]))).rejects.toThrow('ZIP64');
 
-    // EOCD signature inside trailing comment still finds the real EOCD
-    const fakeComment = new Uint8Array([0x50, 0x4b, 0x05, 0x06, 0, 0, 0, 0]);
+    // a comment long enough that the backward scan meets its fake signature first
+    const fakeComment = new Uint8Array(30);
+    fakeComment.set([0x50, 0x4b, 0x05, 0x06]);
     const withComment = new Uint8Array(good.length + fakeComment.length);
     withComment.set(good, 0);
     new DataView(withComment.buffer).setUint16(eocdAt + 20, fakeComment.length, true);

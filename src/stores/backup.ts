@@ -358,8 +358,11 @@ export const useBackup = defineStore('backup', () => {
         () => undefined,
       );
       busy.value = '';
+      // a return inside the try still reaches the copy; a flush held off by the merge starts again
+      if (shouldSync) await sync();
+      else if (mirror.state === 'on' && dirty.size > 0)
+        timer ??= setTimeout(() => void flush(), FLUSH_MS);
     }
-    if (shouldSync) await sync();
   }
 
   function cancelReview(): void {
@@ -371,7 +374,7 @@ export const useBackup = defineStore('backup', () => {
 
   const mirror = reactive<Mirror>({ state: 'none', folder: '', at: null, error: '' });
   let handle: FileSystemDirectoryHandle | null = null;
-  /** monotonic generation incremented whenever the mirror folder stops or changes */
+  /** the mirror folder's generation, so an operation on a stopped or replaced folder does nothing */
   let mirrorGen = 0;
   /** suppresses incremental mirror flushes while applyReview writes a batch */
   let merging = false;
@@ -607,7 +610,7 @@ export const useBackup = defineStore('backup', () => {
     () => [settings.backupBooks, settings.backupEngines] as const,
     ([b, e], [pb, pe]) => {
       if (mirror.state !== 'on') return;
-      // Turning either on may expose unseen files in the mirror folder; review before pushing
+      // turning either on brings in folder files this browser has not seen, so they are reviewed first
       if ((b && !pb) || (e && !pe)) void check();
       else void sync();
     },

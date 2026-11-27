@@ -209,10 +209,13 @@ async function add(args: string[]): Promise<void> {
     }
   }
 
-  // Prefer explicit --license, then the engine's own EngineMeta license (critical for multi-license repos like uci-over-wasi)
+  // an original or adapted build stays under its original's license, whatever the repo's own;
+  // a port or reconstruction is new code under the repo's
+  const keepsOriginal =
+    parsedMeta?.buildBasis === 'original' || parsedMeta?.buildBasis === 'adapted-from-code';
   const license =
     opt('--license') ??
-    parsedMeta?.originalLicense ??
+    (keepsOriginal ? parsedMeta?.originalLicense : undefined) ??
     (await repoLicense(repo)) ??
     fail(`${repo} states no license GitHub can name; give one with --license`);
   const guess = nameOf(id);

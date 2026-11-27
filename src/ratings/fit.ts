@@ -420,8 +420,7 @@ export function fitRatings(
     const elo = ratingFor(opponents, target, mean + (s.bound === 'floor' ? 400 : -400));
     rated[e] = { elo, error: 0, model: false, pool, bound: s.bound };
   }
-  // engines that still have no rating (swept only against each other, or left isolated when every
-  // opponent was swept — including an anchor whose only opponents swept): the prior keeps them finite
+  // engines still unrated, with every opponent swept: fitted on their games among themselves
   const left = new Set<number>();
   for (let i = 0; i < n; i++) if (rated[i] === null) left.add(i);
   if (left.size > 0) {

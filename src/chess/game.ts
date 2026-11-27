@@ -128,7 +128,6 @@ export class Game {
    * @returns the number of half-moves actually removed
    */
   undo(plies = 1): number {
-    if (!Number.isFinite(plies)) return 0;
     const count = Math.max(0, Math.min(Math.floor(plies), this.uci.length));
     if (count === 0) return 0;
     const keep = this.uci.length - count;
@@ -232,19 +231,28 @@ export class Game {
     let n = start.fullmoves;
     let white = start.turn === 'white';
     const words: string[] = [];
+    // a comment's words wrap as moves do, since a brace comment may span lines; a word that opens
+    // with [ keeps to the word before it, so no line opens like a tag
+    const comment = (text: string) => {
+      const ws: string[] = [];
+      for (const w of safeComment(text).split(/\s+/).filter(Boolean)) {
+        if (w.startsWith('[') && ws.length > 0) ws[ws.length - 1] += ` ${w}`;
+        else ws.push(w);
+      }
+      if (ws.length === 0) return;
+      ws[0] = `{${ws[0]}`;
+      ws[ws.length - 1] += '}';
+      words.push(...ws);
+    };
     this.san.forEach((san, i) => {
       if (white) words.push(`${n}.`);
       else if (i === 0) words.push(`${n}...`);
       words.push(san);
-      const comment = safeComment(this.comments[i] ?? '');
-      if (comment) words.push(`{${comment}}`);
+      comment(this.comments[i] ?? '');
       if (!white) n++;
       white = !white;
     });
-    if (this.outcome) {
-      const reason = safeComment(this.outcome.reason);
-      if (reason) words.push(`{${reason}}`);
-    }
+    if (this.outcome) comment(this.outcome.reason);
     words.push(result);
     const lines: string[] = [];
     let line = '';

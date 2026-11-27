@@ -389,12 +389,7 @@ export function managerBase(url: string): string {
   if (!/^https?:\/\//i.test(u) || /\s/.test(u)) return '';
   try {
     const parsed = new URL(u);
-    if (
-      (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') ||
-      parsed.search ||
-      parsed.hash
-    )
-      return '';
+    if (parsed.search || parsed.hash) return '';
     return parsed.href.replace(/\/+$/, '');
   } catch {
     return '';

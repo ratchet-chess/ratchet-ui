@@ -23,7 +23,7 @@ import WasiChecker from './engines/WasiChecker.vue';
 
 const UPLOAD_KEY = '__uploaded__';
 
-// ── State and cache hydration ───────────────────────────────────────────────
+// ── state and the cache ─────────────────────────────────────────────────────
 
 const engines = useEngines();
 const tournaments = useTournaments();
@@ -70,7 +70,7 @@ function hydrateCache(list: readonly ServedEngine[]): void {
   }
 }
 
-// ── Filtering and selection ─────────────────────────────────────────────────
+// ── filter and selection ────────────────────────────────────────────────────
 
 const filtered = computed(() => {
   const q = query.value.trim().toLowerCase();
@@ -116,7 +116,7 @@ watch(
   { immediate: true },
 );
 
-// ── Inspect, speed probe, and WASI checks ───────────────────────────────────
+// ── inspection, speed and WASI checks ───────────────────────────────────────
 
 async function inspectEngine(e: ServedEngine): Promise<void> {
   await engines.inspect(e, true);
@@ -260,7 +260,7 @@ function cancelServedWasi(e: ServedEngine): void {
   if (r?.state === 'running') r.state = 'cancelled';
 }
 
-// ── Upload, add, and remove visitor builds ──────────────────────────────────
+// ── in-browser builds ───────────────────────────────────────────────────────
 
 async function runUploadWasi(
   wasm: Uint8Array | null = uploadedBytes.value,
@@ -372,7 +372,7 @@ async function removeUserEngine(e: ServedEngine): Promise<void> {
   }
 }
 
-// ── Row labels and drag-and-drop ────────────────────────────────────────────
+// ── rows and drag and drop ──────────────────────────────────────────────────
 
 function picked(e: Event): void {
   const input = e.target as HTMLInputElement;
@@ -463,7 +463,7 @@ onUnmounted(() => {
   </Panel>
 
   <div v-else class="grid gap-3.5 wide:grid-cols-[minmax(280px,340px)_1fr]">
-    <!-- ── Engine list sidebar ─────────────────────────────────────────── -->
+    <!-- ── the list ────────────────────────────────────────────────────── -->
     <div class="min-w-0">
       <Panel title="Engines" :note="`${filtered.length} of ${engines.list.length}`">
         <div class="border-b border-row px-2.5 py-2">
@@ -627,7 +627,7 @@ onUnmounted(() => {
       </p>
     </div>
 
-    <!-- ── Detail or upload checker pane ───────────────────────────────── -->
+    <!-- ── the detail or the check ─────────────────────────────────────── -->
     <WasiChecker
       v-if="showingUpload && uploadedReport"
       mode="upload"

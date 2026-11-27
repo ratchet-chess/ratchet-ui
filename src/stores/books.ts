@@ -133,16 +133,10 @@ export const useBooks = defineStore('books', () => {
       e?.usage !== undefined && e.quota !== undefined ? { usage: e.usage, quota: e.quota } : null;
   }
 
-  /** reads `user-books/list.json` safely, returning an empty list on missing or torn JSON */
+  /** the user's books' list as saved, its files unchecked */
   async function readUserList(): Promise<UserBook[]> {
-    const raw = await readText([USER], USER_LIST);
-    if (!raw) return [];
-    try {
-      const parsed: unknown = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed.filter(isUserBook) : [];
-    } catch {
-      return [];
-    }
+    const saved: unknown = JSON.parse((await readText([USER], USER_LIST)) ?? '[]');
+    return Array.isArray(saved) ? saved.filter(isUserBook) : [];
   }
 
   /** the size of a file in a folder, or null when it is not there */
@@ -255,12 +249,7 @@ export const useBooks = defineStore('books', () => {
       const format = bookFormat(id);
       if (!format)
         throw new Error('a book is a .pgn or .epd file, or a zip archive that holds one');
-      const onDisk = await readUserList();
-      if (
-        list.some((b) => b.id === id) ||
-        user.value.some((b) => b.id === id) ||
-        onDisk.some((b) => b.id === id)
-      )
+      if (list.some((b) => b.id === id) || user.value.some((b) => b.id === id))
         throw new Error(`a book named ${id} is already in browser; rename the file to add it`);
 
       written = true;

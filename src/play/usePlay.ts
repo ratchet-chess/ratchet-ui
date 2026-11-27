@@ -393,8 +393,7 @@ export function usePlay() {
       black: resolveSideControl(players.black, sideConfig.black.limit, controlLabel.value),
     };
 
-    const hc = navigator.hardwareConcurrency;
-    const hw = Number.isFinite(hc) && hc > 0 ? Math.floor(hc) : 1;
+    const hw = Math.max(1, navigator.hardwareConcurrency);
     const threadsCap = canSpawnBrowserThreads() ? hw : 1;
 
     try {
