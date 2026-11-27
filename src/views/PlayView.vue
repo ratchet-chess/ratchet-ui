@@ -24,6 +24,7 @@ import { defaultEngine, useEngines } from '../stores/engines.ts';
 import { PLAYED } from '../stores/games.ts';
 import { useSettings } from '../stores/settings.ts';
 import { thousands } from '../ui/format.ts';
+import { scrollChildIntoView } from '../ui/scroll.ts';
 import EngineOptionsPanel from './play/EngineOptionsPanel.vue';
 import PlaySidePicker from './play/PlaySidePicker.vue';
 
@@ -317,7 +318,7 @@ watch([currentPly, () => game.value.san.length], async ([p]) => {
     return;
   }
   const el = box.querySelector<HTMLElement>(`[data-ply="${p}"]`);
-  el?.scrollIntoView?.({ block: 'nearest' });
+  if (el) scrollChildIntoView(box, el);
 });
 
 // ── keys, layout and actions ────────────────────────────────────────────────

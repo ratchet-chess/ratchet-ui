@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /** One engine picked from many: a box that filters the served engines as it is typed in. */
 import { computed, nextTick, ref, useId, watch } from 'vue';
+import { scrollChildIntoView } from '../../ui/scroll.ts';
 
 const props = defineProps<{ engines: string[] }>();
 const value = defineModel<string>({ required: true });
@@ -31,8 +32,9 @@ const active = ref(0);
 
 function scrollActive(): void {
   void nextTick(() => {
-    const el = listbox.value?.children[active.value];
-    if (el instanceof HTMLElement) el.scrollIntoView({ block: 'nearest' });
+    const box = listbox.value;
+    const el = box?.children[active.value];
+    if (box && el instanceof HTMLElement) scrollChildIntoView(box, el);
   });
 }
 watch(active, () => {

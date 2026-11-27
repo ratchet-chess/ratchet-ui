@@ -4,6 +4,7 @@
  * Compact `field-sm` height matches Play's Game panel.
  */
 import { computed, nextTick, ref, useId, watch } from 'vue';
+import { scrollChildIntoView } from '../../ui/scroll.ts';
 
 interface Item {
   value: string;
@@ -51,8 +52,9 @@ const truncated = computed(() => matched.value.length > hits.value.length);
 
 function scrollActive(): void {
   void nextTick(() => {
-    const el = listbox.value?.children[active.value];
-    if (el instanceof HTMLElement) el.scrollIntoView({ block: 'nearest' });
+    const box = listbox.value;
+    const el = box?.children[active.value];
+    if (box && el instanceof HTMLElement) scrollChildIntoView(box, el);
   });
 }
 

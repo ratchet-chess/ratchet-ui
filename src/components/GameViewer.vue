@@ -15,6 +15,7 @@ import {
 import { findOpening } from '../chess/openings.ts';
 import { extractGameEval, formatClock, formatEval, formatMoveTime } from '../games/eval.ts';
 import { replay } from '../games/pgn.ts';
+import { scrollChildIntoView } from '../ui/scroll.ts';
 import Board from './Board.vue';
 import EvalGraph from './EvalGraph.vue';
 import Panel from './Panel.vue';
@@ -64,11 +65,7 @@ watch(ply, async (p) => {
     return;
   }
   const el = box.querySelector<HTMLElement>(`[data-ply="${p}"]`);
-  if (!el) return;
-  const top = el.offsetTop - box.offsetTop;
-  const bottom = top + el.offsetHeight;
-  if (top < box.scrollTop) box.scrollTop = top;
-  else if (bottom > box.scrollTop + box.clientHeight) box.scrollTop = bottom - box.clientHeight;
+  if (el) scrollChildIntoView(box, el);
 });
 
 function onKey(e: KeyboardEvent): void {
