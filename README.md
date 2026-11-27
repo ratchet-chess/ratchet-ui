@@ -22,10 +22,7 @@ bun run build                    # the static site, in dist/
 BASE=/ratchet-ui/ bun run build  # the static site for a path below the host's root
 ```
 
-`.github/workflows/pages.yml` publishes the static site to GitHub Pages on a push to main. It runs on GitHub only,
-because Gitea runs `.gitea/workflows` alone when that folder exists. An engine runs threads only on a cross-origin
-isolated page, and Pages sends no headers. So a first visit registers `public/isolation-sw.js`, a service worker that
-adds the headers to the site's own responses, and reloads once.
+`.github/workflows/pages.yml` publishes the static site to [ratchetchess.com](https://ratchetchess.com/) via GitHub Pages on a push to main (guarded by `github.server_url` so Gitea ignores it). An engine runs threads only on a cross-origin isolated page, and Pages sends no headers. So a first visit registers `public/isolation-sw.js`, a service worker that adds the headers to the site's own responses, and reloads once.
 
 `books.json` lists the opening books the app can pull. The browser pulls a book from its repo at the pinned commit,
 checks the archive's sha256, and keeps the book in its private file system. A user can also add a book from a file of
@@ -102,8 +99,7 @@ Settings sets the theme: light, dark, or as the system asks. The style page, `#/
 scale and the shared pieces every page is drawn from. `src/style.css` holds them, and a test fails on a raw color or
 font size in a view.
 
-Every engine runs in `vendor/uci-over-wasi/`, a copy of uci-over-wasi's browser host for WASI builds. Its `README.md`
-names the commit it came from. `scripts/engines.ts` bundles its `browser.ts` into `public/engines/wasi-host.js`.
+Every engine runs in `vendor/uci-over-wasi/`, a copy of [uci-over-wasi](https://github.com/ratchet-chess/uci-over-wasi)'s browser host for WASI builds. Its `README.md` names the commit it came from. `scripts/engines.ts` bundles its `browser.ts` into `public/engines/wasi-host.js`.
 
 Checks, which the pre-commit hook runs: `bun run typecheck`, `bun run lint`, `bun run knip`, `bun run test` and
 `bun run format:check`. CI runs the same checks and the build.

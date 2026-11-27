@@ -20,7 +20,7 @@ import { summarizeOverrides, type OptionValue } from '../engine/options.ts';
 import { extractGameEval, formatEval } from '../games/eval.ts';
 import { usePlay, type Player } from '../play/usePlay.ts';
 import { useBooks } from '../stores/books.ts';
-import { useEngines } from '../stores/engines.ts';
+import { defaultEngine, useEngines } from '../stores/engines.ts';
 import { PLAYED } from '../stores/games.ts';
 import { useSettings } from '../stores/settings.ts';
 import { thousands } from '../ui/format.ts';
@@ -83,9 +83,9 @@ function applyRouteQuery(): boolean {
 onMounted(async () => {
   await Promise.all([engines.load(), books.load()]);
   if (!applyRouteQuery()) {
-    // a first visit offers a game against the newest engine, with the person as White
-    const newest = engines.list.at(-1);
-    if (newest) play.setPlayer('black', { kind: 'engine', id: newest.id });
+    // a first visit offers a game against the newest Ratchet engine, with the person as White
+    const preferred = defaultEngine(engines.list);
+    if (preferred) play.setPlayer('black', { kind: 'engine', id: preferred.id });
   }
 });
 
@@ -575,7 +575,13 @@ function savePgn(): void {
           </div>
 
           <div class="flex flex-wrap gap-1.5 border-t border-row px-3 py-2">
-            <button class="btn" :disabled="phase === 'starting'" @click="newGame">New game</button>
+            <button
+              :class="phase === 'setup' ? 'btn-primary' : 'btn'"
+              :disabled="phase === 'starting'"
+              @click="newGame"
+            >
+              New game
+            </button>
             <button class="btn" :disabled="!canTakeback" @click="onTakeback">Takeback</button>
             <button class="btn" :disabled="!canResign" @click="play.resign()">Resign</button>
             <button

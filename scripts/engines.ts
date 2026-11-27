@@ -128,8 +128,10 @@ function readLocals(): LocalEntry[] {
   });
 }
 
-/** an engine's name and version, from Ratchet's package naming, ratchet-<semver> */
+/** an engine's name and version, from Ratchet's package naming (`ratchetHCE-<semver>` or `ratchet-<semver>`) */
 function nameOf(id: string): { name: string; version: string | null } {
+  const hce = /^ratchetHCE-(\d+\.\d+\.\d+)$/.exec(id);
+  if (hce) return { name: 'RatchetHCE', version: hce[1] ?? null };
   const own = /^ratchet-(\d+\.\d+\.\d+)$/.exec(id);
   return own ? { name: 'Ratchet', version: own[1] ?? null } : { name: id, version: null };
 }
@@ -174,14 +176,10 @@ async function add(args: string[]): Promise<void> {
   }
   const commit = text(ref, what, 'object', 'sha');
 
-  const license =
-    opt('--license') ??
-    (await repoLicense(repo)) ??
-    fail(`${repo} states no license GitHub can name; give one with --license`);
-
   const id = asset.replace(/\.wasm$/, '');
   const metaAsset: unknown = assets.find((x: unknown) => at(x, 'name') === `${id}.meta.json`);
   let metaFields: { metaUrl: string; metaSha256: string } | undefined;
+  let parsedMeta: EngineMeta | undefined;
   if (metaAsset !== undefined) {
     const metaDigest = at(metaAsset, 'digest');
     if (typeof metaDigest === 'string' && metaDigest.startsWith('sha256:')) {
@@ -191,10 +189,17 @@ async function add(args: string[]): Promise<void> {
       if (`sha256:${metaGot}` !== metaDigest) {
         fail(`${id}.meta.json hashes to ${metaGot}, and GitHub publishes ${metaDigest}`);
       }
-      parseMetaBytes(metaBytes, `${id}.meta.json`);
+      parsedMeta = parseMetaBytes(metaBytes, `${id}.meta.json`);
       metaFields = { metaUrl, metaSha256: metaGot };
     }
   }
+
+  // Prefer explicit --license, then the engine's own EngineMeta license (critical for multi-license repos like uci-over-wasi)
+  const license =
+    opt('--license') ??
+    parsedMeta?.originalLicense ??
+    (await repoLicense(repo)) ??
+    fail(`${repo} states no license GitHub can name; give one with --license`);
   const guess = nameOf(id);
   const list = readReleases();
   upsert(list, {

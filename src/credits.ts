@@ -60,6 +60,7 @@ export const libraries: Credit[] = [
   },
   {
     name: 'uci-over-wasi',
+    url: 'https://github.com/ratchet-chess/uci-over-wasi',
     use: 'the host every engine runs in, copied into vendor/',
     license: 'MIT',
   },

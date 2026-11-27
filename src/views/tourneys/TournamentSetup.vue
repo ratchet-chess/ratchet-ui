@@ -14,7 +14,7 @@ import { mayUnpair, plannedGames, type Format, type TournamentConfig } from '../
 import { sprtGames } from '../../match/stats.ts';
 import { makeId } from '../../storage/id.ts';
 import { useBooks } from '../../stores/books.ts';
-import { useEngines } from '../../stores/engines.ts';
+import { defaultEngine, useEngines } from '../../stores/engines.ts';
 import { useSettings, type Setup } from '../../stores/settings.ts';
 import { useTournaments } from '../../stores/tournaments.ts';
 import ControlPicker from './ControlPicker.vue';
@@ -191,12 +191,20 @@ const setup = computed<Setup>(() => ({
   paired: paired.value || !unpairable.value,
 }));
 
+function defaultPair(): [string, string] {
+  const first = defaultEngine(engines.list)?.id ?? '';
+  const second =
+    engines.list.find((e) => e.id === 'stockfish-10' && e.id !== first)?.id ??
+    engines.list.filter((e) => e.id !== first).at(-1)?.id ??
+    first;
+  return [first, second];
+}
+
 // ── loading a setup: the defaults, a template, or a tournament to clone ───
 function reset(): void {
   kind.value = 'match';
   name.value = '';
-  tested.value = engines.list.at(-1)?.id ?? '';
-  base.value = engines.list.at(-2)?.id ?? tested.value;
+  [tested.value, base.value] = defaultPair();
   field.value = [];
   useSprt.value = true;
   [elo0.value, elo1.value] = [SPRT_PRESETS[0].elo0, SPRT_PRESETS[0].elo1];
@@ -261,9 +269,9 @@ onMounted(async () => {
 watch(
   () => engines.list.length,
   () => {
-    const newest = engines.list.at(-1)?.id ?? '';
-    tested.value ||= newest;
-    base.value ||= engines.list.at(-2)?.id ?? newest;
+    const [first, second] = defaultPair();
+    tested.value ||= first;
+    base.value ||= second;
   },
   { immediate: true },
 );

@@ -451,10 +451,8 @@ onUnmounted(() => {
   <PageHeader title="Engines" sub="WASI builds running in browser Workers" />
   <input ref="picker" type="file" accept=".wasm" class="hidden" @change="picked" />
 
-  <Panel v-if="engines.error" title="engines.json">
-    <div class="px-3 py-2.5 text-bad">
-      {{ engines.error }} · run <span class="mono">bun run engines</span>
-    </div>
+  <Panel v-if="engines.error" title="Engines">
+    <div class="px-3 py-2.5 text-bad">{{ engines.error }}</div>
   </Panel>
 
   <div v-else class="grid gap-3.5 wide:grid-cols-[minmax(280px,340px)_1fr]">
@@ -551,8 +549,8 @@ onUnmounted(() => {
             v-if="engines.loaded && engines.list.length === 0"
             class="px-3 py-3 text-dense text-dim"
           >
-            No engines yet. Upload a <span class="mono">.wasm</span> build or run
-            <span class="mono">bun run engines</span>.
+            No engines available yet. Upload a <span class="mono">.wasm</span> build to check and
+            play.
           </div>
           <div
             v-else-if="engines.loaded && filtered.length === 0"

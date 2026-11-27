@@ -28,5 +28,6 @@ export const router = createRouter({
     { path: '/hosts', component: HostsView },
     { path: '/ratings', component: RatingsView },
     { path: '/about', component: AboutView },
+    { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
 });

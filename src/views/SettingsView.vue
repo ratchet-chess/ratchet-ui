@@ -62,11 +62,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <PageHeader title="Settings">
-    <RouterLink to="/style" class="text-dense text-accent hover:underline"
-      >Style reference ›</RouterLink
-    >
-  </PageHeader>
+  <PageHeader title="Settings" />
 
   <Panel title="Look">
     <div class="flex flex-wrap items-center gap-3 px-3 py-2.5 text-dense">

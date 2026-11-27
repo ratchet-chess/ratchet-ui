@@ -12,9 +12,12 @@ const isolation = {
   'Cross-Origin-Embedder-Policy': 'require-corp',
 };
 
+const rawBase = process.env['BASE'] ?? '/';
+const base = rawBase.replace(/^\/+/, '/').replace(/\/+$/, '/') || '/';
+
 export default defineConfig({
   // a static host may serve the app below its root, such as a project's GitHub Pages path
-  base: process.env['BASE'] ?? '/',
+  base,
   plugins: [vue(), tailwindcss()],
   server: { headers: isolation },
   preview: { headers: isolation },

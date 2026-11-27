@@ -163,7 +163,23 @@ function rowTone(status: CheckResult['status']): string {
       v-else-if="!report"
       class="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 text-dense text-dim"
     >
-      <span>Run the UCI over WASI compliance checks on this build in browser.</span>
+      <span>
+        Run the
+        <a
+          href="https://github.com/ratchet-chess/uci-over-wasi/blob/main/docs/uci-over-wasi.md"
+          target="_blank"
+          rel="noopener"
+          class="text-accent hover:underline"
+          >UCI over WASI</a
+        >
+        compliance checks in browser (<a
+          href="https://github.com/ratchet-chess/uci-over-wasi/blob/main/helper/README.md"
+          target="_blank"
+          rel="noopener"
+          class="text-accent hover:underline"
+          >adaptation guide</a
+        >).
+      </span>
       <button class="btn-sm" :disabled="loading" @click="emit('run')">
         <ShieldCheck :size="12" /> Check WASI
       </button>

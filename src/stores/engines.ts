@@ -50,6 +50,12 @@ const hasControlChar = (s: string) => {
   return false;
 };
 
+/** Picks the preferred default engine: newest own Ratchet build when present, else the last entry. */
+export function defaultEngine(list: readonly ServedEngine[]): ServedEngine | undefined {
+  const own = list.filter((e) => e.meta?.kind === 'own' || /^ratchet(?:HCE)?-/i.test(e.id));
+  return own.at(-1) ?? list.at(-1);
+}
+
 /** Whether `id` is a safe, non-empty engine identifier and OPFS file stem. */
 export function isValidEngineId(id: string): boolean {
   if (!id || id !== id.trim() || id === '.' || id === '..') return false;

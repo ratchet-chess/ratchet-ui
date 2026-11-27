@@ -11,7 +11,48 @@ const groups: { title: string; note: string; rows: Credit[] }[] = [
 </script>
 
 <template>
-  <PageHeader title="About" sub="Ratchet · chess engines in the browser · GPL-3.0-or-later" />
+  <PageHeader title="About" sub="Ratchet Chess · chess engines in the browser · GPL-3.0-or-later" />
+
+  <Panel title="Source and license" note="free software · corresponding source">
+    <div class="space-y-1.5 px-3 py-2.5 text-dense text-dim">
+      <p>
+        This web application is free software under the
+        <a
+          href="https://github.com/ratchet-chess/ratchet-ui/blob/main/LICENSE"
+          target="_blank"
+          rel="noopener"
+          class="text-accent hover:underline"
+          >GNU General Public License, version 3 or later</a
+        >. Corresponding source code is published at
+        <a
+          href="https://github.com/ratchet-chess/ratchet-ui"
+          target="_blank"
+          rel="noopener"
+          class="text-accent hover:underline"
+          >github.com/ratchet-chess/ratchet-ui</a
+        >.
+      </p>
+      <p>
+        Companion repositories:
+        <a
+          href="https://github.com/ratchet-chess/ratchet-hce"
+          target="_blank"
+          rel="noopener"
+          class="text-accent hover:underline"
+          >ratchet-hce</a
+        >
+        (hand-written engine) and
+        <a
+          href="https://github.com/ratchet-chess/uci-over-wasi"
+          target="_blank"
+          rel="noopener"
+          class="text-accent hover:underline"
+          >uci-over-wasi</a
+        >
+        (WASI spec, host and adapted engines).
+      </p>
+    </div>
+  </Panel>
 
   <Panel v-for="g in groups" :key="g.title" :title="g.title" :note="g.note">
     <table class="w-full text-left text-dense">

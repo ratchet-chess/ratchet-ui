@@ -242,9 +242,10 @@ export function usePlay() {
     viewPly.value = clamped === last ? null : clamped;
   }
 
-  /** which side a person may move now (only when viewing the live position) */
+  /** which side a person may move now (viewing live in play, or dragging move 1 from setup) */
   function personToMove(): Color | undefined {
-    if (phase.value !== 'playing' || !viewingLive.value) return undefined;
+    if (!viewingLive.value) return undefined;
+    if (phase.value !== 'playing' && phase.value !== 'setup') return undefined;
     const turn = game.value.turn;
     return players[turn].kind === 'person' ? turn : undefined;
   }
@@ -363,7 +364,7 @@ export function usePlay() {
   }
 
   /** starts a new game with the chosen players, options, limits, and warm-up before move 1 */
-  async function start(bookOpening?: Opening): Promise<void> {
+  async function start(bookOpening?: Opening, initialMove?: string): Promise<void> {
     token++;
     const mine = token;
     shutDown();
@@ -377,9 +378,11 @@ export function usePlay() {
     }
     bookPlies.value = game.value.san.length;
     openingLabel.value = bookOpening?.label ?? '';
+    if (initialMove) game.value.play(initialMove);
     thinking.white = thinking.black = null;
     times.white = times.black = null;
     phase.value = 'starting';
+    changed();
 
     activeControls = {
       white: resolveSideControl(players.white, sideConfig.white.limit, controlLabel.value),
@@ -429,6 +432,10 @@ export function usePlay() {
       if (mine !== token) return;
       error.value = e instanceof Error ? e.message : String(e);
       shutDown();
+      if (initialMove) {
+        game.value = new Game();
+        changed();
+      }
       phase.value = 'setup';
       return;
     }
@@ -443,10 +450,20 @@ export function usePlay() {
     next();
   }
 
-  /** a person's move on the board; a pawn reaching the last rank needs its piece */
+  /** a person's move on the board; dragging in setup auto-starts the game with that move */
   function move(orig: string, dest: string, promotion = ''): void {
     if (personToMove() === undefined) return;
-    if (!game.value.play(orig + dest + promotion)) {
+    const uci = orig + dest + promotion;
+    if (phase.value === 'setup') {
+      const check = new Game(game.value.fen);
+      if (!check.play(uci)) {
+        changed();
+        return;
+      }
+      void start(undefined, uci);
+      return;
+    }
+    if (!game.value.play(uci)) {
       changed();
       return;
     }

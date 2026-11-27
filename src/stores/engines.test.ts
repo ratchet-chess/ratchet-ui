@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { defaultEngineId, isUserEngine, isValidEngineId } from './engines.ts';
+import type { ServedEngine } from '../engine/manifest.ts';
+import { defaultEngine, defaultEngineId, isUserEngine, isValidEngineId } from './engines.ts';
 
 describe('engine id helpers', () => {
   it('derives a clean default engine id from a filename', () => {
@@ -52,5 +53,24 @@ describe('engine id helpers', () => {
         added: 0,
       }),
     ).toBe(false);
+  });
+
+  it('prefers the newest Ratchet build over alphabetically later engines', () => {
+    const mk = (id: string): ServedEngine => ({
+      id,
+      name: id,
+      version: null,
+      wasm: `${id}.wasm`,
+      bytes: 100,
+      sha256: 'abc',
+      source: 'test',
+      license: 'GPL-3.0-or-later',
+    });
+    expect(
+      defaultEngine([mk('clovis-iii'), mk('ratchetHCE-0.4.0'), mk('stockfish-10'), mk('zurichess')])
+        ?.id,
+    ).toBe('ratchetHCE-0.4.0');
+    expect(defaultEngine([mk('clovis-iii'), mk('stockfish-10')])?.id).toBe('stockfish-10');
+    expect(defaultEngine([])).toBeUndefined();
   });
 });

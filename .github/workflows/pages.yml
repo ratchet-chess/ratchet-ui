@@ -1,7 +1,7 @@
 name: Pages
 
-# Publishes the static site to GitHub Pages. Gitea runs only .gitea/workflows, so this runs on
-# GitHub alone. The repo's Pages source must be set to GitHub Actions.
+# Publishes the static site to GitHub Pages. Guarded by github.server_url so Gitea ignores
+# these jobs when mirroring. The repo's Pages source must be set to GitHub Actions.
 on:
   push:
     branches: [main]
@@ -19,6 +19,7 @@ concurrency:
 
 jobs:
   build:
+    if: github.server_url == 'https://github.com'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -50,6 +51,7 @@ jobs:
           path: dist
 
   deploy:
+    if: github.server_url == 'https://github.com'
     needs: build
     runs-on: ubuntu-latest
     environment:
