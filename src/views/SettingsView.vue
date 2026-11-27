@@ -8,6 +8,7 @@ import Segmented from '../components/Segmented.vue';
 import { inputMode } from '../engine/uci.ts';
 import { useBackup } from '../stores/backup.ts';
 import { useBooks } from '../stores/books.ts';
+import { useEngines } from '../stores/engines.ts';
 import { RELOAD_MS, useManager } from '../stores/manager.ts';
 import { useSettings } from '../stores/settings.ts';
 import { bytes, whenText } from '../ui/format.ts';
@@ -17,6 +18,7 @@ import DeviceSpeedPanel from './settings/DeviceSpeedPanel.vue';
 const settings = useSettings();
 const backup = useBackup();
 const books = useBooks();
+const engines = useEngines();
 const manager = useManager();
 const readClock = computed(() =>
   manager.readAt === null
@@ -48,12 +50,14 @@ function picked(e: Event): void {
 }
 
 const userBytes = computed(() => books.user.reduce((n, b) => n + b.bytes, 0));
+const userEngineBytes = computed(() => engines.user.reduce((n, e) => n + e.bytes, 0));
 const when = (ms: number | null) =>
   ms === null ? 'never' : whenText(new Date(ms).toISOString(), Date.now());
 
 onMounted(() => {
   void backup.readStorage();
   void books.load();
+  void engines.load();
 });
 </script>
 
@@ -140,8 +144,8 @@ onMounted(() => {
         </button>
         <span class="text-dim">Last export: {{ when(backup.exportedAt) }}</span>
         <HelpTip>
-          Zip archive containing tournaments, games, settings, and local books. Import adds new
-          items and prompts on conflicts.
+          Zip archive containing tournaments, games, settings, local books, and in-browser engines.
+          Import adds new items and prompts on conflicts.
         </HelpTip>
       </span>
 
@@ -184,6 +188,13 @@ onMounted(() => {
         <input v-model="settings.backupBooks" type="checkbox" class="accent-accent" />
         Include in backup
         <span class="num text-dim">· {{ bytes(userBytes) }}</span>
+      </label>
+
+      <span class="text-dim">In-browser engines</span>
+      <label class="flex items-center gap-1.5">
+        <input v-model="settings.backupEngines" type="checkbox" class="accent-accent" />
+        Include in backup
+        <span class="num text-dim">· {{ bytes(userEngineBytes) }}</span>
       </label>
     </div>
     <p

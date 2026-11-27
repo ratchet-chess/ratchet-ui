@@ -17,10 +17,14 @@ async function* walk(
 }
 
 /** the layout's files in a folder, as Files that read from it */
-export async function filesIn(root: FileSystemDirectoryHandle, books: boolean): Promise<Files> {
+export async function filesIn(
+  root: FileSystemDirectoryHandle,
+  books: boolean,
+  engines = false,
+): Promise<Files> {
   const out: Files = new Map();
   // the layout is at most three deep: tournaments/<id>/<file>
-  for await (const [p, f] of walk(root, '', 3)) if (inLayout(p, books)) out.set(p, f);
+  for await (const [p, f] of walk(root, '', 3)) if (inLayout(p, books, engines)) out.set(p, f);
   return out;
 }
 

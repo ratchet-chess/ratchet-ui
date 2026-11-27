@@ -6,6 +6,12 @@
  */
 import { configOf } from '../match/records.ts';
 import { isUserBook, USER, USER_LIST, type UserBook } from '../stores/books.ts';
+import {
+  isUserEngine,
+  USER_ENGINES,
+  USER_ENGINES_LIST,
+  type UserEngine,
+} from '../stores/engines.ts';
 import { QUEUED } from '../stores/queue.ts';
 import { GAMES, GAMES_INDEX, isCollection, type Collection } from '../stores/games.ts';
 import { settingsFileOf, unionOf, type SettingsFile } from '../stores/settings.ts';
@@ -25,13 +31,14 @@ const T_PREFIX = 't-';
 const isName = (s: string | undefined): s is string =>
   s !== undefined && s !== '' && s !== '.' && s !== '..' && !/[/\\]/.test(s);
 
-/** whether a path is one of the layout's files; a user's book only when `books` */
-export function inLayout(path: string, books: boolean): boolean {
+/** whether a path is one of the layout's files; user books and engines only when enabled */
+export function inLayout(path: string, books: boolean, engines = false): boolean {
   const p = path.split('/');
   if (p.length === 1) return p[0] === SETTINGS;
   if (p.length === 2 && p[0] === GAMES)
     return p[1] === GAMES_INDEX || /^[^/\\]+\.pgn$/.test(p[1] ?? '');
   if (p.length === 2 && p[0] === USER) return books && isName(p[1]);
+  if (p.length === 2 && p[0] === USER_ENGINES) return engines && isName(p[1]);
   if (p.length === 3 && p[0] === TOURNAMENTS)
     return isName(p[1]) && TOURNAMENT_FILES.has(p[2] ?? '');
   return false;
@@ -42,14 +49,14 @@ export function inLayout(path: string, books: boolean): boolean {
  * own; that folder is taken off.
  */
 export function layoutOf(files: Files): Files {
-  let out = new Map([...files].filter(([p]) => inLayout(p, true)));
+  let out = new Map([...files].filter(([p]) => inLayout(p, true, true)));
   if (out.size === 0) {
     const heads = new Set([...files.keys()].map((p) => p.split('/')[0]));
     if (heads.size === 1)
       out = new Map(
         [...files]
           .map(([p, b]): [string, Blob] => [p.slice(p.indexOf('/') + 1), b])
-          .filter(([p]) => inLayout(p, true)),
+          .filter(([p]) => inLayout(p, true, true)),
       );
   }
   return out;
@@ -57,18 +64,19 @@ export function layoutOf(files: Files): Files {
 
 // ── items ───────────────────────────────────────────────────────────────────
 
-export type Kind = 'tournament' | 'collection' | 'book' | 'settings';
+export type Kind = 'tournament' | 'collection' | 'book' | 'engine' | 'settings';
 
 /** one thing a person knows by name, with the files that make it */
 export interface Item {
   kind: Kind;
-  /** its id in its kind: a tournament's or collection's id, a book's file name */
+  /** its id in its kind: a tournament's or collection's id, a book's file name, or an engine's id */
   id: string;
   name: string;
   files: Files;
   /** its entry in games/index.json: a collection's own, or a tournament's games */
   collection?: Collection;
   book?: UserBook;
+  engine?: UserEngine;
   settings?: SettingsFile;
   /** what tells two copies apart, such as the games played */
   facts: string;
@@ -81,6 +89,7 @@ export interface Contents {
   items: Map<string, Item>;
   collections: Collection[];
   books: UserBook[];
+  engines: UserEngine[];
   /** a file that is not part of any item, and why */
   skipped: string[];
 }
@@ -108,6 +117,8 @@ export async function contentsOf(files: Files): Promise<Contents> {
   const collections = Array.isArray(index) ? index.filter(isCollection) : [];
   const list = await json(files.get(`${USER}/${USER_LIST}`));
   const books = Array.isArray(list) ? list.filter(isUserBook) : [];
+  const eList = await json(files.get(`${USER_ENGINES}/${USER_ENGINES_LIST}`));
+  const engines = Array.isArray(eList) ? eList.filter(isUserEngine) : [];
   const claimed = new Set<string>();
 
   const settings = files.get(SETTINGS);
@@ -207,7 +218,25 @@ export async function contentsOf(files: Files): Promise<Contents> {
       facts: `${counted(book.positions, 'opening')} · ${bytes(b.size)}`,
     });
   }
-  return { items, collections, books, skipped };
+
+  for (const [p, b] of files) {
+    const [head, file] = p.split('/');
+    if (head !== USER_ENGINES || !file || file === USER_ENGINES_LIST) continue;
+    const engine = engines.find((x) => x.wasm === file);
+    if (!engine) {
+      skipped.push(`${p}: not in ${USER_ENGINES}/${USER_ENGINES_LIST}`);
+      continue;
+    }
+    items.set(keyOf('engine', engine.id), {
+      kind: 'engine',
+      id: engine.id,
+      name: engine.name,
+      files: new Map([[p, b]]),
+      engine: { ...engine, bytes: b.size },
+      facts: `${engine.sha256.slice(0, 8)} · ${bytes(b.size)}`,
+    });
+  }
+  return { items, collections, books, engines, skipped };
 }
 
 // ── comparing ───────────────────────────────────────────────────────────────
@@ -281,7 +310,7 @@ async function relationOf(here: Item, there: Item): Promise<Order> {
       end = p;
       continue;
     }
-    const appended = here.kind !== 'book' && /\.(jsonl|pgn)$/.test(p);
+    const appended = here.kind !== 'book' && here.kind !== 'engine' && /\.(jsonl|pgn)$/.test(p);
     orders.push(await orderOf(here.files.get(p), there.files.get(p), appended));
   }
   const order = combined(orders);
@@ -329,7 +358,7 @@ export async function rowsOf(here: Contents, there: Contents): Promise<Row[]> {
     const relation: Relation = !h ? 'new' : !t ? 'only here' : await relationOf(h, t);
     out.push({ key, kind: any.kind, name: any.name, here: h, there: t, relation });
   }
-  const order: Kind[] = ['settings', 'tournament', 'collection', 'book'];
+  const order: Kind[] = ['settings', 'tournament', 'collection', 'book', 'engine'];
   return out.toSorted((a, b) =>
     a.kind === b.kind
       ? a.name.localeCompare(b.name)
@@ -420,6 +449,20 @@ async function renamed(
     const book = item.book && { ...item.book, id };
     return { ...item, id, name: id, files: new Map([[`${USER}/${id}`, b]]), book };
   }
+  if (item.kind === 'engine') {
+    const ids = new Set([...here.engines, ...there.engines].map((e) => e.id));
+    const id = freeName(item.id, (n) => ids.has(n));
+    const wasm = `${id}.wasm`;
+    const [[, b] = ['', EMPTY]] = item.files;
+    const engine = item.engine && { ...item.engine, id, wasm };
+    return {
+      ...item,
+      id,
+      name: engine?.name ?? id,
+      files: new Map([[`${USER_ENGINES}/${wasm}`, b]]),
+      engine,
+    };
+  }
   return item;
 }
 
@@ -440,12 +483,13 @@ export interface IndexChange<T> {
   drop: string[];
 }
 
-/** what a merge does to this browser: files, the two indexes' entries, and settings to take */
+/** what a merge does to this browser: files, the indexes' entries, and settings to take */
 export interface Merge {
   /** files deleted, then written */
   ops: Op[];
   collections: IndexChange<Collection>;
   books: IndexChange<UserBook>;
+  engines: IndexChange<UserEngine>;
   settings: SettingsFile | null;
 }
 
@@ -463,12 +507,14 @@ export async function mergeOf(
     ops: [],
     collections: { put: [], drop: [] },
     books: { put: [], drop: [] },
+    engines: { put: [], drop: [] },
     settings: null,
   };
   const take = (item: Item) => {
     for (const [p, data] of item.files) writes.push({ write: p, data });
     if (item.collection) out.collections.put.push(item.collection);
     if (item.book) out.books.put.push(item.book);
+    if (item.engine) out.engines.put.push(item.engine);
   };
   for (const row of rows) {
     const choice = choices.get(row.key);
@@ -485,6 +531,7 @@ export async function mergeOf(
         removes.push(...removalsOf(h));
         if (h.collection) out.collections.drop.push(h.collection.id);
         if (h.book) out.books.drop.push(h.book.id);
+        if (h.engine) out.engines.drop.push(h.engine.id);
       }
       take(t);
     }
@@ -496,19 +543,24 @@ export async function mergeOf(
 /**
  * The changes that make a copy of the layout hold just what `from` holds: each file it lacks or
  * holds otherwise written, each it holds that `from` does not deleted, a tournament's folder
- * whole. `books` says whether the user's books are part of it.
+ * whole. `books` and `engines` say whether the user's books and in-browser engines are part of it.
  */
-export async function syncOf(from: Files, to: Files, books: boolean): Promise<Op[]> {
+export async function syncOf(
+  from: Files,
+  to: Files,
+  books: boolean,
+  engines = false,
+): Promise<Op[]> {
   const ops: Op[] = [];
   for (const [p, b] of from) {
-    if (!inLayout(p, books)) continue;
+    if (!inLayout(p, books, engines)) continue;
     const there = to.get(p);
     if (!there || !(await sameFile(b, there))) ops.push({ write: p, data: b });
   }
   const kept = new Set([...from.keys()].map((p) => p.split('/').slice(0, 2).join('/')));
   const gone = new Set<string>();
   for (const p of to.keys()) {
-    if (!inLayout(p, books) || from.has(p)) continue;
+    if (!inLayout(p, books, engines) || from.has(p)) continue;
     const parts = p.split('/');
     const folder = parts.slice(0, 2).join('/');
     if (parts[0] === TOURNAMENTS && !kept.has(folder)) gone.add(folder);

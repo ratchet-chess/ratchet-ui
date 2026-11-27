@@ -1,8 +1,17 @@
 <script setup lang="ts">
-import { ChevronDown, ChevronRight, RotateCw, ShieldCheck, Square, Upload } from '@lucide/vue';
+import {
+  ChevronDown,
+  ChevronRight,
+  Plus,
+  RotateCw,
+  ShieldCheck,
+  Square,
+  Upload,
+} from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import Panel from '../../components/Panel.vue';
 import type { WasiCheckReport } from '../../engine/cache.ts';
+import { defaultEngineId, isValidEngineId } from '../../stores/engines.ts';
 import { bytes, sentence } from '../../ui/format.ts';
 import type { CheckResult } from '../../../vendor/uci-over-wasi/check.ts';
 
@@ -13,13 +22,47 @@ const props = defineProps<{
   note?: string;
   report: WasiCheckReport | undefined;
   loading?: boolean;
+  /** served engine ids, which a visitor build cannot shadow */
+  servedIds?: ReadonlySet<string>;
+  /** existing in-browser engine ids, which a visitor build may replace */
+  userIds?: ReadonlySet<string>;
+  saving?: boolean;
+  saveError?: string;
 }>();
 
 const emit = defineEmits<{
   run: [];
   cancel: [];
   upload: [];
+  add: [id: string, replace: boolean];
 }>();
+
+const draftId = ref('');
+watch(
+  () => [props.mode, props.report?.fileName, props.report?.size] as const,
+  ([mode, fileName]) => {
+    if (mode === 'upload' && fileName) draftId.value = defaultEngineId(fileName);
+  },
+  { immediate: true },
+);
+
+const trimmedId = computed(() => draftId.value.trim());
+const idValid = computed(() => isValidEngineId(trimmedId.value));
+const isServedCollision = computed(() => Boolean(props.servedIds?.has(trimmedId.value)));
+const isUserCollision = computed(() => Boolean(props.userIds?.has(trimmedId.value)));
+const canAdd = computed(
+  () =>
+    props.mode === 'upload' &&
+    props.report?.state === 'pass' &&
+    idValid.value &&
+    !isServedCollision.value &&
+    !props.saving,
+);
+
+function submitAdd(): void {
+  if (!canAdd.value) return;
+  emit('add', trimmedId.value, isUserCollision.value);
+}
 
 /** Served reports open rolled up unless active, and stay open after a run finishes. */
 const expanded = ref(props.mode === 'upload' || props.report?.state === 'running');
@@ -184,6 +227,37 @@ function rowTone(status: CheckResult['status']): string {
           </template>
           <template v-if="counts.skip > 0"> · {{ counts.skip }} skipped </template>
         </span>
+      </div>
+
+      <div
+        v-if="mode === 'upload' && report.state === 'pass'"
+        class="flex flex-wrap items-center gap-2 border-b border-row bg-panel2 px-3 py-2 text-dense last:border-0"
+      >
+        <label class="flex items-center gap-1.5 text-small text-dim">
+          ID
+          <input
+            v-model="draftId"
+            type="text"
+            class="field-sm num w-44"
+            :class="!idValid || isServedCollision ? 'border-bad-line focus:border-bad-line' : ''"
+            :disabled="saving"
+            aria-label="Engine ID"
+            @keydown.enter="submitAdd"
+          />
+        </label>
+        <button class="btn-primary btn-sm" :disabled="!canAdd" @click="submitAdd">
+          <Plus :size="12" />
+          {{ saving ? 'Saving…' : isUserCollision ? 'Replace in Engines' : 'Add to Engines' }}
+        </button>
+        <span v-if="saveError" class="text-small text-bad">{{ saveError }}</span>
+        <span v-else-if="!idValid" class="text-small text-bad">Invalid engine ID</span>
+        <span v-else-if="isServedCollision" class="text-small text-bad">
+          Matches a served engine — choose another ID
+        </span>
+        <span v-else-if="isUserCollision" class="text-small text-warn">
+          Replaces existing in-browser build
+        </span>
+        <span v-else class="text-small text-dim">Stored in browser for Play and Tourneys</span>
       </div>
 
       <template v-if="expanded">

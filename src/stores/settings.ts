@@ -13,6 +13,7 @@ const START_KEY = 'ratchet-ui.template-start';
 /** index.html reads this key too, to set the theme before the first paint */
 const THEME_KEY = 'ratchet-ui.theme';
 const BACKUP_BOOKS_KEY = 'ratchet-ui.backup-books';
+const BACKUP_ENGINES_KEY = 'ratchet-ui.backup-engines';
 const ANCHOR_KEY = 'ratchet-ui.anchor-rating';
 const ENGINE_OPTIONS_KEY = 'ratchet-ui.engine-options';
 
@@ -110,6 +111,7 @@ export interface SettingsFile {
   templateStart: string;
   theme: Theme;
   backupBooks: boolean;
+  backupEngines: boolean;
   /** the rating Ratings holds its anchor at; null, a rating cleared, leaves the ratings averaging 0 */
   anchorRating: number | null;
   /** saved UCI option defaults and optional per-side limit, keyed by engine id */
@@ -127,6 +129,7 @@ export function settingsFileOf(x: unknown): SettingsFile {
     templateStart: typeof r.templateStart === 'string' ? r.templateStart : '',
     theme: isTheme(r.theme) ? r.theme : 'system',
     backupBooks: r.backupBooks !== false,
+    backupEngines: r.backupEngines !== false,
     anchorRating: 'anchorRating' in r ? ratingOf(r.anchorRating) : ANCHOR_RATING,
     engineOptions: engineOptionsOf(r.engineOptions),
   };
@@ -195,6 +198,13 @@ export const useSettings = defineStore('settings', () => {
     else localStorage.setItem(BACKUP_BOOKS_KEY, 'false');
   });
 
+  /** whether a backup, the export and the mirror folder, holds the user's in-browser engines */
+  const backupEngines = ref(localStorage.getItem(BACKUP_ENGINES_KEY) !== 'false');
+  watch(backupEngines, (b) => {
+    if (b) localStorage.removeItem(BACKUP_ENGINES_KEY);
+    else localStorage.setItem(BACKUP_ENGINES_KEY, 'false');
+  });
+
   /** the rating Ratings holds its anchor at */
   const anchorRating = ref<number | null>(
     localStorage.getItem(ANCHOR_KEY) === null ? ANCHOR_RATING : ratingOf(readJson(ANCHOR_KEY)),
@@ -231,6 +241,7 @@ export const useSettings = defineStore('settings', () => {
           templateStart: startTemplate.value,
           theme: theme.value,
           backupBooks: backupBooks.value,
+          backupEngines: backupEngines.value,
           anchorRating: anchorRating.value,
           engineOptions: engineOptions.value,
         }),
@@ -247,6 +258,7 @@ export const useSettings = defineStore('settings', () => {
     startTemplate.value = f.templateStart;
     theme.value = f.theme;
     backupBooks.value = f.backupBooks;
+    backupEngines.value = f.backupEngines;
     anchorRating.value = f.anchorRating;
     engineOptions.value = f.engineOptions;
   }
@@ -280,6 +292,7 @@ export const useSettings = defineStore('settings', () => {
     startTemplate,
     theme,
     backupBooks,
+    backupEngines,
     anchorRating,
     engineOptions,
     file,

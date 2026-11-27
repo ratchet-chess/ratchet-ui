@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, Copy, Play, RotateCw, Search, Square } from '@lucide/vue';
+import { Check, Copy, Play, RotateCw, Search, Square, Trash2 } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import Panel from '../../components/Panel.vue';
 import Segmented from '../../components/Segmented.vue';
@@ -9,6 +9,7 @@ import type { ServedEngine } from '../../engine/manifest.ts';
 import { buildBasisLabel, cpwUrl, kindLabel } from '../../engine/meta.ts';
 import { engineResults, type ProbeSuite } from '../../engine/options.ts';
 import { inputMode } from '../../engine/uci.ts';
+import { IN_BROWSER_SOURCE } from '../../stores/engines.ts';
 import { useTournaments } from '../../stores/tournaments.ts';
 import { bytes, count, sentence, thousands } from '../../ui/format.ts';
 import { formatShort } from '../tourneys/show.ts';
@@ -30,6 +31,7 @@ const emit = defineEmits<{
   stopProbe: [engine: ServedEngine];
   runWasi: [engine: ServedEngine];
   cancelWasi: [engine: ServedEngine];
+  remove: [engine: ServedEngine];
 }>();
 
 const tournaments = useTournaments();
@@ -133,7 +135,15 @@ const pctText = (v: number | null) => (v === null ? '—' : `${v.toFixed(1)}%`);
           {{ kindLabel(engine.meta.kind) }}
         </span>
         <span v-if="engine.meta" class="tag tone-dim">{{ engine.meta.year }}</span>
-        <span class="tag tone-dim">{{ engine.source === 'local' ? 'Local' : engine.source }}</span>
+        <span class="tag" :class="engine.source === IN_BROWSER_SOURCE ? 'tone-accent' : 'tone-dim'">
+          {{
+            engine.source === 'local'
+              ? 'Local'
+              : engine.source === IN_BROWSER_SOURCE
+                ? 'In browser'
+                : engine.source
+          }}
+        </span>
         <span v-if="engine.license" class="tag tone-dim">{{ engine.license }}</span>
         <span v-if="engine.bytes !== null" class="num text-small text-dim">
           {{ bytes(engine.bytes) }}
@@ -142,6 +152,14 @@ const pctText = (v: number | null) => (v === null ? '—' : `${v.toFixed(1)}%`);
           <RouterLink :to="{ path: '/play', query: { black: engine.id } }" class="btn-sm">
             Play
           </RouterLink>
+          <button
+            v-if="engine.source === IN_BROWSER_SOURCE"
+            class="btn-sm"
+            title="Remove from browser"
+            @click="emit('remove', engine)"
+          >
+            <Trash2 :size="12" /> Remove
+          </button>
         </div>
       </div>
 

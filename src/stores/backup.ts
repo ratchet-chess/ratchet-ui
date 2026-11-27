@@ -29,6 +29,7 @@ import {
 } from '../storage/opfs.ts';
 import { unzipAll, zipStored } from '../storage/zip.ts';
 import { useBooks, USER, USER_LIST } from './books.ts';
+import { useEngines, USER_ENGINES, USER_ENGINES_LIST } from './engines.ts';
 import { useGames } from './games.ts';
 import { settingsFileOf, useSettings } from './settings.ts';
 import { useTournaments } from './tournaments.ts';
@@ -96,6 +97,7 @@ export const useBackup = defineStore('backup', () => {
   const settings = useSettings();
   const games = useGames();
   const books = useBooks();
+  const engines = useEngines();
   const tournaments = useTournaments();
 
   // ── persistent storage ────────────────────────────────────────────────────
@@ -121,16 +123,19 @@ export const useBackup = defineStore('backup', () => {
 
   /**
    * This browser's data as a backup holds it, as it stood at one moment: the files are read in
-   * one job of the write queue, into memory, so a later write cannot change them. A user's book
-   * is never written again, so it is read from OPFS when it is used.
+   * one job of the write queue, into memory, so a later write cannot change them. A user's book or
+   * engine binary is never appended, so it is streamed from OPFS when it is used.
    */
-  async function hereFiles(withBooks: boolean): Promise<Files> {
+  async function hereFiles(withBooks: boolean, withEngines: boolean): Promise<Files> {
     const root = await navigator.storage.getDirectory();
     const out = await exclusive(async () => {
-      const files = await filesIn(root, withBooks);
-      for (const [p, f] of files)
-        if (!p.startsWith(`${USER}/`) || p === `${USER}/${USER_LIST}`)
-          files.set(p, new Blob([await f.arrayBuffer()]));
+      const files = await filesIn(root, withBooks, withEngines);
+      for (const [p, f] of files) {
+        const streamed =
+          (p.startsWith(`${USER}/`) && p !== `${USER}/${USER_LIST}`) ||
+          (p.startsWith(`${USER_ENGINES}/`) && p !== `${USER_ENGINES}/${USER_ENGINES_LIST}`);
+        if (!streamed) files.set(p, new Blob([await f.arrayBuffer()]));
+      }
       return files;
     });
     out.set(SETTINGS, new Blob([JSON.stringify(settings.file(), null, 1)]));
@@ -178,7 +183,7 @@ export const useBackup = defineStore('backup', () => {
     if (busy.value) return;
     busy.value = 'Writing archive…';
     try {
-      const files = await hereFiles(settings.backupBooks);
+      const files = await hereFiles(settings.backupBooks, settings.backupEngines);
       const now = Date.now();
       const zip = await zipStored(
         [...files].map(([name, data]) => ({
@@ -216,7 +221,7 @@ export const useBackup = defineStore('backup', () => {
     there: Contents,
     before?: Review,
   ): Promise<Review> {
-    const here = await contentsOf(await hereFiles(true));
+    const here = await contentsOf(await hereFiles(true, true));
     const all = await rowsOf(here, there);
     const busySet = await playing();
     // a copy here with more games loses nothing by staying, so it asks nothing
@@ -304,6 +309,8 @@ export const useBackup = defineStore('backup', () => {
         await games.mergeIndex(m.collections.drop, m.collections.put);
       if (m.books.put.length + m.books.drop.length > 0)
         await books.mergeList(m.books.drop, m.books.put);
+      if (m.engines.put.length + m.engines.drop.length > 0)
+        await engines.mergeList(m.engines.drop, m.engines.put);
       if (m.settings) settings.restore(m.settings);
       const taken = [...r.choices.values()].filter((c) => c !== 'keep' && c !== 'skip').length;
       review.value = null;
@@ -314,7 +321,9 @@ export const useBackup = defineStore('backup', () => {
       fail(`Merge failed: ${message(e)}`);
     } finally {
       await Promise.all(held.map((id) => tournaments.unlock(id)));
-      await Promise.all([games.load(), books.load(), tournaments.load()]).catch(() => undefined);
+      await Promise.all([games.load(), books.load(), engines.load(), tournaments.load()]).catch(
+        () => undefined,
+      );
       busy.value = '';
     }
   }
@@ -358,7 +367,7 @@ export const useBackup = defineStore('backup', () => {
         const r = await reviewOf(
           'folder',
           h.name,
-          await contentsOf(await filesIn(h, settings.backupBooks)),
+          await contentsOf(await filesIn(h, settings.backupBooks, settings.backupEngines)),
         );
         // the folder holds nothing this browser lacks: it only needs this browser's changes
         if (r.rows.length === 0) await push(h);
@@ -376,9 +385,15 @@ export const useBackup = defineStore('backup', () => {
   async function push(h: FileSystemDirectoryHandle): Promise<void> {
     dirty.clear();
     const withBooks = settings.backupBooks;
+    const withEngines = settings.backupEngines;
     await applyTo(
       h,
-      await syncOf(await hereFiles(withBooks), await filesIn(h, withBooks), withBooks),
+      await syncOf(
+        await hereFiles(withBooks, withEngines),
+        await filesIn(h, withBooks, withEngines),
+        withBooks,
+        withEngines,
+      ),
     );
     mirror.state = 'on';
     mirror.at = Date.now();
@@ -425,11 +440,13 @@ export const useBackup = defineStore('backup', () => {
             let d = root;
             try {
               for (const x of parts) d = await d.getDirectoryHandle(x);
-              if (inLayout(p, settings.backupBooks)) {
+              if (inLayout(p, settings.backupBooks, settings.backupEngines)) {
                 const f = await (await d.getFileHandle(name)).getFile();
-                // a user's book is never written again, and may be large: it is read as it is copied
-                const book = parts[0] === USER && name !== USER_LIST;
-                out.push({ write: p, data: book ? f : new Blob([await f.arrayBuffer()]) });
+                // a user's book or engine binary may be large: it is read as it is copied
+                const streamed =
+                  (parts[0] === USER && name !== USER_LIST) ||
+                  (parts[0] === USER_ENGINES && name !== USER_ENGINES_LIST);
+                out.push({ write: p, data: streamed ? f : new Blob([await f.arrayBuffer()]) });
               } else await d.getDirectoryHandle(name);
             } catch (e) {
               if (e instanceof DOMException && e.name === 'NotFoundError') out.push({ remove: p });
@@ -450,7 +467,7 @@ export const useBackup = defineStore('backup', () => {
   function changed(path: string): void {
     const parts = path.split('/');
     const followed =
-      inLayout(path, settings.backupBooks) ||
+      inLayout(path, settings.backupBooks, settings.backupEngines) ||
       (parts.length === 2 && parts[0] === TOURNAMENTS) ||
       path === SETTINGS;
     if (!followed) return;
@@ -511,9 +528,9 @@ export const useBackup = defineStore('backup', () => {
     else mirror.state = 'allow';
   }
 
-  /** a change to the books setting changes what the folder holds */
+  /** a change to the books or engines backup setting changes what the folder holds */
   watch(
-    () => settings.backupBooks,
+    () => [settings.backupBooks, settings.backupEngines],
     () => {
       if (mirror.state === 'on') void sync();
     },

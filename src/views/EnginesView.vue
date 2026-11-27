@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { Upload } from '@lucide/vue';
+import { Trash2, Upload } from '@lucide/vue';
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import PageHeader from '../components/PageHeader.vue';
 import Panel from '../components/Panel.vue';
 import {
+  cloneWasiReport,
   executeWasiCheck,
   loadEngineCache,
   saveEngineCache,
@@ -14,7 +15,7 @@ import {
 import type { ServedEngine } from '../engine/manifest.ts';
 import { PROBE_SUITES, parseOptionsList, type ProbeSuite } from '../engine/options.ts';
 import { UciEngine } from '../engine/uci.ts';
-import { useEngines } from '../stores/engines.ts';
+import { IN_BROWSER_SOURCE, useEngines } from '../stores/engines.ts';
 import { useTournaments } from '../stores/tournaments.ts';
 import { bytes, sentence, thousands } from '../ui/format.ts';
 import EngineDetail from './engines/EngineDetail.vue';
@@ -36,9 +37,15 @@ const probes = reactive(new Map<string, EngineProbe>());
 const wasiReports = reactive(new Map<string, WasiCheckReport>());
 const wasiLoading = reactive(new Set<string>());
 
-/** temporary uploaded/dropped file checked in this session (never persisted) */
+/** temporary uploaded/dropped file checked in this session until added */
 const uploadedBytes = ref<Uint8Array | null>(null);
 const uploadedReport = ref<WasiCheckReport | undefined>(undefined);
+const savingUpload = ref(false);
+const saveUploadError = ref('');
+
+const servedIds = computed(() => new Set(engines.served.map((e) => e.id)));
+const userIds = computed(() => new Set(engines.user.map((e) => e.id)));
+const userBytes = computed(() => engines.user.reduce((n, e) => n + e.bytes, 0));
 
 const liveProbe = new Map<string, UciEngine>();
 const liveWasi = new Map<string, AbortController>();
@@ -107,6 +114,9 @@ const filtered = computed(() => {
     );
   });
 });
+
+const filteredUser = computed(() => filtered.value.filter((e) => e.source === IN_BROWSER_SOURCE));
+const filteredServed = computed(() => filtered.value.filter((e) => e.source !== IN_BROWSER_SOURCE));
 
 const showingUpload = computed(
   () => selectedId.value === UPLOAD_KEY && uploadedReport.value !== undefined,
@@ -291,6 +301,7 @@ function cancelUploadWasi(): void {
 async function checkUploadedFile(file: File): Promise<void> {
   const wasm = new Uint8Array(await file.arrayBuffer());
   uploadedBytes.value = wasm;
+  saveUploadError.value = '';
   const report: WasiCheckReport = reactive({
     fileName: file.name,
     size: wasm.length,
@@ -304,6 +315,56 @@ async function checkUploadedFile(file: File): Promise<void> {
   uploadedReport.value = report;
   selectedId.value = UPLOAD_KEY;
   await runUploadWasi();
+}
+
+async function addUploadedEngine(id: string, replace: boolean): Promise<void> {
+  const wasm = uploadedBytes.value;
+  const report = uploadedReport.value;
+  if (!wasm || !report || report.state !== 'pass' || savingUpload.value) return;
+  savingUpload.value = true;
+  saveUploadError.value = '';
+  try {
+    const added = await engines.addUser({
+      id,
+      name: report.identity?.name || id,
+      bytes: wasm,
+      wasi: report,
+      replace,
+    });
+    if (replace) {
+      liveProbe.get(added.id)?.terminate();
+      liveProbe.delete(added.id);
+      probes.delete(added.id);
+    }
+    wasiReports.set(
+      added.id,
+      reactive({
+        ...cloneWasiReport(report),
+        fileName: added.wasm,
+        size: added.bytes ?? wasm.byteLength,
+      }),
+    );
+    uploadedBytes.value = null;
+    uploadedReport.value = undefined;
+    selectedId.value = added.id;
+  } catch (e) {
+    saveUploadError.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    savingUpload.value = false;
+  }
+}
+
+async function removeUserEngine(e: ServedEngine): Promise<void> {
+  liveProbe.get(e.id)?.terminate();
+  liveProbe.delete(e.id);
+  liveWasi.get(e.id)?.abort();
+  liveWasi.delete(e.id);
+  probes.delete(e.id);
+  wasiReports.delete(e.id);
+  await engines.removeUser(e.id);
+  if (selectedId.value === e.id) {
+    selectedId.value = engines.list[0]?.id ?? '';
+  }
 }
 
 function picked(e: Event): void {
@@ -398,7 +459,7 @@ onUnmounted(() => {
 
   <div v-else class="grid gap-3.5 wide:grid-cols-[minmax(280px,340px)_1fr]">
     <div class="min-w-0">
-      <Panel title="Served engines" :note="`${filtered.length} of ${engines.list.length}`">
+      <Panel title="Engines" :note="`${filtered.length} of ${engines.list.length}`">
         <div class="border-b border-row px-2.5 py-2">
           <input
             v-model="query"
@@ -409,8 +470,55 @@ onUnmounted(() => {
           />
         </div>
         <div class="max-h-[540px] overflow-y-auto">
+          <template v-if="filteredUser.length > 0">
+            <div
+              class="subhead flex items-center justify-between border-b border-line bg-panel2 px-3 py-1"
+            >
+              <span>In browser</span>
+              <span class="num font-normal text-faint">
+                {{ filteredUser.length }} · {{ bytes(userBytes) }}
+              </span>
+            </div>
+            <div
+              v-for="e in filteredUser"
+              :key="e.id"
+              class="row px-3 py-2"
+              :class="selected?.id === e.id ? 'bg-selected' : ''"
+              @click="selectedId = e.id"
+            >
+              <div class="flex items-baseline gap-2">
+                <span class="min-w-0 flex-1 truncate text-dense font-medium text-text">{{
+                  e.id
+                }}</span>
+                <span v-if="listHint(e.id)" class="num shrink-0 text-label text-good">
+                  {{ listHint(e.id) }}
+                </span>
+              </div>
+              <div class="mt-0.5 flex items-center gap-2 text-label text-dim">
+                <span class="truncate">{{ e.name !== e.id ? e.name : 'in browser' }}</span>
+                <span v-if="e.bytes !== null" class="num ml-auto shrink-0">
+                  {{ bytes(e.bytes) }}
+                </span>
+                <button
+                  class="shrink-0 rounded p-0.5 text-faint hover:bg-hover hover:text-text"
+                  title="Remove from browser"
+                  :aria-label="`Remove ${e.id}`"
+                  @click.stop="removeUserEngine(e)"
+                >
+                  <Trash2 :size="12" />
+                </button>
+              </div>
+            </div>
+          </template>
+
           <div
-            v-for="e in filtered"
+            v-if="filteredUser.length > 0 && filteredServed.length > 0"
+            class="subhead border-y border-line bg-panel2 px-3 py-1"
+          >
+            Served
+          </div>
+          <div
+            v-for="e in filteredServed"
             :key="e.id"
             class="row px-3 py-2"
             :class="selected?.id === e.id ? 'bg-selected' : ''"
@@ -443,7 +551,8 @@ onUnmounted(() => {
             v-if="engines.loaded && engines.list.length === 0"
             class="px-3 py-3 text-dense text-dim"
           >
-            No engines yet. Run <span class="mono">bun run engines</span>.
+            No engines yet. Upload a <span class="mono">.wasm</span> build or run
+            <span class="mono">bun run engines</span>.
           </div>
           <div
             v-else-if="engines.loaded && filtered.length === 0"
@@ -454,9 +563,7 @@ onUnmounted(() => {
         </div>
 
         <template v-if="uploadedReport">
-          <div class="subhead border-y border-line bg-panel2 px-3 py-1">
-            Checked file <span class="ml-1 font-normal text-faint">report only</span>
-          </div>
+          <div class="subhead border-y border-line bg-panel2 px-3 py-1">Checked file</div>
           <div
             class="row px-3 py-2"
             :class="showingUpload ? 'bg-selected' : ''"
@@ -471,7 +578,10 @@ onUnmounted(() => {
               </span>
             </div>
             <div class="mt-0.5 flex items-center gap-2 text-label text-dim">
-              <span class="truncate">{{ uploadedReport.identity?.name || 'not saved' }}</span>
+              <span class="truncate">{{
+                uploadedReport.identity?.name ||
+                (uploadedReport.state === 'pass' ? 'ready to add' : 'not saved')
+              }}</span>
               <span class="num ml-auto shrink-0">{{ bytes(uploadedReport.size) }}</span>
             </div>
           </div>
@@ -492,20 +602,29 @@ onUnmounted(() => {
           >
             <Upload :size="12" /> Upload and check
           </button>
-          <span class="text-label text-faint">.wasm · report only</span>
+          <span class="text-label text-faint">.wasm · check to add</span>
         </div>
       </Panel>
+
+      <p v-if="engines.storage" class="num text-small text-faint">
+        Storage: {{ bytes(engines.storage.usage) }} of {{ bytes(engines.storage.quota) }}.
+      </p>
     </div>
 
     <WasiChecker
       v-if="showingUpload && uploadedReport"
       mode="upload"
       title="Check a WASI build"
-      note=".wasm · report only, not saved"
+      note=".wasm · passes check to add"
       :report="uploadedReport"
+      :served-ids="servedIds"
+      :user-ids="userIds"
+      :saving="savingUpload"
+      :save-error="saveUploadError"
       @run="runUploadWasi"
       @cancel="cancelUploadWasi"
       @upload="picker?.click()"
+      @add="addUploadedEngine"
     />
 
     <EngineDetail
@@ -520,6 +639,7 @@ onUnmounted(() => {
       @stop-probe="stopProbe"
       @run-wasi="runServedWasi"
       @cancel-wasi="cancelServedWasi"
+      @remove="removeUserEngine"
     />
 
     <Panel v-else>

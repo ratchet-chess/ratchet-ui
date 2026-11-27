@@ -20,6 +20,7 @@ const KIND: Record<Row['kind'], string> = {
   tournament: 'Tournament',
   collection: 'Games',
   book: 'Book',
+  engine: 'Engine',
   settings: 'Settings',
 };
 
@@ -66,6 +67,7 @@ const freshText = computed(() => {
     tournament: 'tournament',
     collection: 'collection',
     book: 'book',
+    engine: 'engine',
     settings: 'settings',
   };
   return [...n]

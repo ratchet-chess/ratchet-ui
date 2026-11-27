@@ -92,7 +92,7 @@ system's own layout plus a `settings.json`:
 - In Chrome and Edge, a mirror folder the user picks receives a copy of each change.
 
 Both hold the tournaments, the collections of games, the settings and, unless Settings leaves them out, the user's
-books. Pulled books are left out, because a pull fetches them again. A merge adds what is new, and takes the copy
+books and in-browser engines. Pulled books are left out, because a pull fetches them again. A merge adds what is new, and takes the copy
 with more games when one copy is the other with games added. It asks about every other difference: keep this
 browser's copy, replace it, or keep both. At startup, a mirror folder that holds nothing this browser lacks
 receives this browser's changes. Any other folder waits for the user to review it. After a reload the browser asks

@@ -163,6 +163,49 @@ export function persistEngineInspection(
   saveEngineCache(saved);
 }
 
+/** Produces a plain deep copy of a WASI report safe to persist or pass out of reactive proxies. */
+export function cloneWasiReport(r: WasiCheckReport): WasiCheckReport {
+  return {
+    fileName: r.fileName,
+    size: r.size,
+    state: r.state,
+    info: r.info
+      ? {
+          profile: r.info.profile,
+          requires: [...r.info.requires],
+          threadSpawn: r.info.threadSpawn,
+          sharedMemory: r.info.sharedMemory,
+          atomics: r.info.atomics,
+          exceptionHandling: r.info.exceptionHandling,
+          relaxed: r.info.relaxed.map(([op, n]): [string, number] => [op, n]),
+        }
+      : null,
+    identity: r.identity ? { name: r.identity.name, author: r.identity.author } : null,
+    results: r.results.map((x) => ({ name: x.name, status: x.status, detail: x.detail })),
+    fatalError: r.fatalError,
+    staticNote: r.staticNote,
+  };
+}
+
+/** Merges one engine's completed WASI check report into the persisted cache. */
+export function persistEngineWasi(id: string, sha256: string, wasi: WasiCheckReport): void {
+  if (wasi.state === 'running' || wasi.state === 'cancelled') return;
+  const saved = loadEngineCache();
+  const prev = saved[id];
+  const next: PersistedEngineData = prev?.sha256 === sha256 ? { ...prev } : { sha256 };
+  next.wasi = wasi;
+  saved[id] = next;
+  saveEngineCache(saved);
+}
+
+/** Removes one engine's persisted inspection, probe, and WASI cache entry. */
+export function removeEngineCache(id: string): void {
+  const saved = loadEngineCache();
+  if (!(id in saved)) return;
+  delete saved[id];
+  saveEngineCache(saved);
+}
+
 /** Converts an Inspection into a JSON-serializable WasiStaticInfo. */
 export function staticInfoOf(insp: Inspection): WasiStaticInfo {
   return {

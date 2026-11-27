@@ -72,6 +72,9 @@ describe('the layout', () => {
     expect(inLayout('books/8moves_v3.pgn', true)).toBe(false);
     expect(inLayout('user-books/mine.pgn', false)).toBe(false);
     expect(inLayout('user-books/mine.pgn', true)).toBe(true);
+    expect(inLayout('user-engines/my-eng.wasm', true, false)).toBe(false);
+    expect(inLayout('user-engines/my-eng.wasm', false, true)).toBe(true);
+    expect(inLayout('user-engines/list.json', false, true)).toBe(true);
   });
 
   it('takes off the one folder a zipped folder puts around it', () => {
@@ -195,6 +198,7 @@ async function merged(here: Files, there: Files, choose: Record<string, Choice> 
       drop: m.collections.drop,
     },
     books: { put: m.books.put.map((b) => b.id), drop: m.books.drop },
+    engines: { put: m.engines.put.map((e) => `${e.id}:${e.wasm}`), drop: m.engines.drop },
     settings: m.settings,
   };
 }
@@ -286,6 +290,24 @@ describe('merging', () => {
     expect(m.books).toEqual({ put: ['b (2).pgn'], drop: [] });
   });
 
+  it('reads, merges, and renames diverged in-browser engines', async () => {
+    const engineList = (id: string, sha256: string) =>
+      JSON.stringify([{ id, name: 'Custom', wasm: `${id}.wasm`, bytes: 4, sha256, added: 0 }]);
+    const m = await merged(
+      files({
+        'user-engines/custom.wasm': 'aaaa',
+        'user-engines/list.json': engineList('custom', '1111aaaa'),
+      }),
+      files({
+        'user-engines/custom.wasm': 'bbbb',
+        'user-engines/list.json': engineList('custom', '2222bbbb'),
+      }),
+    );
+    expect(m.rows).toEqual(['engine:custom diverged']);
+    expect(m.ops).toEqual(['write user-engines/custom (2).wasm']);
+    expect(m.engines).toEqual({ put: ['custom (2):custom (2).wasm'], drop: [] });
+  });
+
   it('joins diverged settings: these values, both sets of templates and controls', async () => {
     const m = await merged(
       files({ 'settings.json': JSON.stringify({ theme: 'dark', controls: ['1+0.01'] }) }),
@@ -321,6 +343,20 @@ describe('syncing', () => {
       'write games/t-x.pgn',
       'remove games/t-gone.pgn',
       'remove tournaments/gone',
+    ]);
+  });
+
+  it('includes user-engines in sync only when engines backup is enabled', async () => {
+    const src = files({
+      'user-engines/e.wasm': 'wasm',
+      'user-engines/list.json': '[]',
+    });
+    const off = await syncOf(src, new Map(), true, false);
+    expect(off).toEqual([]);
+    const on = await syncOf(src, new Map(), true, true);
+    expect(on.map((o) => ('write' in o ? `write ${o.write}` : `remove ${o.remove}`))).toEqual([
+      'write user-engines/e.wasm',
+      'write user-engines/list.json',
     ]);
   });
 });

@@ -35,6 +35,15 @@ describe('settingsFileOf', () => {
     });
   });
 
+  it('defaults backupBooks and backupEngines to true unless explicitly false', () => {
+    expect(settingsFileOf({}).backupBooks).toBe(true);
+    expect(settingsFileOf({}).backupEngines).toBe(true);
+    expect(settingsFileOf({ backupBooks: false, backupEngines: false })).toMatchObject({
+      backupBooks: false,
+      backupEngines: false,
+    });
+  });
+
   it('merges engineOptions in unionOf, keeping local entries on conflict', () => {
     const here = settingsFileOf({
       engineOptions: { 'stockfish-10': { options: { 'Skill Level': 5 } } },

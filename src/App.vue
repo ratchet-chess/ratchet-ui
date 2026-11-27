@@ -4,6 +4,7 @@ import BackupBar from './components/BackupBar.vue';
 import IconBar from './components/IconBar.vue';
 import { useBackup } from './stores/backup.ts';
 import { useBooks } from './stores/books.ts';
+import { useEngines } from './stores/engines.ts';
 import { useTournaments } from './stores/tournaments.ts';
 import { useTheme } from './ui/theme.ts';
 
@@ -11,10 +12,11 @@ useTheme();
 const backup = useBackup();
 const tournaments = useTournaments();
 const books = useBooks();
+const engines = useEngines();
 onMounted(() => {
   void backup.start();
   // the bar's Tourneys badge reads the tournaments before Tourneys is opened
-  void Promise.all([tournaments.load(), books.load()]);
+  void Promise.all([tournaments.load(), books.load(), engines.load()]);
 });
 </script>
 
