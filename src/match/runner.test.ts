@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { BYE } from './format.ts';
-import { unfinished } from './runner.ts';
+import { parseControl } from '../chess/clock.ts';
+import { BYE, type TournamentConfig } from './format.ts';
+import { Run, stateOf, unfinished } from './runner.ts';
 import type { GameRecord, PairRecord } from './summary.ts';
 
 const pair = (n: number, b = 1): PairRecord => ({ pair: n, a: 0, b, round: n, opening: '' });
@@ -32,5 +33,101 @@ describe('a resumed run', () => {
       [1, 0],
       [3, 0],
     ]);
+  });
+});
+
+describe('Run stop and error invariants', () => {
+  const baseConfig: TournamentConfig = {
+    id: 'test-run',
+    name: 'Test',
+    created: '2026-01-01T00:00:00.000Z',
+    format: { kind: 'match', pairs: 4, sprt: null },
+    entrants: ['a', 'b'],
+    control: '10+0.1',
+    book: 'book.epd',
+    adjudication: null,
+    concurrency: 1,
+    paired: true,
+    seed: 1,
+  };
+
+  it('writes no new pair when stop(false) is called while opening() is pending', async () => {
+    let releaseOpening: (() => void) | undefined;
+    const savedPairs: PairRecord[] = [];
+    const savedEnds: string[] = [];
+    const state = stateOf(baseConfig, [], []);
+    const tc = parseControl('10+0.1');
+    if (!tc) throw new Error('control');
+    const run = new Run(
+      baseConfig,
+      [
+        { id: 'a', name: 'a', workerUrl: 'about:blank' },
+        { id: 'b', name: 'b', workerUrl: 'about:blank' },
+      ],
+      tc,
+      state,
+      {
+        opening: () =>
+          new Promise((resolve) => {
+            releaseOpening = () => resolve({ fen: undefined, moves: ['e2e4'], label: 'e4' });
+          }),
+        savePair: async (p) => {
+          savedPairs.push(p);
+        },
+        saveGame: async () => undefined,
+        saveEnd: async (status) => {
+          savedEnds.push(status);
+        },
+      },
+    );
+
+    run.start();
+    // stop gracefully while fill() is awaiting opening()
+    run.stop(false);
+    releaseOpening?.();
+    await new Promise<void>((r) => {
+      setTimeout(r, 10);
+    });
+
+    expect(savedPairs).toEqual([]);
+    expect(state.pairs).toEqual([]);
+    expect(state.live).toEqual([]);
+    expect(savedEnds).toEqual(['stopped']);
+  });
+
+  it('stops cleanly and calls saveEnd when saveGame rejects', async () => {
+    const savedEnds: string[] = [];
+    const state = stateOf(baseConfig, [], []);
+    const tc = parseControl('10+0.1');
+    if (!tc) throw new Error('control');
+    // entrants without Worker global will forfeit on start and trigger saveGame
+    const run = new Run(
+      baseConfig,
+      [
+        { id: 'a', name: 'a', workerUrl: 'about:blank' },
+        { id: 'b', name: 'b', workerUrl: 'about:blank' },
+      ],
+      tc,
+      state,
+      {
+        opening: async () => undefined,
+        savePair: async () => undefined,
+        saveGame: async () => {
+          throw new Error('quota exceeded');
+        },
+        saveEnd: async (status) => {
+          savedEnds.push(status);
+        },
+      },
+    );
+
+    run.start();
+    await new Promise<void>((r) => {
+      setTimeout(r, 20);
+    });
+
+    expect(state.status).toBe('stopped');
+    expect(state.error).toBe('quota exceeded');
+    expect(savedEnds).toEqual(['stopped']);
   });
 });

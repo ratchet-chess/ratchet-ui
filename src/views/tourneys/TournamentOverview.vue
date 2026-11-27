@@ -5,7 +5,7 @@
  * archive by month, folded.
  * The tab and the open month are in the route's query, so Back returns to them.
  */
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import NoticeList from '../../components/NoticeList.vue';
 import OutcomeLine from '../../components/OutcomeLine.vue';
@@ -15,8 +15,6 @@ import ProgressBar from '../../components/ProgressBar.vue';
 import Tabs from '../../components/Tabs.vue';
 import FinishedRow from './FinishedRow.vue';
 import { useServed } from './served.ts';
-import { useBooks } from '../../stores/books.ts';
-import { useEngines } from '../../stores/engines.ts';
 import { lacking } from '../../stores/queue.ts';
 import { useTournaments, type Item } from '../../stores/tournaments.ts';
 import {
@@ -34,7 +32,6 @@ import {
   standingText,
   threadBudget,
   type Group,
-  type Served,
 } from './overview.ts';
 import { count } from '../../ui/format.ts';
 import {
@@ -47,8 +44,6 @@ import {
 } from './show.ts';
 
 const tournaments = useTournaments();
-const engines = useEngines();
-const books = useBooks();
 const route = useRoute();
 const router = useRouter();
 
@@ -119,14 +114,22 @@ const recent = computed(() =>
 );
 const recentPage = ref(0);
 const recentPages = computed(() => Math.max(1, Math.ceil(recent.value.length / PAGE)));
-const recentRows = computed(() =>
-  recent.value.slice(recentPage.value * PAGE, (recentPage.value + 1) * PAGE),
-);
+watch(recentPages, (p) => {
+  if (recentPage.value >= p) recentPage.value = p - 1;
+});
+const recentRows = computed(() => {
+  const page = Math.min(recentPage.value, recentPages.value - 1);
+  return recent.value.slice(page * PAGE, (page + 1) * PAGE);
+});
 const months = computed(() => archiveMonths(items.value, now.value));
 const archivedCount = computed(() => months.value.reduce((n, [, l]) => n + l.length, 0));
 const openMonth = computed(() => query('month'));
+const openMonthPages = computed(() => {
+  const list = months.value.find(([m]) => m === openMonth.value)?.[1];
+  return Math.max(1, Math.ceil((list?.length ?? 0) / PAGE));
+});
 const monthPage = computed({
-  get: () => Math.max(0, Number(query('page')) - 1 || 0),
+  get: () => Math.min(openMonthPages.value - 1, Math.max(0, Number(query('page')) - 1 || 0)),
   set: (n) => go({ show: tab.value, month: openMonth.value, page: n > 0 ? String(n + 1) : '' }),
 });
 function toggleMonth(m: string): void {
@@ -164,11 +167,15 @@ const rowLine = 'num mt-0.5 flex gap-2 text-small text-dim';
 // ── the queue ─────────────────────────────────────────────────────────────
 const queuedPage = ref(0);
 const queuedPages = computed(() => Math.max(1, Math.ceil(byGroup.value.queued.length / PAGE)));
-const queuedRows = computed(() =>
-  byGroup.value.queued.slice(queuedPage.value * PAGE, (queuedPage.value + 1) * PAGE),
-);
+watch(queuedPages, (p) => {
+  if (queuedPage.value >= p) queuedPage.value = p - 1;
+});
+const queuedRows = computed(() => {
+  const page = Math.min(queuedPage.value, queuedPages.value - 1);
+  return byGroup.value.queued.slice(page * PAGE, (page + 1) * PAGE);
+});
 /** a row's place in the whole queue, from its place on the page */
-const placeOf = (k: number) => queuedPage.value * PAGE + k;
+const placeOf = (k: number) => Math.min(queuedPage.value, queuedPages.value - 1) * PAGE + k;
 const dragging = ref<number | null>(null);
 function drop(to: number): void {
   const from = dragging.value;

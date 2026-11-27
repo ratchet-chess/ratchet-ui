@@ -90,10 +90,16 @@ export const useTournaments = defineStore('tournaments', () => {
   const runs = new Map<string, Run>();
   /** releases each held Web Lock, by tournament */
   const releases = new Map<string, () => void>();
+  /** ids deleted while a `readAll` is in flight, so the finishing read cannot resurrect them */
+  const deletedDuringLoad = new Set<string>();
+
+  const locks = (): LockManager | undefined => (navigator as Partial<Navigator>).locks;
 
   /** the tournaments' Web Locks held by any tab of this browser, by tournament */
   async function heldIds(): Promise<Set<string>> {
-    const held = (await navigator.locks.query()).held ?? [];
+    const lm = locks();
+    if (!lm) return new Set();
+    const held = (await lm.query()).held ?? [];
     return new Set(held.flatMap((l) => (l.name ? (idOfLock(l.name) ?? []) : [])));
   }
 
@@ -130,21 +136,38 @@ export const useTournaments = defineStore('tournaments', () => {
   }
 
   async function readAll(): Promise<void> {
+    deletedDuringLoad.clear();
+    const before = new Set(items.value.map((i) => i.config.id));
     try {
       await engines.load();
       const held = await heldIds();
-      const out: Item[] = [];
+      const out = new Map<string, Item>();
+      const broken: string[] = [];
       for (const id of await folders(TOURNAMENTS)) {
+        if (deletedDuringLoad.has(id)) continue;
         const live = items.value.find((i) => i.config.id === id && runs.has(id));
         if (live) {
-          out.push(live);
+          out.set(id, live);
           continue;
         }
-        const item = await readItem(id, held);
-        if (item) out.push(item);
+        try {
+          const item = await readItem(id, held);
+          if (item && !deletedDuringLoad.has(id)) out.set(id, item);
+        } catch {
+          broken.push(id);
+        }
       }
-      items.value = out.toSorted((a, b) => b.config.created.localeCompare(a.config.created));
-      error.value = '';
+      // preserve tournaments created or started while this read was awaiting OPFS
+      for (const existing of items.value) {
+        const id = existing.config.id;
+        if (deletedDuringLoad.has(id)) continue;
+        if (runs.has(id) || (!before.has(id) && !out.has(id))) out.set(id, existing);
+      }
+      items.value = [...out.values()].toSorted((a, b) =>
+        b.config.created.localeCompare(a.config.created),
+      );
+      error.value =
+        broken.length > 0 ? `Some tournaments could not be read: ${broken.join(', ')}` : '';
     } catch (e) {
       error.value = `Tournaments could not be read: ${message(e)}`;
     }
@@ -168,23 +191,21 @@ export const useTournaments = defineStore('tournaments', () => {
 
   /** takes the tournament's Web Lock; false when another tab holds it */
   function lock(id: string): Promise<boolean> {
+    const lm = locks();
+    if (!lm) return Promise.resolve(true);
     return new Promise((resolve) => {
       // the browser calls back in a later task, so `settled` is set by then
-      const settled: Promise<unknown> = navigator.locks.request(
-        lockOf(id),
-        { ifAvailable: true },
-        (held) => {
-          if (held === null) {
-            resolve(false);
-            return undefined;
-          }
-          freed.set(id, settled);
-          resolve(true);
-          return new Promise<void>((release) => {
-            releases.set(id, release);
-          });
-        },
-      );
+      const settled: Promise<unknown> = lm.request(lockOf(id), { ifAvailable: true }, (held) => {
+        if (held === null) {
+          resolve(false);
+          return undefined;
+        }
+        freed.set(id, settled);
+        resolve(true);
+        return new Promise<void>((release) => {
+          releases.set(id, release);
+        });
+      });
     });
   }
 
@@ -202,34 +223,48 @@ export const useTournaments = defineStore('tournaments', () => {
     const { config } = item;
     const control = resolveControl(config.control);
     if (!control) throw new Error(`the time control ${config.control} is not known`);
+    if (config.book && !books.loaded) await books.load();
     const players = entrantsOf(config);
     if (!(await lock(config.id))) {
       item.elsewhere = true;
       throw new Error('another tab plays this tournament');
     }
     const path = [...TOURNAMENTS, config.id];
-    await removeFile(path, 'end.json');
-    const run = new Run(config, players, control, item.state, {
-      opening: async (pair) =>
-        config.book ? books.openingAt(config.book, pick(config.seed, pair)) : undefined,
-      savePair: async (p) => {
-        await appendText(path, 'pairs.jsonl', `${JSON.stringify(p)}\n`);
-      },
-      saveGame: async (record, pgn) => {
-        await appendText(path, 'games.jsonl', `${JSON.stringify(record)}\n`);
-        await games.append(collectionOf(config.id), config.name, 'match', pgn);
-      },
-      saveEnd: async (status) => {
-        const at = new Date().toISOString();
-        await writeText(path, 'end.json', JSON.stringify({ status, at }));
-        item.ended = status === 'done' ? 'done' : 'stopped';
-        item.endedAt = at;
-        item.since = null;
-        runs.delete(config.id);
-        await unlock(config.id);
-        if (status === 'done') void advance();
-      },
-    });
+    let run: Run;
+    try {
+      await removeFile(path, 'end.json');
+      run = new Run(config, players, control, item.state, {
+        opening: async (pair) =>
+          config.book ? books.openingAt(config.book, pick(config.seed, pair)) : undefined,
+        savePair: async (p) => {
+          await appendText(path, 'pairs.jsonl', `${JSON.stringify(p)}\n`);
+        },
+        saveGame: async (record, pgn) => {
+          await appendText(path, 'games.jsonl', `${JSON.stringify(record)}\n`);
+          await games.append(collectionOf(config.id), config.name, 'match', pgn);
+        },
+        saveEnd: async (status) => {
+          const at = new Date().toISOString();
+          let writeFailed = false;
+          try {
+            await writeText(path, 'end.json', JSON.stringify({ status, at }));
+          } catch (e) {
+            writeFailed = true;
+            item.state.error = `End state could not be saved: ${message(e)}`;
+          } finally {
+            item.ended = status === 'done' && !writeFailed ? 'done' : 'stopped';
+            item.endedAt = writeFailed ? null : at;
+            item.since = null;
+            runs.delete(config.id);
+            await unlock(config.id);
+          }
+          if (status === 'done' && !writeFailed) void advance();
+        },
+      });
+    } catch (e) {
+      await unlock(config.id);
+      throw e;
+    }
     runs.set(config.id, run);
     item.ended = null;
     item.endedAt = null;
@@ -241,6 +276,9 @@ export const useTournaments = defineStore('tournaments', () => {
 
   /** saves a new tournament and starts it */
   async function create(config: TournamentConfig): Promise<void> {
+    if (!resolveControl(config.control))
+      throw new Error(`the time control ${config.control} is not known`);
+    entrantsOf(config);
     await writeText([...TOURNAMENTS, config.id], 'config.json', JSON.stringify(config, null, 1));
     const item: Item = reactive({
       config,
@@ -262,8 +300,10 @@ export const useTournaments = defineStore('tournaments', () => {
   /** the runs Pause all stopped, which Resume all resumes; this tab's only, and lost on a reload */
   const paused = ref<string[]>([]);
 
-  const withQueue = <T>(job: () => Promise<T>): Promise<T> =>
-    navigator.locks.request(QUEUE_LOCK, job);
+  const withQueue = <T>(job: () => Promise<T>): Promise<T> => {
+    const lm = locks();
+    return lm ? lm.request(QUEUE_LOCK, job) : job();
+  };
 
   const have = (): Have => ({
     engines: new Set(engines.list.map((e) => e.id)),
@@ -290,11 +330,15 @@ export const useTournaments = defineStore('tournaments', () => {
         out.push(known);
         continue;
       }
-      const read = await readItem(id, held);
-      if (read) {
-        const item = reactive(read);
-        items.value.unshift(item);
-        out.push(item);
+      try {
+        const read = await readItem(id, held);
+        if (read) {
+          const item = reactive(read);
+          items.value.unshift(item);
+          out.push(item);
+        }
+      } catch {
+        // skip corrupt tournament folder so the rest of the queue can advance
       }
     }
     return inOrder(out);
@@ -327,33 +371,41 @@ export const useTournaments = defineStore('tournaments', () => {
   }
 
   /**
-   * saves a new tournament at the queue's end; it starts at once when no tournament runs in any tab
-   * and Pause all holds none in this one
+   * saves a new tournament at the queue's end; it starts at once when the queue was empty, no
+   * tournament runs in any tab, and Pause all holds none in this one
    */
   async function enqueue(config: TournamentConfig): Promise<void> {
-    const order = Date.now();
     const path = [...TOURNAMENTS, config.id];
-    await writeText(path, 'config.json', JSON.stringify(config, null, 1));
-    await writeText(path, QUEUED, queuedText(order));
-    const item: Item = reactive({
-      config,
-      state: stateOf(config, [], []),
-      ended: null,
-      elsewhere: false,
-      endedAt: null,
-      since: null,
-      queued: order,
-    });
-    items.value.unshift(item);
-    try {
-      await withQueue(async () => {
-        if (runs.size > 0 || paused.value.length > 0 || (await heldIds()).size > 0) return;
+    await withQueue(async () => {
+      const existing = await queueOnDisk();
+      const tail = existing.at(-1)?.queued ?? 0;
+      const order = Math.max(Date.now(), tail + 1);
+      await writeText(path, 'config.json', JSON.stringify(config, null, 1));
+      await writeText(path, QUEUED, queuedText(order));
+      const item: Item = reactive({
+        config,
+        state: stateOf(config, [], []),
+        ended: null,
+        elsewhere: false,
+        endedAt: null,
+        since: null,
+        queued: order,
+      });
+      items.value.unshift(item);
+      if (
+        existing.length > 0 ||
+        runs.size > 0 ||
+        paused.value.length > 0 ||
+        (await heldIds()).size > 0
+      )
+        return;
+      try {
         await books.load();
         if (ready(config, have())) await startQueued(item);
-      });
-    } catch (e) {
-      item.state.error = `It could not start: ${message(e)}`;
-    }
+      } catch (e) {
+        item.state.error = `It could not start: ${message(e)}`;
+      }
+    });
   }
 
   /** plays a queued tournament now, beside what runs */
@@ -404,15 +456,20 @@ export const useTournaments = defineStore('tournaments', () => {
   /** resumes the runs Pause all stopped; starts the queue when none of them can resume */
   async function resumeAll(): Promise<void> {
     const ids = paused.value;
-    paused.value = [];
+    const stillStopping: string[] = [];
     let resumed = false;
     for (const id of ids) {
       const item = items.value.find((i) => i.config.id === id);
-      if (!item || runs.has(id) || item.ended === 'done' || item.elsewhere) continue;
+      if (!item || item.ended === 'done' || item.elsewhere) continue;
+      if (runs.has(id)) {
+        stillStopping.push(id);
+        continue;
+      }
       await resume(id);
       resumed = true;
     }
-    if (!resumed) await advance();
+    paused.value = stillStopping;
+    if (!resumed && stillStopping.length === 0) await advance();
   }
 
   /** plays a stopped or interrupted tournament on: the unfinished games of its pairs, then the rest */
@@ -446,6 +503,7 @@ export const useTournaments = defineStore('tournaments', () => {
         await unlock(id);
       }
     });
+    deletedDuringLoad.add(id);
     items.value = items.value.filter((i) => i.config.id !== id);
   }
 

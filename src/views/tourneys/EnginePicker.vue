@@ -97,7 +97,7 @@ const icon = 'px-0.5 text-dense text-faint hover:text-text';
         </div>
         <div
           v-if="programs.length > 1"
-          class="flex flex-wrap gap-1 border-b border-row px-2 py-1.5"
+          class="flex max-h-20 flex-wrap gap-1 overflow-y-auto border-b border-row px-2 py-1.5"
         >
           <button
             v-for="[f, n] in [['', engines.length] as const, ...programs]"

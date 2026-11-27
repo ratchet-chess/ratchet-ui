@@ -127,9 +127,22 @@ export const useBooks = defineStore('books', () => {
   ]);
 
   async function estimate(): Promise<void> {
-    const e = await navigator.storage.estimate().catch(() => undefined);
+    const storageApi = (navigator as Partial<Navigator>).storage;
+    const e = storageApi ? await storageApi.estimate().catch(() => undefined) : undefined;
     storage.value =
       e?.usage !== undefined && e.quota !== undefined ? { usage: e.usage, quota: e.quota } : null;
+  }
+
+  /** reads `user-books/list.json` safely, returning an empty list on missing or torn JSON */
+  async function readUserList(): Promise<UserBook[]> {
+    const raw = await readText([USER], USER_LIST);
+    if (!raw) return [];
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.filter(isUserBook) : [];
+    } catch {
+      return [];
+    }
   }
 
   /** the size of a file in a folder, or null when it is not there */
@@ -155,11 +168,10 @@ export const useBooks = defineStore('books', () => {
       }
       pulled.value = found;
 
-      const saved: unknown = JSON.parse((await readText([USER], USER_LIST)) ?? '[]');
+      const saved = await readUserList();
       const u = await userFolder();
       const kept: UserBook[] = [];
-      for (const b of Array.isArray(saved) ? saved.filter(isUserBook) : [])
-        if ((await sizeIn(u, b.id)) === b.bytes) kept.push(b);
+      for (const b of saved) if ((await sizeIn(u, b.id)) === b.bytes) kept.push(b);
       user.value = kept;
       error.value = '';
     } catch (e) {
@@ -243,8 +255,13 @@ export const useBooks = defineStore('books', () => {
       const format = bookFormat(id);
       if (!format)
         throw new Error('a book is a .pgn or .epd file, or a zip archive that holds one');
-      if (list.some((b) => b.id === id) || user.value.some((b) => b.id === id))
-        throw new Error(`a book named ${id} is already here; rename the file to add it`);
+      const onDisk = await readUserList();
+      if (
+        list.some((b) => b.id === id) ||
+        user.value.some((b) => b.id === id) ||
+        onDisk.some((b) => b.id === id)
+      )
+        throw new Error(`a book named ${id} is already in browser; rename the file to add it`);
 
       written = true;
       await writeStream([USER], id, source);
@@ -284,10 +301,8 @@ export const useBooks = defineStore('books', () => {
 
   /** drops then adds entries of the user's books' list, as a merge from a backup asks */
   async function mergeList(drop: readonly string[], put: readonly UserBook[]): Promise<void> {
-    const saved: unknown = JSON.parse((await readText([USER], USER_LIST)) ?? '[]');
-    const kept = (Array.isArray(saved) ? saved.filter(isUserBook) : []).filter(
-      (b) => !drop.includes(b.id) && !put.some((p) => p.id === b.id),
-    );
+    const saved = await readUserList();
+    const kept = saved.filter((b) => !drop.includes(b.id) && !put.some((p) => p.id === b.id));
     for (const b of put) indexes.delete(b.id);
     await writeText(
       [USER],
@@ -320,8 +335,12 @@ export const useBooks = defineStore('books', () => {
     ).getFile();
     let index = indexes.get(id);
     if (!index) {
-      index = indexBook(file, book.format);
-      indexes.set(id, index);
+      const built = indexBook(file, book.format);
+      indexes.set(id, built);
+      built.catch(() => {
+        if (indexes.get(id) === built) indexes.delete(id);
+      });
+      index = built;
     }
     const starts = await index;
     if (starts.length === 0) throw new Error(`${id} holds no openings`);

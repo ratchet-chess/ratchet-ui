@@ -138,4 +138,24 @@ describe('los', () => {
     expect(los([0, 0, 0, 0, 0])).toBe(0.5);
     expect(los([10, 30, 40] as Trinomial)).toBeGreaterThan(0.5);
   });
+
+  it('keeps llr finite for large custom SPRT bounds where uniform linearization fails', () => {
+    const p: Ptnml = [10, 20, 30, 20, 10];
+    const largePos = llr(p, 0, 300);
+    expect(Number.isFinite(largePos)).toBe(true);
+    expect(largePos).toBeLessThan(0);
+
+    const strong: Ptnml = [0, 1, 5, 20, 60];
+    const largeStrong = llr(strong, 0, 300);
+    expect(Number.isFinite(largeStrong)).toBe(true);
+    expect(largeStrong).toBeGreaterThan(0);
+
+    const symmetric = llr(p, -350, 350);
+    expect(Number.isFinite(symmetric)).toBe(true);
+    expect(Math.abs(symmetric)).toBeLessThan(1e-3);
+
+    const triLarge = llr([10, 20, 10] as Trinomial, 0, 500);
+    expect(Number.isFinite(triLarge)).toBe(true);
+    expect(triLarge).toBeLessThan(0);
+  });
 });

@@ -65,10 +65,11 @@ const listed = computed(() => {
   };
 });
 
-/** Pause all while a run in this tab plays; Resume all once the runs it stopped have stopped */
+/** Pause all while a run in this tab plays; Resume all once every run it stopped has stopped */
 const pauseAction = computed<'pause' | 'resume' | ''>(() => {
   if (tournaments.items.some((i) => !i.elsewhere && i.state.status === 'running')) return 'pause';
   const paused = tournaments.items.filter((i) => tournaments.paused.includes(i.config.id));
+  if (paused.some((i) => i.state.status === 'stopping')) return '';
   return paused.some((i) => i.state.status === 'stopped' && i.ended !== 'done') ? 'resume' : '';
 });
 </script>

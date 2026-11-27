@@ -153,6 +153,11 @@ export class Run {
     return !this.alive;
   }
 
+  /** read through a call, since a graceful stop between awaits changes `status` out of sight */
+  private stopping(): boolean {
+    return this.state.status !== 'running';
+  }
+
   private decided(): boolean {
     return this.state.summary.match?.verdict != null;
   }
@@ -184,10 +189,12 @@ export class Run {
             );
             await this.deps.savePair(bye);
             if (this.stopped()) return;
+            if (this.stopping()) break;
             continue;
           }
           const opening = await this.deps.opening(index);
           if (this.stopped()) return;
+          if (this.stopping()) break;
           const pair: PairRecord = {
             pair: index,
             a: m.a,
@@ -200,6 +207,7 @@ export class Run {
           if (this.stopped()) return;
           for (const game of pairGames(this.per))
             this.waiting.push({ pair, game, opening, fetched: true });
+          if (this.stopping()) break;
           next = this.waiting.shift();
           if (!next) break;
         }
@@ -213,6 +221,10 @@ export class Run {
           }
           for (const w of [next, ...this.waiting]) {
             if (w.pair === next.pair) Object.assign(w, { opening, fetched: true });
+          }
+          if (this.stopping()) {
+            this.waiting.unshift(next);
+            break;
           }
         }
         this.running++;
@@ -260,14 +272,17 @@ export class Run {
     let speed: { wnps?: number; bnps?: number } = {};
     try {
       const side = async (i: number): Promise<Side> => {
+        if (this.stopped()) throw new Error('stopped');
         const e = this.entrants[i];
         if (!e) throw new Error(`no entrant ${i}`);
         const engine = new UciEngine(e.workerUrl);
         engines.push(engine);
         this.workers.add(engine);
         await engine.identify();
+        if (this.stopped()) throw new Error('stopped');
         engine.send('ucinewgame');
         await engine.ready();
+        if (this.stopped()) throw new Error('stopped');
         return { engine, name: e.name };
       };
       starting = 'white';
@@ -327,7 +342,15 @@ export class Run {
         this.state.pairs,
         this.config.paired,
       );
-      await this.deps.saveGame(record, this.pgn(game, pair, n, white, black));
+      try {
+        await this.deps.saveGame(record, this.pgn(game, pair, n, white, black));
+      } catch (e) {
+        if (!this.stopped()) {
+          this.state.error = e instanceof Error ? e.message : String(e);
+          this.stop(true);
+        }
+        return;
+      }
       if (this.stopped()) return;
     }
     this.running--;
@@ -341,7 +364,7 @@ export class Run {
       Event: this.config.name,
       Site: 'ratchet-ui',
       Date: date,
-      // the tournament's page finds a game by this number, so it counts two a pair even with one game per opening
+      // the tournament's page finds a game by this number, matching its Round tag
       Round: `${pair.round + 1}.${gameNumber(pair.pair, n, this.per)}`,
       White: this.entrants[white]?.name ?? '?',
       Black: this.entrants[black]?.name ?? '?',

@@ -119,7 +119,7 @@ export function problemOf(reason: string): Problem | null {
 export interface Turn {
   game: Game;
   color: Color;
-  engine: UciEngine;
+  engine: Pick<UciEngine, 'go' | 'stop'>;
   name: string;
   control: TimeControl;
   clock: Clock | null;
@@ -129,6 +129,9 @@ export interface Turn {
   /** called after a legal move with the search's final reported node count and wall time in ms */
   onStats?: (nodes: number, ms: number) => void;
 }
+
+/** the largest delay `setTimeout` accepts without overflowing 32-bit signed ms to 1 ms */
+const MAX_TIMEOUT_MS = 2_147_483_647;
 
 /**
  * One engine move, judged: the engine searches the game as it stands, and its move is played, or
@@ -145,9 +148,12 @@ export async function engineTurn(t: Turn): Promise<Info | null> {
   /** the search's last report with a depth and a score; a holder, as the callback sets it */
   const seen: { last: Info | null; nodes: number } = { last: null, nodes: 0 };
   const limit = silenceLimit(control, clock, color);
+  const waitMs = Number.isFinite(limit)
+    ? Math.min(MAX_TIMEOUT_MS, Math.max(0, limit))
+    : MAX_TIMEOUT_MS;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const silent = new Promise<'silent'>((resolve) => {
-    timer = setTimeout(() => resolve('silent'), Math.max(0, limit));
+    timer = setTimeout(() => resolve('silent'), waitMs);
   });
   try {
     const answer = await Promise.race([

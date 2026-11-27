@@ -52,11 +52,18 @@ export async function indexBook(book: Blob, format: 'epd' | 'pgn'): Promise<Uint
     const first = offset === 0 && BOM.every((b, k) => value[k] === b) ? BOM.length : 0;
     for (let i = first; i < value.length; i++) {
       const b = value[i] ?? 0;
-      if (lineStart) {
-        if (format === 'epd') {
-          if (b !== NL && b !== 0x0d) push(offset + i);
-        } else matched = 0;
+      if (format === 'epd') {
+        if (lineStart) {
+          if (b !== NL && b !== 0x0d && b !== 0x20 && b !== 0x09) {
+            push(offset + i);
+            lineStart = false;
+          }
+        } else if (b === NL) {
+          lineStart = true;
+        }
+        continue;
       }
+      if (lineStart) matched = 0;
       if (matched >= 0) {
         if (b === EVENT[matched]) {
           matched++;

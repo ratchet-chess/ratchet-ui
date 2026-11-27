@@ -4,13 +4,26 @@ import { gamesPerPair, plannedGames, type Format } from '../../match/format.ts';
 import type { Item } from '../../stores/tournaments.ts';
 import { count } from '../../ui/format.ts';
 
+/** cached display labels per entrants array so repeated cell lookups stay O(1) */
+const labelCache = new WeakMap<readonly string[], string[]>();
+
+function labelsOf(entrants: readonly string[]): string[] {
+  let cached = labelCache.get(entrants);
+  if (cached && cached.length === entrants.length) return cached;
+  const totals = new Map<string, number>();
+  for (const id of entrants) totals.set(id, (totals.get(id) ?? 0) + 1);
+  const seen = new Map<string, number>();
+  cached = entrants.map((id) => {
+    const n = (seen.get(id) ?? 0) + 1;
+    seen.set(id, n);
+    return (totals.get(id) ?? 0) > 1 ? `${id} #${n}` : id;
+  });
+  labelCache.set(entrants, cached);
+  return cached;
+}
+
 /** an entrant's name; an engine entered twice gets #1, #2 in field order */
-export const label = (i: Item, n: number): string => {
-  const id = i.config.entrants[n] ?? '?';
-  return i.config.entrants.filter((x) => x === id).length > 1
-    ? `${id} #${i.config.entrants.slice(0, n + 1).filter((x) => x === id).length}`
-    : id;
-};
+export const label = (i: Item, n: number): string => labelsOf(i.config.entrants)[n] ?? '?';
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 

@@ -32,7 +32,11 @@ export function directorOf(format: Format, entrants: number, paired = true): Dir
 /** each pair's finished games, by pair number */
 function gamesByPair(games: readonly GameRecord[]): Map<number, GameRecord[]> {
   const out = new Map<number, GameRecord[]>();
-  for (const g of games) out.set(g.pair, [...(out.get(g.pair) ?? []), g]);
+  for (const g of games) {
+    const list = out.get(g.pair);
+    if (list) list.push(g);
+    else out.set(g.pair, [g]);
+  }
   return out;
 }
 
@@ -89,14 +93,20 @@ export function swissRound(
     const [p, ...rest] = left;
     if (p === undefined) return [];
     if (--budget < 0) return null;
-    const group = left.filter((q) => pts(q) === pts(p));
-    const half = Math.floor(group.length / 2);
-    const gap = (q: number) => Math.abs(pts(p) - pts(q));
-    const place = (q: number) =>
-      pts(q) === pts(p) ? Math.abs(group.indexOf(q) - half) : left.indexOf(q);
-    const candidates = rest.toSorted((x, y) =>
-      gap(x) === gap(y) ? place(x) - place(y) : gap(x) - gap(y),
-    );
+    // `left` stays sorted by descending points, so equal-point engines form a contiguous prefix
+    const pPts = pts(p);
+    let groupLen = 1;
+    while (groupLen < left.length && pts(left[groupLen] ?? -1) === pPts) groupLen++;
+    const half = Math.floor(groupLen / 2);
+    const scored = rest.map((q, k) => {
+      const idx = k + 1;
+      const g = Math.abs(pPts - pts(q));
+      const place = idx < groupLen ? Math.abs(idx - half) : idx;
+      return { q, g, place };
+    });
+    const candidates = scored
+      .toSorted((x, y) => (x.g === y.g ? x.place - y.place : x.g - y.g))
+      .map((c) => c.q);
     for (const q of candidates) {
       if (!rematch && metBefore.has(met(p, q))) continue;
       const tail = pair(

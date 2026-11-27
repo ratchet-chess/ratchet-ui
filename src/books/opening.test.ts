@@ -37,6 +37,23 @@ describe('indexBook', () => {
     const epd = new Blob([new Uint8Array([0xef, 0xbb, 0xbf]), EPD]);
     await expect(checkBook(epd, 'epd', await indexBook(epd, 'epd'))).resolves.toBeUndefined();
   });
+
+  it('skips whitespace-only EPD lines and leading spaces on EPD lines', async () => {
+    const epd = [
+      '   ',
+      '\t\r',
+      '  rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq -',
+      '    \t  ',
+      'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq -',
+    ].join('\n');
+    const book = new Blob([epd]);
+    const starts = await indexBook(book, 'epd');
+    expect(starts).toHaveLength(2);
+    await expect(checkBook(book, 'epd', starts)).resolves.toBeUndefined();
+    expect((await openingAt(book, 'epd', starts, 0)).fen).toBe(
+      'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
+    );
+  });
 });
 
 describe('bookFormat', () => {

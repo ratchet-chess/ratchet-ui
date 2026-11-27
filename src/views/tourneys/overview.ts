@@ -4,7 +4,7 @@
  * the threads the running ones ask for.
  */
 import { bracket } from '../../match/director.ts';
-import { analyzeDrift, driftLines } from '../../match/drift.ts';
+import { analyzeDrift, driftLines, type DriftReport } from '../../match/drift.ts';
 import { gamesPerPair } from '../../match/format.ts';
 import { problemOf, type Problem } from '../../match/referee.ts';
 import type { GameRecord } from '../../match/summary.ts';
@@ -162,6 +162,32 @@ export interface Served {
 /** the share of the storage quota past which a notice warns */
 export const STORAGE_WARN = 0.9;
 
+/** cached drift analysis per games array, invalidated whenever games are appended */
+const driftCache = new WeakMap<
+  readonly GameRecord[],
+  { len: number; control: string; paired: boolean; report: DriftReport }
+>();
+
+function driftOf(i: Item): DriftReport {
+  const games = i.state.games;
+  const cached = driftCache.get(games);
+  if (
+    cached &&
+    cached.len === games.length &&
+    cached.control === i.config.control &&
+    cached.paired === i.config.paired
+  )
+    return cached.report;
+  const report = analyzeDrift(i.config.control, games, i.config.paired);
+  driftCache.set(games, {
+    len: games.length,
+    control: i.config.control,
+    paired: i.config.paired,
+    report,
+  });
+  return report;
+}
+
 /**
  * The problems that want a look, for the tournaments running, queued or stopped: an error, a run
  * its tab left, games ended by a fault, an engine or book a start or a resume needs and no longer
@@ -190,8 +216,7 @@ export function noticesOf(items: readonly Item[], served: Served): Notice[] {
     }
     for (const [p, n] of problemsOf(i.state.games))
       note(p === 'time' ? 'warn' : 'bad', problemText(p, n));
-    const drift = analyzeDrift(i.config.control, i.state.games, i.config.paired);
-    for (const line of driftLines(drift, (idx) => label(i, idx))) note('warn', line);
+    for (const line of driftLines(driftOf(i), (idx) => label(i, idx))) note('warn', line);
   }
   const s = served.storage;
   if (s && s.quota > 0 && s.usage / s.quota > STORAGE_WARN)

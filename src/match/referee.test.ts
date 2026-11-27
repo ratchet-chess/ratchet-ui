@@ -4,6 +4,7 @@ import { Game } from '../chess/game.ts';
 import {
   clockFor,
   clockForSides,
+  engineTurn,
   forfeitReason,
   goLimits,
   problemOf,
@@ -72,5 +73,31 @@ describe('the referee', () => {
       'white lost by adjudication',
     ])
       expect(problemOf(fine)).toBeNull();
+  });
+
+  it('clamps deep-search silence timeouts so 32-bit setTimeout does not overflow to 1 ms', async () => {
+    const tc = control('depth 50');
+    expect(silenceLimit(tc, null, 'white')).toBeGreaterThan(2_147_483_647);
+    const game = new Game();
+    const fakeEngine = {
+      go: async () => {
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 15);
+        });
+        return { move: 'e2e4', ponder: undefined };
+      },
+      stop: () => undefined,
+    };
+    await engineTurn({
+      game,
+      color: 'white',
+      engine: fakeEngine,
+      name: 'deep-engine',
+      control: tc,
+      clock: null,
+      live: () => true,
+    });
+    expect(game.outcome).toBeNull();
+    expect(game.uci).toEqual(['e2e4']);
   });
 });

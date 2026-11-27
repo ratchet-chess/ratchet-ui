@@ -3,7 +3,7 @@
  * One match's or tournament's page: its statistics, standings, setup, abnormal endings, bracket and
  * games; for a queued one, its place in the queue and its field.
  */
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import HelpTip from '../../components/HelpTip.vue';
 import Pager from '../../components/Pager.vue';
@@ -25,6 +25,7 @@ import { endsText, problemsLine, queuePlace } from './overview.ts';
 import { count, sentence, signed, thousands, whenText } from '../../ui/format.ts';
 import { formatText, label, progress, roundName, statusClass, statusText } from './show.ts';
 
+// ── state, clock, and navigation ───────────────────────────────────────────
 const props = defineProps<{ item: Item }>();
 const tournaments = useTournaments();
 const router = useRouter();
@@ -32,8 +33,12 @@ const router = useRouter();
 /** the clock the end estimate reads, moved on every few seconds */
 const now = ref(Date.now());
 let ticker: ReturnType<typeof setInterval> | undefined;
+let noticeTimer: ReturnType<typeof setTimeout> | undefined;
 onMounted(() => (ticker = setInterval(() => (now.value = Date.now()), 10_000)));
-onBeforeUnmount(() => clearInterval(ticker));
+onBeforeUnmount(() => {
+  clearInterval(ticker);
+  clearTimeout(noticeTimer);
+});
 
 /** a knockout's bracket, round by round */
 const bracketRounds = computed(() => {
@@ -64,9 +69,9 @@ async function remove(i: Item): Promise<void> {
   }
 }
 
-/** a game's number in its tournament, as its PGN Round tag ends */
 /** games an opening gives in this tournament */
 const per = computed(() => gamesPerPair(props.item.config.format, props.item.config.paired));
+/** a game's number in its tournament, as its PGN Round tag ends */
 const number = (g: { pair: number; game: number }) => gameNumber(g.pair, g.game, per.value);
 /** the last games to finish, by number, newest first */
 const recent = computed(() =>
@@ -125,9 +130,13 @@ const faulted = computed(() =>
     .toSorted((a, b) => number(b) - number(a)),
 );
 const healthPages = computed(() => Math.max(1, Math.ceil(faulted.value.length / HEALTH_PAGE)));
-const healthRows = computed(() =>
-  faulted.value.slice(healthPage.value * HEALTH_PAGE, (healthPage.value + 1) * HEALTH_PAGE),
-);
+watch(healthPages, (p) => {
+  if (healthPage.value >= p) healthPage.value = p - 1;
+});
+const healthRows = computed(() => {
+  const page = Math.min(healthPage.value, healthPages.value - 1);
+  return faulted.value.slice(page * HEALTH_PAGE, (page + 1) * HEALTH_PAGE);
+});
 const drift = computed(() =>
   analyzeDrift(props.item.config.control, props.item.state.games, props.item.config.paired),
 );
@@ -175,9 +184,13 @@ const schedulePage = ref(0);
 /** the issued pairs, newest first */
 const issued = computed(() => props.item.state.pairs.toReversed());
 const schedulePages = computed(() => Math.max(1, Math.ceil(issued.value.length / SCHEDULE_PAGE)));
-const scheduleRows = computed(() =>
-  issued.value.slice(schedulePage.value * SCHEDULE_PAGE, (schedulePage.value + 1) * SCHEDULE_PAGE),
-);
+watch(schedulePages, (p) => {
+  if (schedulePage.value >= p) schedulePage.value = p - 1;
+});
+const scheduleRows = computed(() => {
+  const page = Math.min(schedulePage.value, schedulePages.value - 1);
+  return issued.value.slice(page * SCHEDULE_PAGE, (page + 1) * SCHEDULE_PAGE);
+});
 /** pairs a fixed schedule has yet to issue; null where the director pairs from results */
 const unissued = computed(() => {
   const f = props.item.config.format;
@@ -211,7 +224,8 @@ const byRound = computed(() => props.item.config.format.kind !== 'match');
 const notice = ref('');
 function tell(text: string): void {
   notice.value = text;
-  setTimeout(() => (notice.value = ''), 4000);
+  clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => (notice.value = ''), 4000);
 }
 async function copy(): Promise<void> {
   const i = props.item;
@@ -240,6 +254,7 @@ async function copy(): Promise<void> {
     <RouterLink to="/tournaments" class="mb-2 inline-block text-dense text-accent wide:hidden"
       >‹ Tourneys</RouterLink
     >
+    <!-- ── header and actions ─────────────────────────────────────────── -->
     <div class="mb-2 flex flex-wrap items-baseline gap-2">
       <h2 class="text-title font-semibold">{{ item.config.name }}</h2>
       <span class="tag" :class="statusClass(statusText(item))">{{ statusText(item) }}</span>
@@ -309,6 +324,7 @@ async function copy(): Promise<void> {
     </div>
     <div v-if="item.state.error" class="mb-3 text-bad">{{ item.state.error }}</div>
 
+    <!-- ── queue details ──────────────────────────────────────────────── -->
     <template v-if="queued">
       <Panel title="Queue">
         <dl class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 gap-y-1 px-3 py-2.5 text-dense">
@@ -317,7 +333,7 @@ async function copy(): Promise<void> {
           <dt class="text-dim">Starts</dt>
           <dd>{{ queued.starts }}</dd>
           <dt class="text-dim">Queued</dt>
-          <dd class="num">{{ whenText(item.config.created, Date.now()) }}</dd>
+          <dd class="num">{{ whenText(item.config.created, now) }}</dd>
         </dl>
       </Panel>
       <Panel title="Engines" :note="String(item.config.entrants.length)">
@@ -329,6 +345,7 @@ async function copy(): Promise<void> {
       </Panel>
     </template>
 
+    <!-- ── match statistics and charts ────────────────────────────────── -->
     <template v-else-if="item.state.summary.match">
       <MatchCards
         :llr="
@@ -380,6 +397,7 @@ async function copy(): Promise<void> {
       </Panel>
     </template>
 
+    <!-- ── standings ──────────────────────────────────────────────────── -->
     <Panel v-else title="Standings">
       <div class="overflow-x-auto">
         <table class="w-full border-collapse text-dense">
@@ -432,6 +450,7 @@ async function copy(): Promise<void> {
       </div>
     </Panel>
 
+    <!-- ── setup, health, bracket, crosstable, schedule, games ────────── -->
     <Panel title="Setup">
       <dl
         class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 gap-y-1 px-3 py-2.5 text-dense @3xl:grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] @6xl:grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)]"

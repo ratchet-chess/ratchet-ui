@@ -66,8 +66,19 @@ const sprtPreset = computed(
   () => SPRT_PRESETS.find((p) => p.elo0 === elo0.value && p.elo1 === elo1.value)?.label ?? 'custom',
 );
 const customBounds = ref(false);
+const SPRT_LIMIT = 1000;
+const posInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v) && v >= 1;
+const finiteNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+const sprtBoundsOk = computed(
+  () =>
+    finiteNum(elo0.value) &&
+    finiteNum(elo1.value) &&
+    Math.abs(elo0.value) <= SPRT_LIMIT &&
+    Math.abs(elo1.value) <= SPRT_LIMIT &&
+    elo1.value > elo0.value,
+);
 const sprtEstimate = computed(() =>
-  elo1.value > elo0.value ? sprtGames(elo0.value, elo1.value) : null,
+  sprtBoundsOk.value ? sprtGames(elo0.value, elo1.value) : null,
 );
 const unpairable = computed(() => mayUnpair(format.value));
 /** games an opening gives */
@@ -138,39 +149,67 @@ const format = computed<Format>(() => {
     case 'match':
       return {
         kind: 'match',
-        pairs: pairs.value,
+        pairs: posInt(pairs.value) ? pairs.value : 0,
         sprt: useSprt.value
-          ? { elo0: elo0.value, elo1: elo1.value, alpha: 0.05, beta: 0.05 }
+          ? {
+              elo0: finiteNum(elo0.value) ? elo0.value : 0,
+              elo1: finiteNum(elo1.value) ? elo1.value : 0,
+              alpha: 0.05,
+              beta: 0.05,
+            }
           : null,
       };
     case 'roundrobin':
-      return { kind: 'roundrobin', cycles: cycles.value };
+      return { kind: 'roundrobin', cycles: posInt(cycles.value) ? cycles.value : 0 };
     case 'gauntlet':
-      return { kind: 'gauntlet', seeds: seeds.value, cycles: cycles.value };
+      return {
+        kind: 'gauntlet',
+        seeds: posInt(seeds.value) ? seeds.value : 0,
+        cycles: posInt(cycles.value) ? cycles.value : 0,
+      };
     case 'swiss':
-      return { kind: 'swiss', rounds: rounds.value };
+      return { kind: 'swiss', rounds: posInt(rounds.value) ? rounds.value : 0 };
     default:
-      return { kind: 'knockout', pairs: matchPairs.value };
+      return { kind: 'knockout', pairs: posInt(matchPairs.value) ? matchPairs.value : 0 };
   }
 });
-const totalGames = computed(() => plannedGames(format.value, entrants.value.length, paired.value));
+const totalGames = computed(() =>
+  Math.max(0, plannedGames(format.value, entrants.value.length, paired.value)),
+);
 /** the rounds a Swiss needs for one engine to be alone on top */
 const settling = computed(() => Math.max(1, Math.ceil(Math.log2(Math.max(2, field.value.length)))));
 const seedCount = computed(() =>
   kind.value === 'gauntlet'
-    ? seeds.value
+    ? posInt(seeds.value)
+      ? seeds.value
+      : 0
     : kind.value === 'swiss' || kind.value === 'knockout'
       ? 1
       : 0,
 );
 const controlOk = computed(() => resolveControl(control.value) !== null);
+const formatNumbersOk = computed(() => {
+  if (!posInt(concurrency.value)) return false;
+  switch (kind.value) {
+    case 'match':
+      return posInt(pairs.value) && (!useSprt.value || sprtBoundsOk.value);
+    case 'roundrobin':
+      return posInt(cycles.value);
+    case 'gauntlet':
+      return posInt(seeds.value) && seeds.value < field.value.length && posInt(cycles.value);
+    case 'swiss':
+      return posInt(rounds.value);
+    default:
+      return posInt(matchPairs.value);
+  }
+});
 const canStart = computed(
   () =>
     entrants.value.length >= 2 &&
     entrants.value.every((e) => e) &&
     totalGames.value > 0 &&
     controlOk.value &&
-    !(kind.value === 'match' && useSprt.value && elo1.value <= elo0.value),
+    formatNumbersOk.value,
 );
 
 function adjudication(): Adjudication | null {
@@ -249,8 +288,13 @@ function load(s: Setup): void {
 }
 
 const template = ref('');
+const touched = ref(false);
+const submitting = ref(false);
+const submitError = ref('');
+
 onMounted(async () => {
   await Promise.all([books.load(), engines.load(), tournaments.load()]);
+  if (touched.value) return;
   const from = route.query['from'];
   const cloned =
     typeof from === 'string' ? tournaments.items.find((i) => i.config.id === from) : undefined;
@@ -308,16 +352,34 @@ const newConfig = (): TournamentConfig => {
 };
 
 async function startNew(): Promise<void> {
-  const config = newConfig();
-  await tournaments.create(config);
-  await router.push(`/tournaments/${config.id}`);
+  if (submitting.value || !canStart.value || blocked.value !== '') return;
+  submitting.value = true;
+  submitError.value = '';
+  try {
+    const config = newConfig();
+    await tournaments.create(config);
+    await router.push(`/tournaments/${config.id}`);
+  } catch (e) {
+    submitError.value = `Could not start: ${e instanceof Error ? e.message : String(e)}`;
+  } finally {
+    submitting.value = false;
+  }
 }
 
 /** the form as a new tournament at the queue's end; it starts at once when nothing runs */
 async function queueNew(): Promise<void> {
-  const config = newConfig();
-  await tournaments.enqueue(config);
-  await router.push(`/tournaments/${config.id}`);
+  if (submitting.value || !canStart.value || blocked.value !== '') return;
+  submitting.value = true;
+  submitError.value = '';
+  try {
+    const config = newConfig();
+    await tournaments.enqueue(config);
+    await router.push(`/tournaments/${config.id}`);
+  } catch (e) {
+    submitError.value = `Could not add to queue: ${e instanceof Error ? e.message : String(e)}`;
+  } finally {
+    submitting.value = false;
+  }
 }
 
 /** where Add to queue puts the setup, and whether it starts at once */
@@ -326,9 +388,8 @@ const queueHint = computed(() => {
   const place = tournaments.queue.filter((i) => groupOf(i) === 'queued').length + 1;
   if (running > 0)
     return `#${place} in queue · starts after ${running === 1 ? 'the run ends' : `${running} runs end`}`;
-  return tournaments.paused.length > 0
-    ? `#${place} in queue · paused`
-    : 'Nothing runs: it starts now';
+  if (tournaments.paused.length > 0) return `#${place} in queue · paused`;
+  return place > 1 ? `#${place} in queue · waiting` : 'Nothing runs: it starts now';
 });
 
 // ── the summary ────────────────────────────────────────────────────────────
@@ -348,8 +409,26 @@ const blocked = computed(() => {
   const gone = entrants.value.filter((e) => e && !engineIds.value.includes(e));
   if (gone.length > 0) return `Missing engine: ${gone.join(', ')}.`;
   if (!controlOk.value) return 'Invalid time control.';
-  if (kind.value === 'match' && useSprt.value && elo1.value <= elo0.value)
-    return 'Upper bound must exceed lower bound.';
+  if (!posInt(concurrency.value)) return 'Concurrent games must be a whole number ≥ 1.';
+  if (kind.value === 'match') {
+    if (useSprt.value) {
+      if (!finiteNum(elo0.value) || !finiteNum(elo1.value)) return 'Enter both SPRT bounds.';
+      if (Math.abs(elo0.value) > SPRT_LIMIT || Math.abs(elo1.value) > SPRT_LIMIT)
+        return `SPRT bounds must stay within ±${SPRT_LIMIT} nElo.`;
+      if (elo1.value <= elo0.value) return 'Upper bound must exceed lower bound.';
+    }
+    if (!posInt(pairs.value)) return 'Pairs must be a whole number ≥ 1.';
+  } else if (kind.value === 'roundrobin') {
+    if (!posInt(cycles.value)) return 'Cycles must be a whole number ≥ 1.';
+  } else if (kind.value === 'gauntlet') {
+    if (!posInt(seeds.value) || seeds.value >= field.value.length)
+      return `Seeds must be a whole number from 1 to ${Math.max(1, field.value.length - 1)}.`;
+    if (!posInt(cycles.value)) return 'Cycles must be a whole number ≥ 1.';
+  } else if (kind.value === 'swiss') {
+    if (!posInt(rounds.value)) return 'Rounds must be a whole number ≥ 1.';
+  } else if (!posInt(matchPairs.value)) {
+    return 'Pairs per match must be a whole number ≥ 1.';
+  }
   return '';
 });
 
@@ -367,7 +446,11 @@ const terse = 'text-dense text-dim';
       >‹ Tourneys</RouterLink
     >
     <div class="grid items-start gap-4 @5xl:grid-cols-[minmax(0,1fr)_17rem]">
-      <section class="min-w-0 rounded-md border border-line bg-panel">
+      <section
+        class="min-w-0 rounded-md border border-line bg-panel"
+        @input="touched = true"
+        @change="touched = true"
+      >
         <!-- ── templates ─────────────────────────────────────────────────── -->
         <div
           class="flex flex-wrap items-center gap-2 rounded-t-md border-b border-line bg-panel2 px-3.5 py-2"
@@ -487,11 +570,16 @@ const terse = 'text-dense text-dim';
                   class="field num no-spin w-24 text-right"
                   @input="pairsEdited = true"
                 />
-                <span v-if="paired" class="num" :class="terse"
+                <span v-if="paired && posInt(pairs)" class="num" :class="terse"
                   >{{ (pairs * 2).toLocaleString('en-US') }} games</span
                 >
                 <span
-                  v-if="useSprt && sprtEstimate !== null && pairs * perOpening < sprtEstimate"
+                  v-if="
+                    useSprt &&
+                    sprtEstimate !== null &&
+                    posInt(pairs) &&
+                    pairs * perOpening < sprtEstimate
+                  "
                   class="text-dense text-warn"
                   >below estimate</span
                 >
@@ -655,20 +743,23 @@ const terse = 'text-dense text-dim';
         </dl>
         <button
           class="btn-primary w-full py-2.5"
-          :disabled="!canStart || blocked !== ''"
+          :disabled="submitting || !canStart || blocked !== ''"
           @click="startNew"
         >
-          Start
+          {{ submitting ? 'Starting…' : 'Start' }}
         </button>
         <button
           class="btn-secondary mt-1.5 w-full py-2.5"
-          :disabled="!canStart || blocked !== ''"
+          :disabled="submitting || !canStart || blocked !== ''"
           @click="queueNew"
         >
           Add to queue
         </button>
-        <div v-if="!blocked" class="mt-1.5 text-small text-dim">{{ queueHint }}</div>
+        <div v-if="!blocked && !submitError" class="mt-1.5 text-small text-dim">
+          {{ queueHint }}
+        </div>
         <div v-if="blocked" class="mt-2 text-dense text-warn">{{ blocked }}</div>
+        <div v-if="submitError" class="mt-2 text-dense text-bad">{{ submitError }}</div>
       </aside>
     </div>
   </div>
