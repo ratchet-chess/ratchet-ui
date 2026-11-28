@@ -28,8 +28,10 @@ const props = withDefaults(
     sans?: readonly string[];
     firstMove?: number;
     blackFirst?: boolean;
+    /** render without the outer Panel frame when embedded inside another tabbed container */
+    bare?: boolean;
   }>(),
-  { sans: () => [], firstMove: 1, blackFirst: false },
+  { sans: () => [], firstMove: 1, blackFirst: false, bare: false },
 );
 
 const emit = defineEmits<{ select: [ply: number] }>();
@@ -235,8 +237,11 @@ const legendNote = computed(() =>
 </script>
 
 <template>
-  <Panel title="Evaluation" :note="legendNote">
-    <template v-if="gameEval.hasEval" #actions>
+  <component
+    :is="bare ? 'div' : Panel"
+    v-bind="bare ? {} : { title: 'Evaluation', note: legendNote }"
+  >
+    <template v-if="!bare && gameEval.hasEval" #actions>
       <span v-if="series.white.count > 0" class="flex items-center gap-1 text-label text-dim">
         <i class="inline-block h-0.5 w-3 rounded-full bg-eval-white" />White
       </span>
@@ -247,189 +252,197 @@ const legendNote = computed(() =>
 
     <div class="px-2.5 pt-2 pb-1.5">
       <div
-        class="num mb-1 flex items-center gap-1.5 text-small text-dim"
-        :title="summarize(shownPoint)"
+        v-if="!gameEval.hasEval && !gameEval.hasTime"
+        class="py-4 text-center text-dense text-faint"
       >
-        <span
-          v-if="hasScore(shownPoint)"
-          class="inline-block size-2 shrink-0 rounded-full"
-          :class="shownPoint.mover === 'white' ? 'bg-eval-white' : 'bg-eval-black'"
-        />
-        <span class="truncate">{{ summarize(shownPoint) }}</span>
+        Waiting for evaluation data
       </div>
-      <div
-        class="relative cursor-crosshair touch-none select-none"
-        @pointerdown="onPointerDown"
-        @pointermove="onPointerMove"
-        @pointerup="onPointerUp"
-        @pointercancel="
-          dragging = false;
-          hoverPly = null;
-        "
-        @pointerleave="hoverPly = null"
-      >
-        <div v-if="gameEval.hasEval" class="relative">
-          <svg :viewBox="`0 0 ${W} ${H}`" preserveAspectRatio="none" class="block h-28 w-full">
+      <template v-else>
+        <div
+          class="num mb-1 flex items-center gap-1.5 text-small text-dim"
+          :title="summarize(shownPoint)"
+        >
+          <span
+            v-if="hasScore(shownPoint)"
+            class="inline-block size-2 shrink-0 rounded-full"
+            :class="shownPoint.mover === 'white' ? 'bg-eval-white' : 'bg-eval-black'"
+          />
+          <span class="truncate">{{ summarize(shownPoint) }}</span>
+        </div>
+        <div
+          class="relative cursor-crosshair touch-none select-none"
+          @pointerdown="onPointerDown"
+          @pointermove="onPointerMove"
+          @pointerup="onPointerUp"
+          @pointercancel="
+            dragging = false;
+            hoverPly = null;
+          "
+          @pointerleave="hoverPly = null"
+        >
+          <div v-if="gameEval.hasEval" class="relative">
+            <svg :viewBox="`0 0 ${W} ${H}`" preserveAspectRatio="none" class="block h-28 w-full">
+              <rect
+                v-for="(b, i) in bookSpans"
+                :key="i"
+                :x="b.x"
+                y="0"
+                :width="b.w"
+                :height="H"
+                class="fill-dim opacity-10"
+              />
+              <line
+                x1="0"
+                :x2="W"
+                :y1="yAt(0.5)"
+                :y2="yAt(0.5)"
+                class="stroke-line"
+                stroke-dasharray="3 3"
+                vector-effect="non-scaling-stroke"
+              />
+              <line
+                x1="0"
+                :x2="W"
+                :y1="yAt(-0.5)"
+                :y2="yAt(-0.5)"
+                class="stroke-line"
+                stroke-dasharray="3 3"
+                vector-effect="non-scaling-stroke"
+              />
+              <line
+                x1="0"
+                :x2="W"
+                :y1="MID_Y"
+                :y2="MID_Y"
+                class="stroke-line-strong"
+                vector-effect="non-scaling-stroke"
+              />
+              <path
+                v-if="singleSeriesColor && series[singleSeriesColor].area"
+                :d="series[singleSeriesColor].area"
+                :class="
+                  singleSeriesColor === 'white'
+                    ? 'fill-eval-white opacity-15'
+                    : 'fill-eval-black opacity-15'
+                "
+              />
+              <path
+                v-if="series.black.line"
+                :d="series.black.line"
+                class="fill-none stroke-eval-black"
+                stroke-width="1.75"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                vector-effect="non-scaling-stroke"
+              />
+              <path
+                v-if="series.white.line"
+                :d="series.white.line"
+                class="fill-none stroke-eval-white"
+                stroke-width="1.75"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                vector-effect="non-scaling-stroke"
+              />
+              <line
+                :x1="activeX"
+                :x2="activeX"
+                y1="0"
+                :y2="H"
+                class="stroke-text opacity-65"
+                vector-effect="non-scaling-stroke"
+              />
+            </svg>
+
+            <!-- single-point markers when a side has only one evaluated ply so far -->
+            <span
+              v-if="series.black.single"
+              class="pointer-events-none absolute size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-eval-black"
+              :style="{
+                left: `${xPct(series.black.single.ply)}%`,
+                top: `${yPct(series.black.single.win)}%`,
+              }"
+            />
+            <span
+              v-if="series.white.single"
+              class="pointer-events-none absolute size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-eval-white"
+              :style="{
+                left: `${xPct(series.white.single.ply)}%`,
+                top: `${yPct(series.white.single.win)}%`,
+              }"
+            />
+
+            <span
+              v-if="hoverDot"
+              class="pointer-events-none absolute size-2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-panel opacity-85"
+              :class="hoverDot.color === 'white' ? 'bg-eval-white' : 'bg-eval-black'"
+              :style="{ left: `${hoverDot.leftPct}%`, top: `${hoverDot.topPct}%` }"
+            />
+            <span
+              v-if="activeDot"
+              class="pointer-events-none absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-panel"
+              :class="activeDot.color === 'white' ? 'bg-eval-white' : 'bg-eval-black'"
+              :style="{ left: `${activeDot.leftPct}%`, top: `${activeDot.topPct}%` }"
+            />
+          </div>
+
+          <svg
+            v-if="gameEval.hasTime"
+            :viewBox="`0 0 ${W} ${TH}`"
+            preserveAspectRatio="none"
+            class="mt-0.5 block h-9 w-full"
+          >
+            <line
+              x1="0"
+              :x2="W"
+              :y1="MID_T"
+              :y2="MID_T"
+              class="stroke-line"
+              vector-effect="non-scaling-stroke"
+            />
             <rect
-              v-for="(b, i) in bookSpans"
-              :key="i"
-              :x="b.x"
-              y="0"
-              :width="b.w"
-              :height="H"
-              class="fill-dim opacity-10"
-            />
-            <line
-              x1="0"
-              :x2="W"
-              :y1="yAt(0.5)"
-              :y2="yAt(0.5)"
-              class="stroke-line"
-              stroke-dasharray="3 3"
-              vector-effect="non-scaling-stroke"
-            />
-            <line
-              x1="0"
-              :x2="W"
-              :y1="yAt(-0.5)"
-              :y2="yAt(-0.5)"
-              class="stroke-line"
-              stroke-dasharray="3 3"
-              vector-effect="non-scaling-stroke"
-            />
-            <line
-              x1="0"
-              :x2="W"
-              :y1="MID_Y"
-              :y2="MID_Y"
-              class="stroke-line-strong"
-              vector-effect="non-scaling-stroke"
-            />
-            <path
-              v-if="singleSeriesColor && series[singleSeriesColor].area"
-              :d="series[singleSeriesColor].area"
+              v-for="bar in timeBars"
+              :key="bar.ply"
+              :x="bar.x"
+              :y="bar.y"
+              :width="bar.w"
+              :height="bar.h"
               :class="
-                singleSeriesColor === 'white'
-                  ? 'fill-eval-white opacity-15'
-                  : 'fill-eval-black opacity-15'
+                bar.ply === ply
+                  ? 'fill-accent opacity-95'
+                  : bar.white
+                    ? 'fill-text opacity-45'
+                    : 'fill-dim opacity-55'
               "
-            />
-            <path
-              v-if="series.black.line"
-              :d="series.black.line"
-              class="fill-none stroke-eval-black"
-              stroke-width="1.75"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              vector-effect="non-scaling-stroke"
-            />
-            <path
-              v-if="series.white.line"
-              :d="series.white.line"
-              class="fill-none stroke-eval-white"
-              stroke-width="1.75"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              vector-effect="non-scaling-stroke"
             />
             <line
               :x1="activeX"
               :x2="activeX"
               y1="0"
-              :y2="H"
-              class="stroke-text opacity-65"
+              :y2="TH"
+              class="stroke-accent opacity-65"
               vector-effect="non-scaling-stroke"
             />
           </svg>
 
-          <!-- single-point markers when a side has only one evaluated ply so far -->
-          <span
-            v-if="series.black.single"
-            class="pointer-events-none absolute size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-eval-black"
-            :style="{
-              left: `${xPct(series.black.single.ply)}%`,
-              top: `${yPct(series.black.single.win)}%`,
-            }"
-          />
-          <span
-            v-if="series.white.single"
-            class="pointer-events-none absolute size-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-eval-white"
-            :style="{
-              left: `${xPct(series.white.single.ply)}%`,
-              top: `${yPct(series.white.single.win)}%`,
-            }"
-          />
-
-          <span
-            v-if="hoverDot"
-            class="pointer-events-none absolute size-2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-panel opacity-85"
-            :class="hoverDot.color === 'white' ? 'bg-eval-white' : 'bg-eval-black'"
-            :style="{ left: `${hoverDot.leftPct}%`, top: `${hoverDot.topPct}%` }"
-          />
-          <span
-            v-if="activeDot"
-            class="pointer-events-none absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-panel"
-            :class="activeDot.color === 'white' ? 'bg-eval-white' : 'bg-eval-black'"
-            :style="{ left: `${activeDot.leftPct}%`, top: `${activeDot.topPct}%` }"
+          <div
+            v-if="hoverPly !== null && hoverPly !== ply"
+            class="pointer-events-none absolute top-0 bottom-0 w-px bg-dim opacity-70"
+            :style="{ left: `${hoverLeftPct}%` }"
           />
         </div>
 
-        <svg
-          v-if="gameEval.hasTime"
-          :viewBox="`0 0 ${W} ${TH}`"
-          preserveAspectRatio="none"
-          class="mt-0.5 block h-9 w-full"
-        >
-          <line
-            x1="0"
-            :x2="W"
-            :y1="MID_T"
-            :y2="MID_T"
-            class="stroke-line"
-            vector-effect="non-scaling-stroke"
-          />
-          <rect
-            v-for="bar in timeBars"
-            :key="bar.ply"
-            :x="bar.x"
-            :y="bar.y"
-            :width="bar.w"
-            :height="bar.h"
-            :class="
-              bar.ply === ply
-                ? 'fill-accent opacity-95'
-                : bar.white
-                  ? 'fill-text opacity-45'
-                  : 'fill-dim opacity-55'
-            "
-          />
-          <line
-            :x1="activeX"
-            :x2="activeX"
-            y1="0"
-            :y2="TH"
-            class="stroke-accent opacity-65"
-            vector-effect="non-scaling-stroke"
-          />
-        </svg>
-
-        <div
-          v-if="hoverPly !== null && hoverPly !== ply"
-          class="pointer-events-none absolute top-0 bottom-0 w-px bg-dim opacity-70"
-          :style="{ left: `${hoverLeftPct}%` }"
-        />
-      </div>
-
-      <div class="num mt-0.5 flex justify-between text-label text-faint">
-        <span>Move {{ firstMove }}</span>
-        <span v-if="totalMoves > 2">Move {{ firstMove + Math.floor(totalMoves / 2) }}</span>
-        <span>
-          Move {{ firstMove + Math.max(0, totalMoves - 1)
-          }}<template v-if="gameEval.hasTime">
-            · max {{ formatMoveTime(gameEval.maxTimeSec) }}</template
-          >
-        </span>
-      </div>
+        <div class="num mt-0.5 flex justify-between text-label text-faint">
+          <span>Move {{ firstMove }}</span>
+          <span v-if="totalMoves > 2">Move {{ firstMove + Math.floor(totalMoves / 2) }}</span>
+          <span>
+            Move {{ firstMove + Math.max(0, totalMoves - 1)
+            }}<template v-if="gameEval.hasTime">
+              · max {{ formatMoveTime(gameEval.maxTimeSec) }}</template
+            >
+          </span>
+        </div>
+      </template>
     </div>
-  </Panel>
+  </component>
 </template>

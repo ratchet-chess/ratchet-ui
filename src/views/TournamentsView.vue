@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import PageHeader from '../components/PageHeader.vue';
 import Panel from '../components/Panel.vue';
@@ -28,6 +28,30 @@ onMounted(() => Promise.all([tournaments.load(), books.load()]));
 
 const selected = computed(() => (typeof route.params['id'] === 'string' ? route.params['id'] : ''));
 const creating = computed(() => selected.value === 'new');
+/** whether the Live split-pane is open on the selected tournament (folds the wide list away) */
+const liveOpen = ref(false);
+/** whether the folded tournament list drawer is open while Live is open */
+const listDrawerOpen = ref(false);
+
+watch(selected, () => {
+  liveOpen.value = false;
+  listDrawerOpen.value = false;
+});
+
+watch(liveOpen, (open) => {
+  if (!open) listDrawerOpen.value = false;
+});
+
+function onKey(e: KeyboardEvent): void {
+  if (e.key === 'Escape' && listDrawerOpen.value) listDrawerOpen.value = false;
+}
+onMounted(() => window.addEventListener('keydown', onKey));
+onBeforeUnmount(() => window.removeEventListener('keydown', onKey));
+
+function openTournament(id: string): void {
+  listDrawerOpen.value = false;
+  void router.push(`/tournaments/${id}`);
+}
 /** a New pressed while the setup is open starts it over */
 const fresh = ref(0);
 const setupKey = computed(
@@ -97,8 +121,26 @@ const pauseAction = computed<'pause' | 'resume' | ''>(() => {
   <div v-if="tournaments.error" class="mb-3 text-bad">{{ tournaments.error }}</div>
 
   <TournamentOverview v-if="!selected" />
-  <div v-else class="grid gap-3.5 wide:grid-cols-[minmax(300px,380px)_1fr]">
-    <div class="hidden wide:block">
+  <div
+    v-else
+    class="relative grid gap-3.5"
+    :class="liveOpen ? '' : 'wide:grid-cols-[minmax(300px,380px)_1fr]'"
+  >
+    <!-- Folded list drawer overlay when Live is open on wide viewports -->
+    <div
+      v-if="liveOpen && listDrawerOpen"
+      class="fixed inset-0 z-30 hidden wide:block"
+      @click="listDrawerOpen = false"
+    />
+    <div
+      :class="
+        liveOpen
+          ? listDrawerOpen
+            ? 'absolute top-10 left-0 z-40 hidden max-h-[75dvh] w-80 overflow-auto rounded-md shadow-xl wide:block [&>section]:mb-0'
+            : 'hidden'
+          : 'hidden wide:block'
+      "
+    >
       <Panel>
         <template v-for="group in listed.groups" :key="group.g">
           <div
@@ -115,7 +157,7 @@ const pauseAction = computed<'pause' | 'resume' | ''>(() => {
             :key="i.config.id"
             class="row px-3 py-2"
             :class="i.config.id === selected ? 'bg-selected' : ''"
-            @click="router.push(`/tournaments/${i.config.id}`)"
+            @click="openTournament(i.config.id)"
           >
             <div class="flex items-baseline gap-2">
               <span class="flex-1 truncate">{{ i.config.name }}</span>
@@ -153,6 +195,13 @@ const pauseAction = computed<'pause' | 'resume' | ''>(() => {
     </div>
 
     <TournamentSetup v-if="creating" :key="setupKey" />
-    <TournamentPage v-else-if="item" :key="item.config.id" :item="item" />
+    <TournamentPage
+      v-else-if="item"
+      :key="item.config.id"
+      :item="item"
+      v-model:live-open="liveOpen"
+      :list-drawer-open="listDrawerOpen"
+      @toggle-list="listDrawerOpen = !listDrawerOpen"
+    />
   </div>
 </template>

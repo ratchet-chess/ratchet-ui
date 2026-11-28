@@ -207,7 +207,7 @@ const isOver = (g: Game) => g.outcome !== null;
 
 /** one side of an engine game */
 export interface Side {
-  engine: UciEngine;
+  engine: Pick<UciEngine, 'go' | 'stop'>;
   name: string;
 }
 
@@ -215,6 +215,13 @@ export interface Side {
 export interface GameSpeed {
   wnps?: number;
   bnps?: number;
+}
+
+/** Per-move search summary reported to a live observer after each played move. */
+export interface MoveReport {
+  color: Color;
+  depth?: number;
+  nodes?: number;
 }
 
 /** Minimum per-move nodes and wall ms to include in passive game NPS (filters trivial moves). */
@@ -232,11 +239,14 @@ export async function playOut(o: {
   control: TimeControl;
   adjudication: Adjudication | null;
   live: () => boolean;
-  onMove?: () => void;
+  onClock?: (clock: Clock | null) => void;
+  onInfo?: (color: Color, info: Info) => void;
+  onMove?: (report: MoveReport) => void;
 }): Promise<GameSpeed> {
   const { game, sides, control } = o;
   const clock = clockFor(control);
   clock?.start(game.turn);
+  o.onClock?.(clock);
   const judge = o.adjudication ? new Adjudicator(o.adjudication) : null;
   const totals: Record<Color, { nodes: number; ms: number }> = {
     white: { nodes: 0, ms: 0 },
@@ -245,6 +255,8 @@ export async function playOut(o: {
   while (!isOver(game) && o.live()) {
     const color = game.turn;
     const side = sides[color];
+    const pliesBefore = game.san.length;
+    let turnNodes: number | undefined;
     const info = await engineTurn({
       game,
       color,
@@ -253,6 +265,10 @@ export async function playOut(o: {
       control,
       clock,
       live: o.live,
+      onInfo: (line) => {
+        if (line.nodes !== undefined && line.nodes > 0) turnNodes = line.nodes;
+        o.onInfo?.(color, line);
+      },
       onStats: (nodes, ms) => {
         if (nodes >= MIN_SPEED_NODES && ms >= MIN_SPEED_MS) {
           totals[color].nodes += nodes;
@@ -260,14 +276,24 @@ export async function playOut(o: {
         }
       },
     });
-    if (!o.live() || isOver(game)) break;
-    // the number of the move just played: a move by Black has already advanced the count
-    const fullmove = game.pos.fullmoves - (color === 'black' ? 1 : 0);
-    const verdict = judge?.move(color, fullmove, info?.cp ?? null, info?.mate) ?? null;
-    if (verdict === 'draw') game.adjudicate('draw', 'draw by adjudication');
-    else if (verdict)
-      game.adjudicate(verdict, `${sides[opposite(verdict)].name} lost by adjudication`);
-    o.onMove?.();
+    if (!o.live()) break;
+    const moved = game.san.length > pliesBefore;
+    if (!isOver(game)) {
+      // the number of the move just played: a move by Black has already advanced the count
+      const fullmove = game.pos.fullmoves - (color === 'black' ? 1 : 0);
+      const verdict = judge?.move(color, fullmove, info?.cp ?? null, info?.mate) ?? null;
+      if (verdict === 'draw') game.adjudicate('draw', 'draw by adjudication');
+      else if (verdict)
+        game.adjudicate(verdict, `${sides[opposite(verdict)].name} lost by adjudication`);
+    }
+    if (moved) {
+      o.onMove?.({
+        color,
+        ...(info?.depth !== undefined ? { depth: info.depth } : {}),
+        ...(turnNodes !== undefined ? { nodes: turnNodes } : {}),
+      });
+    }
+    if (isOver(game)) break;
   }
   clock?.stop();
   const wnps =

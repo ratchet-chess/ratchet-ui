@@ -3,6 +3,8 @@
  * One match's or tournament's page: its statistics, standings, setup, abnormal endings, bracket and
  * games; for a queued one, its place in the queue and its field.
  */
+import { List } from '@lucide/vue';
+import type { Color } from 'chessops/types';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import HelpTip from '../../components/HelpTip.vue';
@@ -10,7 +12,9 @@ import Pager from '../../components/Pager.vue';
 import Panel from '../../components/Panel.vue';
 import MatchCards from '../../components/MatchCards.vue';
 import PentaCounts from '../../components/PentaCounts.vue';
+import Segmented from '../../components/Segmented.vue';
 import StatCard from '../../components/StatCard.vue';
+import Tabs from '../../components/Tabs.vue';
 import { bracket } from '../../match/director.ts';
 import { analyzeDrift, driftLines } from '../../match/drift.ts';
 import { BYE, gameNumber, gamesPerPair, plannedGames } from '../../match/format.ts';
@@ -20,24 +24,57 @@ import { problemOf } from '../../match/referee.ts';
 import { pointsOf, type GameRecord, type PairRecord } from '../../match/summary.ts';
 import { useGames } from '../../stores/games.ts';
 import { collectionOf, useTournaments, type Item } from '../../stores/tournaments.ts';
+import LiveBoardCard from './LiveBoardCard.vue';
+import LiveFocusBoard from './LiveFocusBoard.vue';
+import LiveFocusPanel from './LiveFocusPanel.vue';
 import MatchChart, { type ChartPoint } from './MatchChart.vue';
 import { endsText, problemsLine, queuePlace } from './overview.ts';
 import { count, sentence, signed, thousands, whenText } from '../../ui/format.ts';
 import { formatText, label, progress, roundName, statusClass, statusText } from './show.ts';
+import { useLiveGames } from './useLiveGames.ts';
 
 // ── state, clock, and navigation ───────────────────────────────────────────
-const props = defineProps<{ item: Item }>();
+const props = withDefaults(
+  defineProps<{
+    item: Item;
+    /** wide-viewport split-pane state synced with TournamentsView so the list folds away */
+    liveOpen?: boolean;
+    /** whether the folded tournament list drawer is currently open */
+    listDrawerOpen?: boolean;
+  }>(),
+  { liveOpen: false, listDrawerOpen: false },
+);
+const emit = defineEmits<{
+  'update:liveOpen': [value: boolean];
+  'toggle-list': [];
+}>();
 const tournaments = useTournaments();
 const router = useRouter();
+
+/** stays in lockstep with Tailwind's `wide:` breakpoint (1100 px) */
+const WIDE_QUERY = '(min-width: 1100px)';
+const isWide = ref(typeof window !== 'undefined' ? window.matchMedia(WIDE_QUERY).matches : true);
+let mql: MediaQueryList | undefined;
+const onWideChange = (e: MediaQueryListEvent) => {
+  isWide.value = e.matches;
+};
 
 /** the clock the end estimate reads, moved on every few seconds */
 const now = ref(Date.now());
 let ticker: ReturnType<typeof setInterval> | undefined;
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
-onMounted(() => (ticker = setInterval(() => (now.value = Date.now()), 10_000)));
+onMounted(() => {
+  ticker = setInterval(() => (now.value = Date.now()), 10_000);
+  if (typeof window !== 'undefined') {
+    mql = window.matchMedia(WIDE_QUERY);
+    isWide.value = mql.matches;
+    mql.addEventListener('change', onWideChange);
+  }
+});
 onBeforeUnmount(() => {
   clearInterval(ticker);
   clearTimeout(noticeTimer);
+  mql?.removeEventListener('change', onWideChange);
 });
 
 /** a knockout's bracket, round by round */
@@ -219,6 +256,79 @@ function pairState(p: PairRecord): string {
 /** a match gives every pair its own round, so only the other formats group by round */
 const byRound = computed(() => props.item.config.format.kind !== 'match');
 
+// ── live view (B1 wide split-pane, B2 narrow tabs) ─────────────────────────
+const LIVE_MODE_OPTIONS = [
+  { value: 'mosaic', label: 'Mosaic' },
+  { value: 'one', label: 'One game' },
+] as const;
+
+const narrowTab = ref<'overview' | 'live'>('overview');
+const wideLiveMode = ref<'mosaic' | 'one'>('mosaic');
+const narrowLiveMode = ref<'mosaic' | 'one'>('mosaic');
+const showMosaicDetails = ref(false);
+const viewingPly = ref<number | null>(null);
+const focusOrientation = ref<Color>('white');
+const showPvArrows = ref(true);
+
+const liveMounted = computed(() => (isWide.value ? props.liveOpen : narrowTab.value === 'live'));
+const live = useLiveGames(
+  () => props.item.config.id,
+  () => liveMounted.value,
+);
+
+const canLive = computed(
+  () =>
+    !queued.value &&
+    (tournaments.running(props.item.config.id) ||
+      props.item.state.live.length > 0 ||
+      live.focused.value !== null),
+);
+const liveCount = computed(() =>
+  liveMounted.value ? live.active.value.length : props.item.state.live.length,
+);
+const narrowTabs = computed(
+  () =>
+    [
+      { key: 'overview', name: 'Overview' },
+      { key: 'live', name: 'Live', count: liveCount.value },
+    ] as const,
+);
+
+watch(live.selectedKey, () => {
+  viewingPly.value = null;
+});
+
+watch(canLive, (avail) => {
+  if (!avail) {
+    if (props.liveOpen) emit('update:liveOpen', false);
+    narrowTab.value = 'overview';
+  }
+});
+
+function openLive(key?: string): void {
+  if (key) live.select(key);
+  if (isWide.value) {
+    emit('update:liveOpen', true);
+  } else {
+    narrowTab.value = 'live';
+    if (key) narrowLiveMode.value = 'one';
+  }
+}
+
+function toggleWideLive(): void {
+  if (props.liveOpen) {
+    if (!tournaments.running(props.item.config.id)) live.clearFinished();
+    emit('update:liveOpen', false);
+  } else {
+    emit('update:liveOpen', true);
+  }
+}
+
+function selectMosaicCard(key: string): void {
+  live.select(key);
+  if (!isWide.value) narrowLiveMode.value = 'one';
+}
+
 // ── copy as text ───────────────────────────────────────────────────────────
 /** what Copy or PGN did, shown for a moment beside the buttons */
 const notice = ref('');
@@ -256,10 +366,32 @@ async function copy(): Promise<void> {
     >
     <!-- ── header and actions ─────────────────────────────────────────── -->
     <div class="mb-2 flex flex-wrap items-baseline gap-2">
+      <button
+        v-if="isWide && liveOpen"
+        type="button"
+        class="btn-sm self-center"
+        :class="listDrawerOpen ? 'border-accent bg-chosen text-text' : ''"
+        title="Show tournament list"
+        @click="emit('toggle-list')"
+      >
+        <List :size="13" />
+        List
+      </button>
       <h2 class="text-title font-semibold">{{ item.config.name }}</h2>
       <span class="tag" :class="statusClass(statusText(item))">{{ statusText(item) }}</span>
       <span class="flex-1" />
       <span v-if="notice" class="text-dense text-dim">{{ notice }}</span>
+      <button
+        v-if="isWide && canLive"
+        type="button"
+        class="btn"
+        :class="liveOpen ? 'border-accent bg-chosen text-text' : ''"
+        title="Show or hide live games beside overview"
+        @click="toggleWideLive"
+      >
+        Live
+        <span class="tag tone-accent">{{ liveCount }}</span>
+      </button>
       <template v-if="queued">
         <button
           class="btn"
@@ -324,6 +456,14 @@ async function copy(): Promise<void> {
     </div>
     <div v-if="item.state.error" class="mb-3 text-bad">{{ item.state.error }}</div>
 
+    <!-- ── narrow viewport Overview / Live tabs (B2) ──────────────────── -->
+    <Tabs
+      v-if="!isWide && canLive"
+      v-model="narrowTab"
+      :tabs="narrowTabs"
+      class="border-b border-line pb-1.5"
+    />
+
     <!-- ── queue details ──────────────────────────────────────────────── -->
     <template v-if="queued">
       <Panel title="Queue">
@@ -343,358 +483,566 @@ async function copy(): Promise<void> {
           </li>
         </ol>
       </Panel>
-    </template>
-
-    <!-- ── match statistics and charts ────────────────────────────────── -->
-    <template v-else-if="item.state.summary.match">
-      <MatchCards
-        :llr="
-          item.state.summary.match.llr !== null && item.state.summary.match.bounds
-            ? {
-                value: item.state.summary.match.llr,
-                lower: item.state.summary.match.bounds.lower,
-                upper: item.state.summary.match.bounds.upper,
-              }
-            : null
-        "
-        :nelo="item.state.summary.match.nelo"
-        :elo="item.state.summary.match.elo"
-        :los="item.state.summary.match.los"
-      >
-        <StatCard :label="per === 2 ? 'W D L · pairs' : 'W D L'">
-          <template v-if="per === 2" #help>
-            <HelpTip side="left"
-              >The tested engine's wins, draws and losses; under them the pairs by their score from
-              its side, 0, ½, 1, 1½ and 2 points (pentanomial).</HelpTip
-            >
-          </template>
-          <span class="text-title">{{ item.state.summary.match.wdl.map(count).join(' ') }}</span>
-          <template v-if="item.state.summary.match.model === 'pentanomial'" #sub>
-            <PentaCounts :counts="item.state.summary.match.ptnml" />
-          </template>
-        </StatCard>
-      </MatchCards>
-      <Panel
-        v-if="eloPoints.length >= 2"
-        :title="per === 2 ? 'Over pairs' : 'Over games'"
-        note="hover for values"
-      >
-        <div class="grid gap-4 px-3 py-2.5 @3xl:grid-cols-2">
-          <MatchChart
-            v-if="llrPoints.length >= 2 && item.state.summary.match.bounds"
-            title="LLR"
-            :unit="per === 2 ? 'pairs' : 'games'"
-            :points="llrPoints"
-            :bounds="item.state.summary.match.bounds"
-            :digits="2"
-          />
-          <MatchChart
-            title="Elo, with its 95% interval"
-            :unit="per === 2 ? 'pairs' : 'games'"
-            :points="eloPoints"
-          />
-        </div>
-      </Panel>
-    </template>
-
-    <!-- ── standings ──────────────────────────────────────────────────── -->
-    <Panel v-else title="Standings">
-      <div class="overflow-x-auto">
-        <table class="w-full border-collapse text-dense">
-          <thead>
-            <tr class="text-left text-small text-dim">
-              <th class="th">#</th>
-              <th class="th">engine</th>
-              <th class="th text-right">games</th>
-              <th class="th text-right">W</th>
-              <th class="th text-right">D</th>
-              <th class="th text-right">L</th>
-              <th class="th text-right">points</th>
-              <th class="th text-right">score</th>
-              <th v-if="isSwiss" class="th text-right">byes</th>
-              <th v-for="t in breaks" :key="t" class="th text-right">
-                <span class="inline-flex items-center gap-1">
-                  {{ TIEBREAK_NAMES[t] }}
-                  <HelpTip side="left">{{ TIEBREAK_HELP[t] }}</HelpTip>
-                </span>
-              </th>
-              <th class="th text-right">Elo vs field</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="(r, n) in item.state.summary.standings"
-              :key="r.entrant"
-              class="border-b border-row last:border-0"
-            >
-              <td class="num px-2 py-1 text-faint">{{ n + 1 }}</td>
-              <td class="px-2 py-1 whitespace-nowrap">{{ label(item, r.entrant) }}</td>
-              <td class="num px-2 py-1 text-right">{{ r.games }}</td>
-              <td class="num px-2 py-1 text-right">{{ r.wins }}</td>
-              <td class="num px-2 py-1 text-right">{{ r.draws }}</td>
-              <td class="num px-2 py-1 text-right">{{ r.losses }}</td>
-              <td class="num px-2 py-1 text-right">{{ r.points }}</td>
-              <td class="num px-2 py-1 text-right">
-                {{ score(r) === null ? '—' : `${(100 * (score(r) ?? 0)).toFixed(1)}%` }}
-              </td>
-              <td v-if="isSwiss" class="num px-2 py-1 text-right">{{ r.byes }}</td>
-              <td v-for="t in breaks" :key="t" class="num px-2 py-1 text-right">
-                {{ Number(r[t].toFixed(2)) }}
-              </td>
-              <td class="num px-2 py-1 text-right">
-                {{ r.elo === null ? '—' : signed(r.elo, 0) }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </Panel>
-
-    <!-- ── setup, health, bracket, crosstable, schedule, games ────────── -->
-    <Panel title="Setup">
-      <dl
-        class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 gap-y-1 px-3 py-2.5 text-dense @3xl:grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] @6xl:grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)]"
-      >
-        <template v-for="[k, v] in setupRows" :key="k">
-          <dt class="text-dim">{{ k }}</dt>
-          <dd class="num truncate" :title="v">{{ v }}</dd>
-        </template>
-      </dl>
-    </Panel>
-
-    <div v-if="queued" class="text-dense text-dim">
-      Standings, schedule and games appear once it starts.
-    </div>
-
-    <template v-if="!queued">
-      <Panel
-        v-if="faulted.length > 0 || driftWarnings.length > 0"
-        title="Health"
-        :note="healthNote"
-      >
-        <div
-          v-if="driftWarnings.length > 0"
-          class="px-3 py-2 text-dense"
-          :class="faulted.length > 0 ? 'border-b border-row' : ''"
+      <Panel title="Setup">
+        <dl
+          class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 gap-y-1 px-3 py-2.5 text-dense @3xl:grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] @6xl:grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)]"
         >
-          <div class="mb-1 flex items-center gap-1.5 text-small font-medium text-warn">
-            <span>Speed drift</span>
-            <HelpTip>
-              Passive check on UCI info.nps over clocked games. Warns when an engine's 4-game median
-              drops 25% or more below its opening baseline, or when White and Black relative speeds
-              swing 1.5× inside a color-swapped pair.
-            </HelpTip>
+          <template v-for="[k, v] in setupRows" :key="k">
+            <dt class="text-dim">{{ k }}</dt>
+            <dd class="num truncate" :title="v">{{ v }}</dd>
+          </template>
+        </dl>
+      </Panel>
+      <div class="text-dense text-dim">Standings, schedule and games appear once it starts.</div>
+    </template>
+
+    <!-- ── main workspace: B1 wide split-pane or B2 narrow tabs ───────── -->
+    <div
+      v-else
+      :class="
+        isWide && liveOpen
+          ? 'grid items-start gap-3.5 grid-cols-[minmax(320px,44%)_minmax(0,1fr)]'
+          : ''
+      "
+    >
+      <!-- ── B1 wide left pane: Live mosaic or One game ───────────────── -->
+      <div v-if="isWide && liveOpen" class="min-w-0">
+        <div class="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <span class="subhead">Live</span>
+            <span class="tag tone-accent">{{ live.active.value.length }}</span>
+            <Segmented v-model="wideLiveMode" :options="LIVE_MODE_OPTIONS" size="sm" />
           </div>
-          <div v-for="d in drift.drops" :key="d.entrant" class="num text-warn">
-            {{ label(item, d.entrant) }} down {{ Math.round(d.drop * 100) }}%
-            <span class="text-dim">
-              · {{ thousands(d.baselineNps) }} → {{ thousands(d.lowNps) }} nps low ({{
-                thousands(d.recentNps)
-              }}
-              recent across {{ count(d.games) }} games)
-            </span>
-          </div>
-          <div v-if="drift.asymmetricPairs.length > 0" class="num text-warn">
-            {{ count(drift.asymmetricPairs.length) }} asymmetric speed
-            {{ drift.asymmetricPairs.length === 1 ? 'pair' : 'pairs' }}
-            <span class="text-dim">
-              ·
-              {{
-                drift.asymmetricPairs
-                  .slice(0, 6)
-                  .map((p) => `#${p.pair + 1} (${p.ratio.toFixed(1)}×)`)
-                  .join(', ')
-              }}{{
-                drift.asymmetricPairs.length > 6
-                  ? `, +${drift.asymmetricPairs.length - 6} more`
-                  : ''
-              }}
-            </span>
-          </div>
-        </div>
-        <div v-if="faulted.length > 0" class="num px-1.5 py-1 text-dense">
-          <button
-            v-for="g in healthRows"
-            :key="`${g.pair}.${g.game}`"
-            class="grid w-full grid-cols-[3rem_minmax(0,1.2fr)_4.5rem_minmax(0,1fr)] gap-2 rounded px-1.5 py-0.5 text-left hover:bg-hover"
-            @click="openGame(g)"
+          <label
+            v-if="wideLiveMode === 'mosaic'"
+            class="flex cursor-pointer items-center gap-1 text-small text-dim select-none"
           >
-            <span class="text-faint">{{ number(g) }}</span>
-            <span class="truncate"
-              >{{ label(item, g.white) }} <span class="text-dim">vs</span>
-              {{ label(item, g.black) }}</span
-            >
-            <span class="text-right">{{ g.result }}</span>
-            <span
-              class="truncate"
-              :class="problemOf(g.reason) === 'time' ? 'text-warn' : 'text-bad'"
-              :title="g.reason"
-              >{{ g.reason }}</span
-            >
-          </button>
-          <Pager v-model="healthPage" :pages="healthPages" class="mt-1.5" />
+            <input v-model="showMosaicDetails" type="checkbox" class="accent-accent" />
+            <span>Details</span>
+          </label>
         </div>
-      </Panel>
 
-      <Panel v-if="bracketRounds.length > 0" title="Bracket" note="points over finished pairs">
-        <div class="grid gap-3 px-3 py-2 text-dense @3xl:grid-flow-col">
-          <div v-for="(round, r) in bracketRounds" :key="r">
-            <div class="subhead mb-1">
-              {{ sentence(roundName(r, bracketRounds.length)) }}
-            </div>
-            <div
-              v-for="(t, k) in round"
-              :key="k"
-              class="num mb-1.5 rounded border border-line bg-panel2 px-2 py-1"
+        <template v-if="wideLiveMode === 'mosaic'">
+          <div
+            v-if="live.active.value.length > 0"
+            class="grid gap-2.5"
+            :class="
+              live.active.value.length <= 2
+                ? 'grid-cols-1'
+                : 'grid-cols-[repeat(auto-fill,minmax(195px,1fr))]'
+            "
+          >
+            <LiveBoardCard
+              v-for="snap in live.active.value"
+              :key="snap.key"
+              :snapshot="snap"
+              :game-no="number(snap)"
+              :white-name="label(item, snap.white)"
+              :black-name="label(item, snap.black)"
+              :selected="snap.key === live.selectedKey.value"
+              :details="showMosaicDetails"
+              @select="selectMosaicCard"
+            />
+          </div>
+          <div v-else class="rounded-md border border-line bg-panel px-3 py-4 text-dense text-dim">
+            No games currently in play.
+          </div>
+        </template>
+
+        <template v-else>
+          <div v-if="live.active.value.length > 1" class="mb-2 flex gap-1.5 overflow-x-auto pb-1">
+            <button
+              v-for="snap in live.active.value"
+              :key="snap.key"
+              type="button"
+              class="btn-sm num shrink-0"
+              :class="
+                snap.key === live.selectedKey.value
+                  ? 'border-accent bg-chosen font-medium text-text'
+                  : ''
+              "
+              @click="live.select(snap.key)"
             >
-              <div
-                v-for="(side, s) in [t.a, t.b]"
-                :key="s"
-                class="flex gap-2"
-                :class="t.winner !== null && side === t.winner ? 'text-text' : 'text-dim'"
+              #{{ number(snap) }} · {{ snap.plies }}p
+            </button>
+          </div>
+          <LiveFocusBoard
+            v-if="live.focused.value"
+            :snapshot="live.focused.value"
+            :white-name="label(item, live.focused.value.white)"
+            :black-name="label(item, live.focused.value.black)"
+            :control-label="item.config.control"
+            v-model:viewing-ply="viewingPly"
+            v-model:orientation="focusOrientation"
+            v-model:show-pv-arrows="showPvArrows"
+            v-model:pinned="live.pinned.value"
+            :show-toggles="false"
+            :has-other-live="live.active.value.some((g) => g.key !== live.focused.value?.key)"
+            @next-live="live.nextLive()"
+          />
+          <div v-else class="rounded-md border border-line bg-panel px-3 py-4 text-dense text-dim">
+            No game selected.
+          </div>
+        </template>
+      </div>
+
+      <!-- ── B2 narrow Live tab: Mosaic or full One game ──────────────── -->
+      <div v-if="!isWide && narrowTab === 'live'" class="min-w-0">
+        <div class="mb-2.5 flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <span class="subhead">Live</span>
+            <span class="tag tone-accent">{{ live.active.value.length }}</span>
+            <Segmented v-model="narrowLiveMode" :options="LIVE_MODE_OPTIONS" size="sm" />
+          </div>
+          <label
+            v-if="narrowLiveMode === 'mosaic'"
+            class="flex cursor-pointer items-center gap-1 text-small text-dim select-none"
+          >
+            <input v-model="showMosaicDetails" type="checkbox" class="accent-accent" />
+            <span>Details</span>
+          </label>
+        </div>
+
+        <template v-if="narrowLiveMode === 'mosaic'">
+          <div
+            v-if="live.active.value.length > 0"
+            class="grid grid-cols-[repeat(auto-fill,minmax(175px,1fr))] gap-2.5"
+          >
+            <LiveBoardCard
+              v-for="snap in live.active.value"
+              :key="snap.key"
+              :snapshot="snap"
+              :game-no="number(snap)"
+              :white-name="label(item, snap.white)"
+              :black-name="label(item, snap.black)"
+              :selected="snap.key === live.selectedKey.value"
+              :details="showMosaicDetails"
+              @select="selectMosaicCard"
+            />
+          </div>
+          <div v-else class="rounded-md border border-line bg-panel px-3 py-4 text-dense text-dim">
+            No games currently in play.
+          </div>
+        </template>
+
+        <template v-else>
+          <div v-if="live.active.value.length > 1" class="mb-2 flex gap-1.5 overflow-x-auto pb-1">
+            <button
+              v-for="snap in live.active.value"
+              :key="snap.key"
+              type="button"
+              class="btn-sm num shrink-0"
+              :class="
+                snap.key === live.selectedKey.value
+                  ? 'border-accent bg-chosen font-medium text-text'
+                  : ''
+              "
+              @click="live.select(snap.key)"
+            >
+              #{{ number(snap) }} · {{ snap.plies }}p
+            </button>
+          </div>
+          <LiveFocusPanel
+            v-if="live.focused.value"
+            layout="full"
+            :snapshot="live.focused.value"
+            :game-no="number(live.focused.value)"
+            :white-name="label(item, live.focused.value.white)"
+            :black-name="label(item, live.focused.value.black)"
+            :control-label="item.config.control"
+            v-model:viewing-ply="viewingPly"
+            v-model:orientation="focusOrientation"
+            v-model:show-pv-arrows="showPvArrows"
+            v-model:pinned="live.pinned.value"
+            :has-other-live="live.active.value.some((g) => g.key !== live.focused.value?.key)"
+            @next-live="live.nextLive()"
+          />
+          <div v-else class="rounded-md border border-line bg-panel px-3 py-4 text-dense text-dim">
+            No game selected.
+          </div>
+        </template>
+      </div>
+
+      <!-- ── Overview column (always visible on wide, Overview tab on narrow) -->
+      <div v-if="isWide || narrowTab === 'overview'" class="min-w-0">
+        <!-- ── match statistics and charts ────────────────────────────────── -->
+        <template v-if="item.state.summary.match">
+          <MatchCards
+            :llr="
+              item.state.summary.match.llr !== null && item.state.summary.match.bounds
+                ? {
+                    value: item.state.summary.match.llr,
+                    lower: item.state.summary.match.bounds.lower,
+                    upper: item.state.summary.match.bounds.upper,
+                  }
+                : null
+            "
+            :nelo="item.state.summary.match.nelo"
+            :elo="item.state.summary.match.elo"
+            :los="item.state.summary.match.los"
+          >
+            <StatCard :label="per === 2 ? 'W D L · pairs' : 'W D L'">
+              <template v-if="per === 2" #help>
+                <HelpTip side="left"
+                  >The tested engine's wins, draws and losses; under them the pairs by their score
+                  from its side, 0, ½, 1, 1½ and 2 points (pentanomial).</HelpTip
+                >
+              </template>
+              <span class="text-title">{{
+                item.state.summary.match.wdl.map(count).join(' ')
+              }}</span>
+              <template v-if="item.state.summary.match.model === 'pentanomial'" #sub>
+                <PentaCounts :counts="item.state.summary.match.ptnml" />
+              </template>
+            </StatCard>
+          </MatchCards>
+          <Panel
+            v-if="eloPoints.length >= 2"
+            :title="per === 2 ? 'Over pairs' : 'Over games'"
+            note="hover for values"
+          >
+            <div class="grid gap-4 px-3 py-2.5 @3xl:grid-cols-2">
+              <MatchChart
+                v-if="llrPoints.length >= 2 && item.state.summary.match.bounds"
+                title="LLR"
+                :unit="per === 2 ? 'pairs' : 'games'"
+                :points="llrPoints"
+                :bounds="item.state.summary.match.bounds"
+                :digits="2"
+              />
+              <MatchChart
+                title="Elo, with its 95% interval"
+                :unit="per === 2 ? 'pairs' : 'games'"
+                :points="eloPoints"
+              />
+            </div>
+          </Panel>
+        </template>
+
+        <!-- ── standings ──────────────────────────────────────────────────── -->
+        <Panel v-else title="Standings">
+          <div class="overflow-x-auto">
+            <table class="w-full border-collapse text-dense">
+              <thead>
+                <tr class="text-left text-small text-dim">
+                  <th class="th">#</th>
+                  <th class="th">engine</th>
+                  <th class="th text-right">games</th>
+                  <th class="th text-right">W</th>
+                  <th class="th text-right">D</th>
+                  <th class="th text-right">L</th>
+                  <th class="th text-right">points</th>
+                  <th class="th text-right">score</th>
+                  <th v-if="isSwiss" class="th text-right">byes</th>
+                  <th v-for="t in breaks" :key="t" class="th text-right">
+                    <span class="inline-flex items-center gap-1">
+                      {{ TIEBREAK_NAMES[t] }}
+                      <HelpTip side="left">{{ TIEBREAK_HELP[t] }}</HelpTip>
+                    </span>
+                  </th>
+                  <th class="th text-right">Elo vs field</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="(r, n) in item.state.summary.standings"
+                  :key="r.entrant"
+                  class="border-b border-row last:border-0"
+                >
+                  <td class="num px-2 py-1 text-faint">{{ n + 1 }}</td>
+                  <td class="px-2 py-1 whitespace-nowrap">{{ label(item, r.entrant) }}</td>
+                  <td class="num px-2 py-1 text-right">{{ r.games }}</td>
+                  <td class="num px-2 py-1 text-right">{{ r.wins }}</td>
+                  <td class="num px-2 py-1 text-right">{{ r.draws }}</td>
+                  <td class="num px-2 py-1 text-right">{{ r.losses }}</td>
+                  <td class="num px-2 py-1 text-right">{{ r.points }}</td>
+                  <td class="num px-2 py-1 text-right">
+                    {{ score(r) === null ? '—' : `${(100 * (score(r) ?? 0)).toFixed(1)}%` }}
+                  </td>
+                  <td v-if="isSwiss" class="num px-2 py-1 text-right">{{ r.byes }}</td>
+                  <td v-for="t in breaks" :key="t" class="num px-2 py-1 text-right">
+                    {{ Number(r[t].toFixed(2)) }}
+                  </td>
+                  <td class="num px-2 py-1 text-right">
+                    {{ r.elo === null ? '—' : signed(r.elo, 0) }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+
+        <!-- ── B1 wide focused game inspector right below key stats ───────── -->
+        <LiveFocusPanel
+          v-if="isWide && liveOpen && live.focused.value"
+          layout="panel"
+          :hide-board="wideLiveMode === 'one'"
+          :snapshot="live.focused.value"
+          :game-no="number(live.focused.value)"
+          :white-name="label(item, live.focused.value.white)"
+          :black-name="label(item, live.focused.value.black)"
+          :control-label="item.config.control"
+          v-model:viewing-ply="viewingPly"
+          v-model:orientation="focusOrientation"
+          v-model:show-pv-arrows="showPvArrows"
+          v-model:pinned="live.pinned.value"
+          :has-other-live="live.active.value.some((g) => g.key !== live.focused.value?.key)"
+          @next-live="live.nextLive()"
+        />
+
+        <!-- ── setup, health, bracket, crosstable, schedule, games ────────── -->
+        <Panel title="Setup">
+          <dl
+            class="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3.5 gap-y-1 px-3 py-2.5 text-dense @3xl:grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)] @6xl:grid-cols-[auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)]"
+          >
+            <template v-for="[k, v] in setupRows" :key="k">
+              <dt class="text-dim">{{ k }}</dt>
+              <dd class="num truncate" :title="v">{{ v }}</dd>
+            </template>
+          </dl>
+        </Panel>
+
+        <Panel
+          v-if="faulted.length > 0 || driftWarnings.length > 0"
+          title="Health"
+          :note="healthNote"
+        >
+          <div
+            v-if="driftWarnings.length > 0"
+            class="px-3 py-2 text-dense"
+            :class="faulted.length > 0 ? 'border-b border-row' : ''"
+          >
+            <div class="mb-1 flex items-center gap-1.5 text-small font-medium text-warn">
+              <span>Speed drift</span>
+              <HelpTip>
+                Passive check on UCI info.nps over clocked games. Warns when an engine's 4-game
+                median drops 25% or more below its opening baseline, or when White and Black
+                relative speeds swing 1.5× inside a color-swapped pair.
+              </HelpTip>
+            </div>
+            <div v-for="d in drift.drops" :key="d.entrant" class="num text-warn">
+              {{ label(item, d.entrant) }} down {{ Math.round(d.drop * 100) }}%
+              <span class="text-dim">
+                · {{ thousands(d.baselineNps) }} → {{ thousands(d.lowNps) }} nps low ({{
+                  thousands(d.recentNps)
+                }}
+                recent across {{ count(d.games) }} games)
+              </span>
+            </div>
+            <div v-if="drift.asymmetricPairs.length > 0" class="num text-warn">
+              {{ count(drift.asymmetricPairs.length) }} asymmetric speed
+              {{ drift.asymmetricPairs.length === 1 ? 'pair' : 'pairs' }}
+              <span class="text-dim">
+                ·
+                {{
+                  drift.asymmetricPairs
+                    .slice(0, 6)
+                    .map((p) => `#${p.pair + 1} (${p.ratio.toFixed(1)}×)`)
+                    .join(', ')
+                }}{{
+                  drift.asymmetricPairs.length > 6
+                    ? `, +${drift.asymmetricPairs.length - 6} more`
+                    : ''
+                }}
+              </span>
+            </div>
+          </div>
+          <div v-if="faulted.length > 0" class="num px-1.5 py-1 text-dense">
+            <button
+              v-for="g in healthRows"
+              :key="`${g.pair}.${g.game}`"
+              class="grid w-full grid-cols-[3rem_minmax(0,1.2fr)_4.5rem_minmax(0,1fr)] gap-2 rounded px-1.5 py-0.5 text-left hover:bg-hover"
+              @click="openGame(g)"
+            >
+              <span class="text-faint">{{ number(g) }}</span>
+              <span class="truncate"
+                >{{ label(item, g.white) }} <span class="text-dim">vs</span>
+                {{ label(item, g.black) }}</span
               >
-                <span class="flex-1 truncate">{{
-                  side === null ? (t.by === 'bye' ? 'bye' : '…') : label(item, side)
-                }}</span>
-                <span v-if="t.pairs.length > 0">{{ t.points[s] }}</span>
+              <span class="text-right">{{ g.result }}</span>
+              <span
+                class="truncate"
+                :class="problemOf(g.reason) === 'time' ? 'text-warn' : 'text-bad'"
+                :title="g.reason"
+                >{{ g.reason }}</span
+              >
+            </button>
+            <Pager v-model="healthPage" :pages="healthPages" class="mt-1.5" />
+          </div>
+        </Panel>
+
+        <Panel v-if="bracketRounds.length > 0" title="Bracket" note="points over finished pairs">
+          <div class="grid gap-3 px-3 py-2 text-dense @3xl:grid-flow-col">
+            <div v-for="(round, r) in bracketRounds" :key="r">
+              <div class="subhead mb-1">
+                {{ sentence(roundName(r, bracketRounds.length)) }}
               </div>
-              <div v-if="t.by === 'seed'" class="text-small text-faint">
-                tied after {{ t.done }} pairs: the higher seed goes through
+              <div
+                v-for="(t, k) in round"
+                :key="k"
+                class="num mb-1.5 rounded border border-line bg-panel2 px-2 py-1"
+              >
+                <div
+                  v-for="(side, s) in [t.a, t.b]"
+                  :key="s"
+                  class="flex gap-2"
+                  :class="t.winner !== null && side === t.winner ? 'text-text' : 'text-dim'"
+                >
+                  <span class="flex-1 truncate">{{
+                    side === null ? (t.by === 'bye' ? 'bye' : '…') : label(item, side)
+                  }}</span>
+                  <span v-if="t.pairs.length > 0">{{ t.points[s] }}</span>
+                </div>
+                <div v-if="t.by === 'seed'" class="text-small text-faint">
+                  tied after {{ t.done }} pairs: the higher seed goes through
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </Panel>
+        </Panel>
 
-      <Panel
-        v-if="
-          (item.config.format.kind === 'roundrobin' || item.config.format.kind === 'swiss') &&
-          item.config.entrants.length <= 12
-        "
-        title="Crosstable"
-        note="row vs column · standings order"
-      >
-        <div class="overflow-x-auto">
-          <table class="border-collapse text-dense">
-            <thead>
-              <tr class="text-small text-dim">
-                <th class="px-2 py-0.5 font-medium" />
-                <th class="px-2 py-0.5" />
-                <th v-for="(_, k) in crossOrder" :key="k" class="num px-2 py-0.5 font-medium">
-                  {{ k + 1 }}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(i, n) in crossOrder" :key="i">
-                <td class="num px-2 py-0.5 text-right text-faint">
-                  {{ n + 1 }}
-                </td>
-                <td class="px-2 py-0.5 whitespace-nowrap text-dim">
-                  {{ label(item, i) }}
-                </td>
-                <td
-                  v-for="j in crossOrder"
-                  :key="j"
-                  class="num px-2 py-0.5 text-center"
-                  :class="i === j ? 'text-faint' : ''"
+        <Panel
+          v-if="
+            (item.config.format.kind === 'roundrobin' || item.config.format.kind === 'swiss') &&
+            item.config.entrants.length <= 12
+          "
+          title="Crosstable"
+          note="row vs column · standings order"
+        >
+          <div class="overflow-x-auto">
+            <table class="border-collapse text-dense">
+              <thead>
+                <tr class="text-small text-dim">
+                  <th class="px-2 py-0.5 font-medium" />
+                  <th class="px-2 py-0.5" />
+                  <th v-for="(_, k) in crossOrder" :key="k" class="num px-2 py-0.5 font-medium">
+                    {{ k + 1 }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(i, n) in crossOrder" :key="i">
+                  <td class="num px-2 py-0.5 text-right text-faint">
+                    {{ n + 1 }}
+                  </td>
+                  <td class="px-2 py-0.5 whitespace-nowrap text-dim">
+                    {{ label(item, i) }}
+                  </td>
+                  <td
+                    v-for="j in crossOrder"
+                    :key="j"
+                    class="num px-2 py-0.5 text-center"
+                    :class="i === j ? 'text-faint' : ''"
+                  >
+                    {{
+                      i === j
+                        ? '·'
+                        : (item.state.summary.games[i]?.[j] ?? 0)
+                          ? `${item.state.summary.points[i]?.[j] ?? 0}/${item.state.summary.games[i]?.[j]}`
+                          : ''
+                    }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </Panel>
+
+        <Panel
+          title="Schedule"
+          :note="`${item.state.pairs.length} ${per === 2 ? 'pairs' : 'games'}${unissued === null ? ' · dynamic pairing' : unissued > 0 ? ` · ${unissued} remaining` : ''}`"
+        >
+          <div class="px-3 py-1.5 text-dense">
+            <button
+              class="text-dense text-dim hover:text-text"
+              @click="scheduleOpen = !scheduleOpen"
+            >
+              {{
+                scheduleOpen
+                  ? `▾ Hide ${per === 2 ? 'pairs' : 'games'}`
+                  : `▸ Show ${per === 2 ? 'pairs' : 'games'} (newest first)`
+              }}
+            </button>
+            <template v-if="scheduleOpen">
+              <div
+                v-for="(p, k) in scheduleRows"
+                :key="p.pair"
+                class="num grid grid-cols-[3rem_minmax(0,1.3fr)_minmax(0,1fr)_7rem] gap-2 py-0.5"
+              >
+                <div
+                  v-if="byRound && (k === 0 || scheduleRows[k - 1]?.round !== p.round)"
+                  class="subhead col-span-4 mt-1.5"
                 >
                   {{
-                    i === j
-                      ? '·'
-                      : (item.state.summary.games[i]?.[j] ?? 0)
-                        ? `${item.state.summary.points[i]?.[j] ?? 0}/${item.state.summary.games[i]?.[j]}`
-                        : ''
+                    item.config.format.kind === 'knockout'
+                      ? sentence(roundName(p.round, bracketRounds.length))
+                      : `Round ${p.round + 1}`
                   }}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </Panel>
-
-      <Panel
-        title="Schedule"
-        :note="`${item.state.pairs.length} ${per === 2 ? 'pairs' : 'games'}${unissued === null ? ' · dynamic pairing' : unissued > 0 ? ` · ${unissued} remaining` : ''}`"
-      >
-        <div class="px-3 py-1.5 text-dense">
-          <button class="text-dense text-dim hover:text-text" @click="scheduleOpen = !scheduleOpen">
-            {{
-              scheduleOpen
-                ? `▾ Hide ${per === 2 ? 'pairs' : 'games'}`
-                : `▸ Show ${per === 2 ? 'pairs' : 'games'} (newest first)`
-            }}
-          </button>
-          <template v-if="scheduleOpen">
-            <div
-              v-for="(p, k) in scheduleRows"
-              :key="p.pair"
-              class="num grid grid-cols-[3rem_minmax(0,1.3fr)_minmax(0,1fr)_7rem] gap-2 py-0.5"
-            >
-              <div
-                v-if="byRound && (k === 0 || scheduleRows[k - 1]?.round !== p.round)"
-                class="subhead col-span-4 mt-1.5"
-              >
-                {{
-                  item.config.format.kind === 'knockout'
-                    ? sentence(roundName(p.round, bracketRounds.length))
-                    : `Round ${p.round + 1}`
-                }}
+                </div>
+                <span class="text-faint">{{ p.pair + 1 }}</span>
+                <span class="truncate"
+                  >{{ label(item, p.a) }}
+                  <template v-if="p.b !== BYE">
+                    <span class="text-dim">–</span>
+                    {{ label(item, p.b) }}</template
+                  ></span
+                >
+                <span class="truncate text-dim" :title="p.opening">{{
+                  p.b === BYE ? '' : p.opening || 'start position'
+                }}</span>
+                <span class="text-right text-dim">{{ pairState(p) }}</span>
               </div>
-              <span class="text-faint">{{ p.pair + 1 }}</span>
-              <span class="truncate"
-                >{{ label(item, p.a) }}
-                <template v-if="p.b !== BYE">
-                  <span class="text-dim">–</span>
-                  {{ label(item, p.b) }}</template
-                ></span
-              >
-              <span class="truncate text-dim" :title="p.opening">{{
-                p.b === BYE ? '' : p.opening || 'start position'
-              }}</span>
-              <span class="text-right text-dim">{{ pairState(p) }}</span>
-            </div>
-            <Pager v-model="schedulePage" :pages="schedulePages" class="mt-1.5" />
-          </template>
-        </div>
-      </Panel>
-
-      <Panel
-        v-if="item.state.live.length > 0"
-        title="Playing"
-        :note="`${item.state.live.length} game${item.state.live.length === 1 ? '' : 's'}`"
-      >
-        <div class="num max-h-60 overflow-auto px-3 py-1.5 text-dense">
-          <div v-for="g in item.state.live" :key="`${g.pair}.${g.game}`" class="flex gap-2 py-0.5">
-            <span class="w-14 text-faint">{{ number(g) }}</span>
-            <span class="flex-1 truncate"
-              >{{ label(item, g.white) }} <span class="text-dim">vs</span>
-              {{ label(item, g.black) }}</span
-            >
-            <span class="text-dim">{{ g.plies }} plies {{ g.last }}</span>
+              <Pager v-model="schedulePage" :pages="schedulePages" class="mt-1.5" />
+            </template>
           </div>
-        </div>
-      </Panel>
+        </Panel>
 
-      <Panel title="Recent games" note="newest first · click to open">
-        <div class="num px-1.5 py-1 text-dense">
-          <button
-            v-for="g in recent"
-            :key="`${g.pair}.${g.game}`"
-            class="grid w-full grid-cols-[3rem_minmax(0,1.2fr)_4.5rem_minmax(0,1fr)] gap-2 rounded px-1.5 py-0.5 text-left hover:bg-hover"
-            @click="openGame(g)"
-          >
-            <span class="text-faint">{{ number(g) }}</span>
-            <span class="truncate"
-              >{{ label(item, g.white) }} <span class="text-dim">vs</span>
-              {{ label(item, g.black) }}</span
+        <Panel
+          v-if="item.state.live.length > 0 && !(isWide && liveOpen)"
+          title="Playing"
+          :note="`${item.state.live.length} game${item.state.live.length === 1 ? '' : 's'} · click to watch`"
+        >
+          <template #actions>
+            <button type="button" class="btn-sm" @click="openLive()">Open live</button>
+          </template>
+          <div class="num max-h-60 overflow-auto px-1.5 py-1 text-dense">
+            <button
+              v-for="g in item.state.live"
+              :key="`${g.pair}.${g.game}`"
+              type="button"
+              class="flex w-full gap-2 rounded px-1.5 py-0.5 text-left hover:bg-hover"
+              @click="openLive(`${g.pair}.${g.game}`)"
             >
-            <span class="text-right">{{ g.result }}</span>
-            <span class="truncate text-dim" :title="g.reason">{{ g.reason }}</span>
-          </button>
-          <div v-if="recent.length === 0" class="text-faint">none yet</div>
-        </div>
-      </Panel>
-    </template>
+              <span class="w-14 text-faint">{{ number(g) }}</span>
+              <span class="flex-1 truncate"
+                >{{ label(item, g.white) }} <span class="text-dim">vs</span>
+                {{ label(item, g.black) }}</span
+              >
+              <span class="text-dim">{{ g.plies }} plies {{ g.last }}</span>
+            </button>
+          </div>
+        </Panel>
+
+        <Panel title="Recent games" note="newest first · click to open">
+          <div class="num px-1.5 py-1 text-dense">
+            <button
+              v-for="g in recent"
+              :key="`${g.pair}.${g.game}`"
+              class="grid w-full grid-cols-[3rem_minmax(0,1.2fr)_4.5rem_minmax(0,1fr)] gap-2 rounded px-1.5 py-0.5 text-left hover:bg-hover"
+              @click="openGame(g)"
+            >
+              <span class="text-faint">{{ number(g) }}</span>
+              <span class="truncate"
+                >{{ label(item, g.white) }} <span class="text-dim">vs</span>
+                {{ label(item, g.black) }}</span
+              >
+              <span class="text-right">{{ g.result }}</span>
+              <span class="truncate text-dim" :title="g.reason">{{ g.reason }}</span>
+            </button>
+            <div v-if="recent.length === 0" class="text-faint">none yet</div>
+          </div>
+        </Panel>
+      </div>
+    </div>
   </div>
 </template>

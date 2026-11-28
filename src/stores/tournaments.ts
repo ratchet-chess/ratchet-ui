@@ -3,7 +3,7 @@ import { computed, reactive, ref } from 'vue';
 import { resolveControl } from '../chess/clock.ts';
 import type { TournamentConfig } from '../match/format.ts';
 import { configOf, gamesOf, pairsOf } from '../match/records.ts';
-import { Run, stateOf, type Entrant, type RunState } from '../match/runner.ts';
+import { Run, stateOf, type Entrant, type LiveSnapshots, type RunState } from '../match/runner.ts';
 import {
   appendText,
   folders,
@@ -478,6 +478,11 @@ export const useTournaments = defineStore('tournaments', () => {
 
   const running = (id: string) => runs.has(id);
 
+  /** reads live game snapshots for a running tournament on demand; zero cost when unused */
+  function liveSnapshots(id: string, focusKey?: string | null): LiveSnapshots {
+    return runs.get(id)?.snapshots(focusKey) ?? { active: [], focused: null };
+  }
+
   /**
    * deletes a tournament's records, unless a tab plays it; its games stay in Games. The queue's lock
    * keeps a reorder from writing into the folder as it goes.
@@ -505,6 +510,7 @@ export const useTournaments = defineStore('tournaments', () => {
     stop,
     remove,
     running,
+    liveSnapshots,
     lock,
     unlock,
     idOfLock,

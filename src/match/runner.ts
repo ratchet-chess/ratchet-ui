@@ -1,6 +1,8 @@
-import { pgnTimeControl, type TimeControl } from '../chess/clock.ts';
-import { Game } from '../chess/game.ts';
+import type { Color, SquareName } from 'chessops/types';
+import { pgnTimeControl, type Clock, type TimeControl } from '../chess/clock.ts';
+import { Game, type Outcome } from '../chess/game.ts';
 import type { Opening } from '../books/opening.ts';
+import type { Info } from '../engine/info.ts';
 import { UciEngine } from '../engine/uci.ts';
 import { directorOf, type Director } from './director.ts';
 import { BYE, gameNumber, gamesPerPair, type TournamentConfig } from './format.ts';
@@ -24,6 +26,114 @@ export interface LiveGame {
   black: number;
   plies: number;
   last: string;
+}
+
+/** Latest UCI search telemetry reported by one side of a live game. */
+export interface SideSearch {
+  /** `game.san.length` when this search started; matches current ply while searching */
+  ply: number;
+  depth?: number;
+  seldepth?: number;
+  /** centipawns from the searching side's point of view */
+  cp?: number;
+  /** moves to mate from the searching side's point of view */
+  mate?: number;
+  nodes?: number;
+  nps?: number;
+  hashfull?: number;
+  pv?: string[];
+}
+
+/** Per-ply search metrics recorded as moves are played (1-based ply). */
+export interface PlyMetric {
+  ply: number;
+  mover: Color;
+  depth?: number;
+  nodes?: number;
+}
+
+/** On-demand snapshot of a live or just-finished game, read only while the Live view is open. */
+export interface LiveSnapshot {
+  key: string;
+  pair: number;
+  game: 0 | 1;
+  white: number;
+  black: number;
+  /** opening book plies played before engine moves */
+  book: number;
+  /** total plies played in the game (including book) */
+  plies: number;
+  fen: string;
+  turn: Color;
+  lastMove?: [SquareName, SquareName];
+  check: boolean;
+  clock: {
+    white: number;
+    black: number;
+    baseMs: number;
+    active: Color | null;
+  } | null;
+  search: Record<Color, SideSearch | null>;
+  outcome: Outcome | null;
+  /** increments on each move or finish so focused views avoid re-deriving move data on clock ticks */
+  moveSeq: number;
+  /** full move history and SAN PVs, populated only for the focused game */
+  full?: {
+    startFen: string;
+    fens: string[];
+    san: string[];
+    uci: string[];
+    comments: string[];
+    metrics: PlyMetric[];
+    pvSan: Record<Color, string[]>;
+  };
+}
+
+/** Snapshot bundle returned to the Live view on demand. */
+export interface LiveSnapshots {
+  active: LiveSnapshot[];
+  focused: LiveSnapshot | null;
+}
+
+/** Plain non-reactive holder for one active or recently finished game inside `Run`. */
+interface LiveSession {
+  key: string;
+  pair: number;
+  gameNo: 0 | 1;
+  white: number;
+  black: number;
+  book: number;
+  game: Game;
+  clock: Clock | null;
+  search: Record<Color, SideSearch | null>;
+  metrics: PlyMetric[];
+  moveSeq: number;
+}
+
+/** Maximum finished sessions retained in memory so a focused or pinned board survives game end. */
+const RECENT_SESSIONS_CAP = 12;
+
+function clockBaseMs(tc: TimeControl): number {
+  if (tc.kind === 'clock') return tc.baseMs;
+  if (tc.kind === 'moves') return tc.periodMs;
+  return 0;
+}
+
+function copySearch(s: SideSearch | null): SideSearch | null {
+  if (!s) return null;
+  return s.pv ? { ...s, pv: [...s.pv] } : { ...s };
+}
+
+function pvToSan(game: Game, s: SideSearch | null): string[] {
+  if (!s?.pv || s.pv.length === 0) return [];
+  if (s.ply === game.san.length) return game.lineSan(s.pv, 8);
+  const fen = game.fens[s.ply];
+  if (!fen) return [];
+  try {
+    return new Game(fen).lineSan(s.pv, 8);
+  } catch {
+    return [];
+  }
 }
 
 /** The state a page shows; the runner changes it in place, so a reactive copy follows it. */
@@ -111,6 +221,11 @@ export class Run {
   /** false once the run is stopped at once; games in play then end without a result */
   private alive = true;
   private readonly workers = new Set<UciEngine>();
+  /** plain non-reactive live sessions; read on demand only when the Live view is open */
+  private readonly sessions = new Map<string, LiveSession>();
+  /** recently finished sessions kept briefly so a focused or pinned board shows its final state */
+  private readonly recent = new Map<string, LiveSession>();
+  private readonly baseMs: number;
 
   constructor(
     config: TournamentConfig,
@@ -122,12 +237,72 @@ export class Run {
     this.config = config;
     this.entrants = entrants;
     this.control = control;
+    this.baseMs = clockBaseMs(control);
     this.state = state;
     this.deps = deps;
     this.per = gamesPerPair(config.format, config.paired);
     this.director = directorOf(config.format, entrants.length, config.paired);
     for (const { pair, game } of unfinished(state.pairs, state.games, this.per))
       this.waiting.push({ pair, game, opening: undefined, fetched: false });
+  }
+
+  /** reads live board and search snapshots on demand; does no work when Live is closed */
+  snapshots(focusKey?: string | null): LiveSnapshots {
+    const active: LiveSnapshot[] = [];
+    for (const s of this.sessions.values()) active.push(this.snapshotOf(s, false));
+    let focused: LiveSnapshot | null = null;
+    if (focusKey) {
+      const target = this.sessions.get(focusKey) ?? this.recent.get(focusKey);
+      if (target) focused = this.snapshotOf(target, true);
+    }
+    return { active, focused };
+  }
+
+  private snapshotOf(s: LiveSession, includeFull: boolean): LiveSnapshot {
+    const { game, clock } = s;
+    const lastMove = game.lastMove();
+    const snap: LiveSnapshot = {
+      key: s.key,
+      pair: s.pair,
+      game: s.gameNo,
+      white: s.white,
+      black: s.black,
+      book: s.book,
+      plies: game.san.length,
+      fen: game.fens.at(-1) ?? game.startFen,
+      turn: game.turn,
+      ...(lastMove ? { lastMove } : {}),
+      check: game.pos.isCheck(),
+      clock: clock
+        ? {
+            white: Math.max(0, clock.remaining('white')),
+            black: Math.max(0, clock.remaining('black')),
+            baseMs: this.baseMs,
+            active: clock.side,
+          }
+        : null,
+      search: {
+        white: copySearch(s.search.white),
+        black: copySearch(s.search.black),
+      },
+      outcome: game.outcome ? { ...game.outcome } : null,
+      moveSeq: s.moveSeq,
+    };
+    if (includeFull) {
+      snap.full = {
+        startFen: game.startFen,
+        fens: [...game.fens],
+        san: [...game.san],
+        uci: [...game.uci],
+        comments: [...game.comments],
+        metrics: [...s.metrics],
+        pvSan: {
+          white: pvToSan(game, s.search.white),
+          black: pvToSan(game, s.search.black),
+        },
+      };
+    }
+    return snap;
   }
 
   start(): void {
@@ -142,6 +317,7 @@ export class Run {
       this.alive = false;
       for (const w of this.workers) w.terminate();
       this.workers.clear();
+      this.sessions.clear();
       this.state.live.splice(0);
       this.running = 0;
       void this.end('stopped');
@@ -261,11 +437,56 @@ export class Run {
   private async play(pair: PairRecord, n: 0 | 1, opening: Opening | undefined): Promise<void> {
     const white = n === 0 ? pair.a : pair.b;
     const black = n === 0 ? pair.b : pair.a;
+    const key = `${pair.pair}.${n}`;
     const live: LiveGame = { pair: pair.pair, game: n, white, black, plies: 0, last: '' };
     this.state.live.push(live);
     const game = new Game(opening?.fen);
     for (const m of opening?.moves ?? []) game.play(m);
     const book = game.san.length;
+    const session: LiveSession = {
+      key,
+      pair: pair.pair,
+      gameNo: n,
+      white,
+      black,
+      book,
+      game,
+      clock: null,
+      search: { white: null, black: null },
+      metrics: [],
+      moveSeq: 0,
+    };
+    this.sessions.set(key, session);
+    const updateSearch = (color: Color, info: Info): void => {
+      if (
+        info.depth === undefined &&
+        info.cp === undefined &&
+        info.mate === undefined &&
+        info.nodes === undefined &&
+        info.nps === undefined &&
+        info.pv === undefined
+      ) {
+        return;
+      }
+      const ply = game.san.length;
+      const prev = session.search[color];
+      const next: SideSearch = prev?.ply === ply ? prev : { ply };
+      if (info.depth !== undefined) next.depth = info.depth;
+      if (info.seldepth !== undefined) next.seldepth = info.seldepth;
+      if (info.cp !== undefined) {
+        next.cp = info.cp;
+        delete next.mate;
+      }
+      if (info.mate !== undefined) {
+        next.mate = info.mate;
+        delete next.cp;
+      }
+      if (info.nodes !== undefined) next.nodes = info.nodes;
+      if (info.nps !== undefined) next.nps = info.nps;
+      if (info.hashfull !== undefined) next.hashfull = info.hashfull;
+      if (info.pv && info.pv.length > 0) next.pv = info.pv;
+      session.search[color] = next;
+    };
     const engines: UciEngine[] = [];
     /** the side whose engine is starting, which loses the game if it does not start */
     let starting: 'white' | 'black' | null = null;
@@ -297,9 +518,20 @@ export class Run {
         control: this.control,
         adjudication: this.config.adjudication,
         live: () => this.alive,
-        onMove: () => {
+        onClock: (c) => {
+          session.clock = c;
+        },
+        onInfo: updateSearch,
+        onMove: (report) => {
           live.plies = game.san.length - book;
           live.last = game.san.at(-1) ?? '';
+          session.moveSeq++;
+          session.metrics.push({
+            ply: game.san.length,
+            mover: report.color,
+            ...(report.depth !== undefined ? { depth: report.depth } : {}),
+            ...(report.nodes !== undefined ? { nodes: report.nodes } : {}),
+          });
         },
       });
     } catch (e) {
@@ -317,7 +549,15 @@ export class Run {
         this.workers.delete(e);
       }
     }
+    this.sessions.delete(key);
     if (this.stopped()) return;
+    session.moveSeq++;
+    this.recent.delete(key);
+    this.recent.set(key, session);
+    if (this.recent.size > RECENT_SESSIONS_CAP) {
+      const oldest = this.recent.keys().next().value;
+      if (oldest !== undefined) this.recent.delete(oldest);
+    }
     const i = this.state.live.indexOf(live);
     if (i >= 0) this.state.live.splice(i, 1);
     const outcome = game.outcome;
