@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  evalSeries,
   extractGameEval,
   formatClock,
   formatEval,
@@ -109,5 +110,49 @@ describe('formatting and winChance', () => {
     expect(formatMoveTime(119.7)).toBe('2m 00s');
     expect(formatClock(280)).toBe('4:40');
     expect(formatClock(3880)).toBe('1:04:40');
+  });
+});
+
+describe('evalSeries', () => {
+  it('separates White and Black engine evaluations and skips book or unevaluated moves', () => {
+    const points = [
+      parseMoveComment(['book'], 'white', 1),
+      parseMoveComment(['book'], 'black', 2),
+      parseMoveComment(['+1.50/14 0.10s'], 'white', 3),
+      parseMoveComment(['-0.20/14 0.12s'], 'black', 4),
+      parseMoveComment(['+2.00/15 0.15s'], 'white', 5),
+      parseMoveComment(['+M3/16 0.20s'], 'black', 6),
+    ];
+    const series = evalSeries(points);
+    expect(series.white).toEqual([
+      { ply: 3, win: winChance({ cp: 150 }) },
+      { ply: 5, win: winChance({ cp: 200 }) },
+    ]);
+    expect(series.black).toEqual([
+      { ply: 4, win: winChance({ cp: 20 }) },
+      { ply: 6, win: -1 },
+    ]);
+  });
+
+  it('leaves the human side empty in a person-vs-engine game', () => {
+    const points = [
+      parseMoveComment([], 'white', 1),
+      parseMoveComment(['+0.50/12 0.10s'], 'black', 2),
+      parseMoveComment([], 'white', 3),
+      parseMoveComment(['+0.80/12 0.10s'], 'black', 4),
+    ];
+    const series = evalSeries(points);
+    expect(series.white).toEqual([]);
+    expect(series.black.map((s) => s.ply)).toEqual([2, 4]);
+  });
+
+  it('respects mover color when a FEN starts with Black to move', () => {
+    const points = [
+      parseMoveComment(['-0.40/10 0.05s'], 'black', 1),
+      parseMoveComment(['+0.60/10 0.05s'], 'white', 2),
+    ];
+    const series = evalSeries(points);
+    expect(series.black).toEqual([{ ply: 1, win: winChance({ cp: 40 }) }]);
+    expect(series.white).toEqual([{ ply: 2, win: winChance({ cp: 60 }) }]);
   });
 });

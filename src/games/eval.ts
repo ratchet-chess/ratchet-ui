@@ -36,6 +36,14 @@ export interface GameEval {
   maxTimeSec: number;
 }
 
+/** One evaluated ply along a side's evaluation series. */
+export interface EvalSample {
+  /** 1-based half-move index */
+  ply: number;
+  /** White-POV win chance in `[-1, 1]` */
+  win: number;
+}
+
 const EVAL_TAG = /\[%eval\s+([+-]?(?:#[+-]?\d+|\d+(?:\.\d+)?))\]/i;
 const CLK_TAG = /\[%clk\s+(\d+):(\d{1,2}):(\d{1,2}(?:\.\d+)?)\]/i;
 const ANY_CMD_TAG = /\[%[a-zA-Z]+\s+[^\]]*\]/g;
@@ -180,6 +188,22 @@ export function winChance(point: { cp?: number; mate?: number }): number {
   if (point.mate !== undefined) return point.mate > 0 ? 1 : -1;
   if (point.cp === undefined) return 0;
   return 2 / (1 + Math.exp(-0.004 * point.cp)) - 1;
+}
+
+/**
+ * Splits evaluated plies into separate White and Black series so two engines' scores never
+ * interleave into a sawtooth line.
+ */
+export function evalSeries(points: readonly MoveEval[]): Record<Color, EvalSample[]> {
+  const white: EvalSample[] = [];
+  const black: EvalSample[] = [];
+  for (const p of points) {
+    if (p.cp === undefined && p.mate === undefined) continue;
+    const sample: EvalSample = { ply: p.ply, win: winChance(p) };
+    if (p.mover === 'white') white.push(sample);
+    else black.push(sample);
+  }
+  return { white, black };
 }
 
 /** Formats a White-POV score such as `+0.35`, `-1.20`, `0.00`, `+M3`, or `-M2`. */

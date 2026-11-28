@@ -38,6 +38,9 @@
   /* bars: the empty track, and games in play beside those done */
   --color-track: #262c35;
   --color-live: #3a6f99;
+  /* evaluation graph lines: White's and Black's engines */
+  --color-eval-white: #e8edf5;
+  --color-eval-black: #5aa9e6;
 
   /* the type scale; nothing else sets a size */
   --text-*: initial;
@@ -96,6 +99,8 @@
     --color-warn-line: #dcbf7d;
     --color-track: #e1e6ec;
     --color-live: #8dbbe3;
+    --color-eval-white: #1a6bb0;
+    --color-eval-black: #1b232d;
   }
   body {
     @apply bg-bg font-sans text-base text-text antialiased;

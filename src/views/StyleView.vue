@@ -29,6 +29,7 @@ const COLORS: { group: string; names: string[] }[] = [
     names: ['accent', 'accent-line', 'good', 'good-line', 'bad', 'bad-line', 'warn', 'warn-line'],
   },
   { group: 'Bars', names: ['track', 'live'] },
+  { group: 'Eval', names: ['eval-white', 'eval-black'] },
 ];
 
 /** literal class names, so Tailwind finds them */
