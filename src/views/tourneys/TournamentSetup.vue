@@ -15,6 +15,7 @@ import { sprtGames } from '../../match/stats.ts';
 import { makeId } from '../../storage/id.ts';
 import { useBooks } from '../../stores/books.ts';
 import { defaultEngine, useEngines } from '../../stores/engines.ts';
+import { useRatings } from '../../stores/ratings.ts';
 import { useSettings, type Setup } from '../../stores/settings.ts';
 import { useTournaments } from '../../stores/tournaments.ts';
 import ControlPicker from './ControlPicker.vue';
@@ -26,6 +27,7 @@ import { cloneName } from './show.ts';
 const tournaments = useTournaments();
 const engines = useEngines();
 const books = useBooks();
+const ratings = useRatings();
 const settings = useSettings();
 const route = useRoute();
 const router = useRouter();
@@ -274,6 +276,7 @@ const submitting = ref(false);
 const submitError = ref('');
 
 onMounted(async () => {
+  void ratings.load();
   await Promise.all([books.load(), engines.load(), tournaments.load()]);
   if (touched.value) return;
   const from = route.query['from'];
@@ -499,7 +502,12 @@ const terse = 'text-dense text-dim';
                 <template v-else> First engine is the top seed.</template>
               </HelpTip></span
             >
-            <EnginePicker v-model="field" :engines="engineIds" :seeds="seedCount" />
+            <EnginePicker
+              v-model="field"
+              :engines="engines.list"
+              :ratings="ratings.defaultList"
+              :seeds="seedCount"
+            />
           </div>
 
           <template v-if="kind === 'match'">

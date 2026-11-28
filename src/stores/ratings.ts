@@ -1,11 +1,12 @@
 import { defineStore } from 'pinia';
-import { ref, shallowRef } from 'vue';
+import { computed, ref, shallowRef } from 'vue';
 import { gamesPerPair } from '../match/format.ts';
 import { configOf } from '../match/records.ts';
-import type { Source } from '../ratings/list.ts';
+import { ANCHOR_NAME, rate, type RatingList, type Source } from '../ratings/list.ts';
 import { scanHeaders, type ScannedGame } from '../ratings/scan.ts';
 import { readText } from '../storage/opfs.ts';
 import { useGames, type Collection } from './games.ts';
+import { useSettings } from './settings.ts';
 import { collectionOf, TOURNAMENTS } from './tournaments.ts';
 
 /** One collection as the Ratings page lists it, with the games it counts. */
@@ -19,11 +20,22 @@ export interface RatedCollection extends Source {
  */
 export const useRatings = defineStore('ratings', () => {
   const games = useGames();
+  const settings = useSettings();
   const collections = shallowRef<RatedCollection[]>([]);
   const loading = ref(false);
   const error = ref('');
   const scans = new Map<string, { updated: string; bytes: number; games: ScannedGame[] }>();
   let loadToken = 0;
+
+  /** ratings under the default scope: non-play collections, every control, forfeits counted */
+  const defaultList = computed<RatingList>(() => {
+    const nonPlay = collections.value.filter((c) => c.collection.source !== 'play');
+    return rate(
+      nonPlay,
+      { collections: new Set(nonPlay.map((c) => c.id)), control: null, forfeits: true },
+      settings.anchorRating === null ? null : { name: ANCHOR_NAME, rating: settings.anchorRating },
+    );
+  });
 
   /** the filters, kept while the app is open: a collection's choice where it differs from its default */
   const chosen = ref(new Map<string, boolean>());
@@ -95,6 +107,7 @@ export const useRatings = defineStore('ratings', () => {
 
   return {
     collections,
+    defaultList,
     loading,
     error,
     load,
