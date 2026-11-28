@@ -31,7 +31,7 @@ export interface Filter {
   forfeits: boolean;
 }
 
-/** the one engine Ratings can hold fixed; the user sets its rating in the filter bar */
+/** the default engine Ratings holds fixed, and calibration's CCRL baseline */
 export const ANCHOR_NAME = 'stockfish-10';
 
 /** the anchor's rating until the user sets one: Stockfish 10 64-bit on CCRL Blitz, list of 2026-10-31 */

@@ -4,7 +4,7 @@ import { parseControl } from '../chess/clock.ts';
 import type { EngineOptionPreset, OptionValue } from '../engine/options.ts';
 import type { TournamentConfig } from '../match/format.ts';
 import { configOf } from '../match/records.ts';
-import { ANCHOR_RATING } from '../ratings/list.ts';
+import { ANCHOR_NAME, ANCHOR_RATING } from '../ratings/list.ts';
 
 const MANAGER_KEY = 'ratchet-ui.manager';
 const CONTROLS_KEY = 'ratchet-ui.controls';
@@ -14,6 +14,7 @@ const START_KEY = 'ratchet-ui.template-start';
 const THEME_KEY = 'ratchet-ui.theme';
 const BACKUP_BOOKS_KEY = 'ratchet-ui.backup-books';
 const BACKUP_ENGINES_KEY = 'ratchet-ui.backup-engines';
+const ANCHOR_NAME_KEY = 'ratchet-ui.anchor-name';
 const ANCHOR_KEY = 'ratchet-ui.anchor-rating';
 const ENGINE_OPTIONS_KEY = 'ratchet-ui.engine-options';
 
@@ -93,6 +94,9 @@ function controlsOf(x: unknown): string[] {
     : [];
 }
 
+const anchorNameOf = (x: unknown): string | null =>
+  typeof x === 'string' && x.trim().length > 0 ? x : null;
+
 const ratingOf = (x: unknown): number | null =>
   typeof x === 'number' && Number.isFinite(x) ? x : null;
 
@@ -136,6 +140,8 @@ export interface SettingsFile {
   theme: Theme;
   backupBooks: boolean;
   backupEngines: boolean;
+  /** the engine Ratings holds fixed; null leaves the ratings averaging 0 */
+  anchorName: string | null;
   /** the rating Ratings holds its anchor at; null, a rating cleared, leaves the ratings averaging 0 */
   anchorRating: number | null;
   /** saved UCI option defaults and optional per-side limit, keyed by engine id */
@@ -154,6 +160,7 @@ export function settingsFileOf(x: unknown): SettingsFile {
     theme: isTheme(r.theme) ? r.theme : 'system',
     backupBooks: r.backupBooks !== false,
     backupEngines: r.backupEngines !== false,
+    anchorName: 'anchorName' in r ? anchorNameOf(r.anchorName) : ANCHOR_NAME,
     anchorRating: 'anchorRating' in r ? ratingOf(r.anchorRating) : ANCHOR_RATING,
     engineOptions: engineOptionsOf(r.engineOptions),
   };
@@ -229,6 +236,16 @@ export const useSettings = defineStore('settings', () => {
     else writeStorage(BACKUP_ENGINES_KEY, 'false');
   });
 
+  /** the engine Ratings holds fixed; null leaves the ratings averaging 0 */
+  const anchorName = ref<string | null>(
+    readStorage(ANCHOR_NAME_KEY) === null ? ANCHOR_NAME : anchorNameOf(readJson(ANCHOR_NAME_KEY)),
+  );
+  // the default is not kept in browser storage; null (None) or another engine is kept
+  watch(anchorName, (n) => {
+    if (n === ANCHOR_NAME) removeStorage(ANCHOR_NAME_KEY);
+    else writeStorage(ANCHOR_NAME_KEY, JSON.stringify(n));
+  });
+
   /** the rating Ratings holds its anchor at */
   const anchorRating = ref<number | null>(
     readStorage(ANCHOR_KEY) === null ? ANCHOR_RATING : ratingOf(readJson(ANCHOR_KEY)),
@@ -266,6 +283,7 @@ export const useSettings = defineStore('settings', () => {
           theme: theme.value,
           backupBooks: backupBooks.value,
           backupEngines: backupEngines.value,
+          anchorName: anchorName.value,
           anchorRating: anchorRating.value,
           engineOptions: engineOptions.value,
         }),
@@ -283,6 +301,7 @@ export const useSettings = defineStore('settings', () => {
     theme.value = f.theme;
     backupBooks.value = f.backupBooks;
     backupEngines.value = f.backupEngines;
+    anchorName.value = f.anchorName;
     anchorRating.value = f.anchorRating;
     engineOptions.value = f.engineOptions;
   }
@@ -321,6 +340,7 @@ export const useSettings = defineStore('settings', () => {
     theme,
     backupBooks,
     backupEngines,
+    anchorName,
     anchorRating,
     engineOptions,
     file,

@@ -14,6 +14,7 @@ import { ratingMarkdown, ratingText } from '../ratings/report.ts';
 import { useRatings } from '../stores/ratings.ts';
 import { useSettings } from '../stores/settings.ts';
 import { count } from '../ui/format.ts';
+import AnchorPicker from './ratings/AnchorPicker.vue';
 import CollectionPicker from './ratings/CollectionPicker.vue';
 import HeadToHeadTable from './ratings/HeadToHeadTable.vue';
 import RatingTable from './ratings/RatingTable.vue';
@@ -39,14 +40,21 @@ watch(controls, (cs) => {
   if (ratings.control !== null && !cs.some(([key]) => key === ratings.control))
     ratings.control = null;
 });
+const anchor = computed(() =>
+  settings.anchorName !== null && settings.anchorRating !== null
+    ? { name: settings.anchorName, rating: settings.anchorRating }
+    : null,
+);
 const list = computed(() =>
   rate(
     counted.value,
     { collections: picked.value, control: ratings.control, forfeits: ratings.forfeits },
-    settings.anchorRating === null ? null : { name: ANCHOR_NAME, rating: settings.anchorRating },
+    anchor.value,
   ),
 );
-const anchorPlayed = computed(() => list.value.rows.some((r) => r.name === ANCHOR_NAME));
+const anchorPresent = computed(
+  () => settings.anchorName !== null && list.value.rows.some((r) => r.name === settings.anchorName),
+);
 
 // ── what shows ───────────────────────────────────────────────────────────────
 const query = computed(() => ratings.search.trim().toLowerCase());
@@ -70,11 +78,6 @@ const sub = computed(() =>
     : '',
 );
 
-function setRating(e: Event): void {
-  const v = (e.target as HTMLInputElement).value.trim();
-  settings.anchorRating = v === '' || !Number.isFinite(Number(v)) ? null : Number(v);
-}
-
 function setMinGames(e: Event): void {
   const n = Number((e.target as HTMLInputElement).value);
   ratings.minGames = Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
@@ -95,7 +98,7 @@ function heading(): string[] {
     `Ratings: ${l.rows.length} engines, ${l.games} games, ${picked.value.size} collections`,
     `Control: ${ratings.control === null ? 'every' : controlLabel(ratings.control)} · Forfeits: ${ratings.forfeits ? 'counted' : 'left out'}`,
     l.anchored
-      ? `Anchor: ${ANCHOR_NAME} at ${settings.anchorRating}`
+      ? `Anchor: ${settings.anchorName} at ${settings.anchorRating}`
       : 'Anchor: none; ratings average 0',
     `ratchet-ui, ${new Date().toISOString().slice(0, 10)}`,
   ];
@@ -162,23 +165,17 @@ async function copy(markdown: boolean): Promise<void> {
     <span
       class="flex flex-1 items-center justify-end gap-1.5 text-dense whitespace-nowrap text-dim"
     >
-      Anchor <span class="font-medium text-text">{{ ANCHOR_NAME }}</span>
-      <template v-if="anchorPlayed">
-        at
-        <input
-          :value="settings.anchorRating ?? ''"
-          type="number"
-          placeholder="rating"
-          class="field-sm no-spin num w-20 text-right"
-          aria-label="anchor rating"
-          @change="setRating"
-        />
-      </template>
-      <span v-else>· not in these games</span>
+      Anchor
+      <AnchorPicker
+        v-model:anchor-name="settings.anchorName"
+        v-model:anchor-rating="settings.anchorRating"
+        :list="list"
+        :present="anchorPresent"
+      />
       <HelpTip side="left"
-        >Stockfish 10's rating fixes the scale of the engines that met it; the default,
-        {{ count(ANCHOR_RATING) }}, is its CCRL Blitz rating. Without its games, or with the rating
-        cleared, the ratings average 0.</HelpTip
+        >The anchor engine's rating fixes the scale of the engines linked to it through games. The
+        default is {{ ANCHOR_NAME }} at {{ count(ANCHOR_RATING) }} (CCRL Blitz). Pick None, clear
+        the rating, or filter out the anchor to average ratings at 0.</HelpTip
       >
     </span>
   </div>
@@ -217,8 +214,10 @@ async function copy(markdown: boolean): Promise<void> {
           <span class="flex-1" />
           <span>{{
             list.anchored
-              ? `${ANCHOR_NAME} held at ${count(settings.anchorRating ?? 0)}`
-              : 'Ratings average 0'
+              ? `${settings.anchorName} held at ${count(settings.anchorRating ?? 0)}`
+              : settings.anchorName !== null && !anchorPresent
+                ? `${settings.anchorName} not in these games · ratings average 0`
+                : 'Ratings average 0'
           }}</span>
         </div>
       </template>

@@ -1,18 +1,33 @@
 import { describe, expect, it } from 'vitest';
-import { ANCHOR_RATING } from '../ratings/list.ts';
+import { ANCHOR_NAME, ANCHOR_RATING } from '../ratings/list.ts';
 import { settingsFileOf, unionOf } from './settings.ts';
 
 describe('settingsFileOf', () => {
-  it('reads a file with no anchor rating as the default', () => {
-    expect(settingsFileOf({}).anchorRating).toBe(ANCHOR_RATING);
+  it('reads a file with no anchor settings as the default', () => {
+    const f = settingsFileOf({});
+    expect(f.anchorName).toBe(ANCHOR_NAME);
+    expect(f.anchorRating).toBe(ANCHOR_RATING);
   });
 
-  it('keeps a cleared anchor rating cleared', () => {
-    expect(settingsFileOf({ anchorRating: null }).anchorRating).toBeNull();
+  it('keeps a cleared anchor rating or cleared anchor name as null', () => {
+    expect(settingsFileOf({ anchorRating: null })).toMatchObject({
+      anchorName: ANCHOR_NAME,
+      anchorRating: null,
+    });
+    expect(settingsFileOf({ anchorName: null, anchorRating: null })).toMatchObject({
+      anchorName: null,
+      anchorRating: null,
+    });
+    expect(settingsFileOf({ anchorName: '   ' }).anchorName).toBeNull();
   });
 
-  it('keeps a rating the user set', () => {
-    expect(settingsFileOf({ anchorRating: 2900 }).anchorRating).toBe(2900);
+  it('keeps a custom anchor engine and rating the user set', () => {
+    expect(
+      settingsFileOf({ anchorName: 'Stockfish 10 64 POPCNT', anchorRating: 2900 }),
+    ).toMatchObject({
+      anchorName: 'Stockfish 10 64 POPCNT',
+      anchorRating: 2900,
+    });
   });
 
   it('reads valid engineOptions and drops invalid limits or non-primitive values', () => {

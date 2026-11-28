@@ -77,7 +77,7 @@ spread reads narrow, the wider of it and the model's interval stands. A tourname
 numbers give its pairs; in any other collection, two adjacent games with colors swapped are a pair. An engine is known
 by its PGN name. An engine that won or lost every game has no finite rating; as Ordo does, it is
 fitted out and shown at the floor (`>`) or ceiling (`<`) one draw would give. Engines that never met, through any chain of opponents, form separate pools, and a rating compares
-only within its pool. Stockfish 10, at its CCRL Blitz rating or one typed in, fixes its pool's scale; every other pool averages 0. Played
+only within its pool. The chosen anchor (Stockfish 10 at its CCRL Blitz rating by default), at its rating, fixes its pool's scale; every other pool, or an unanchored list, averages 0. Played
 games are a person's, so they are left out until chosen. A forfeit counts as a loss unless a filter leaves it out. An engine's ± is against the anchor, or its pool's average;
 LOS and Head to head read the gap between two engines, from the whole fit.
 

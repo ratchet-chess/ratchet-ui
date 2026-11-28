@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import { computed, ref, shallowRef } from 'vue';
 import { gamesPerPair } from '../match/format.ts';
 import { configOf } from '../match/records.ts';
-import { ANCHOR_NAME, rate, type RatingList, type Source } from '../ratings/list.ts';
+import { rate, type RatingList, type Source } from '../ratings/list.ts';
 import { scanHeaders, type ScannedGame } from '../ratings/scan.ts';
 import { readText } from '../storage/opfs.ts';
 import { useGames, type Collection } from './games.ts';
@@ -33,7 +33,9 @@ export const useRatings = defineStore('ratings', () => {
     return rate(
       nonPlay,
       { collections: new Set(nonPlay.map((c) => c.id)), control: null, forfeits: true },
-      settings.anchorRating === null ? null : { name: ANCHOR_NAME, rating: settings.anchorRating },
+      settings.anchorName !== null && settings.anchorRating !== null
+        ? { name: settings.anchorName, rating: settings.anchorRating }
+        : null,
     );
   });
 
